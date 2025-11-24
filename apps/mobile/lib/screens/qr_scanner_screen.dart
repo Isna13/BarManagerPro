@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
@@ -9,47 +9,44 @@ class QRScannerScreen extends StatefulWidget {
 }
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
-  final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
-  QRViewController? controller;
+  final MobileScannerController controller = MobileScannerController();
   String? scannedCode;
+  bool isProcessing = false;
 
   @override
   void dispose() {
-    controller?.dispose();
+    controller.dispose();
     super.dispose();
   }
 
-  void _onQRViewCreated(QRViewController controller) {
-    this.controller = controller;
-    controller.scannedDataStream.listen((scanData) {
-      if (scannedCode == null) {
-        setState(() {
-          scannedCode = scanData.code;
-        });
-        _handleScannedCode(scanData.code!);
-      }
-    });
-  }
-
   Future<void> _handleScannedCode(String code) async {
-    await controller?.pauseCamera();
+    if (isProcessing) return;
 
-    if (!mounted) return;
+    setState(() {
+      isProcessing = true;
+      scannedCode = code;
+    });
 
     // Verificar se é código de menu (menu-{branchId})
     if (code.startsWith('menu-')) {
-      Navigator.pushNamed(context, '/qr-menu', arguments: {'menuId': code});
+      if (mounted) {
+        Navigator.pushNamed(context, '/qr-menu', arguments: {'menuId': code});
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Código QR: $code')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Código QR: $code')),
+        );
+      }
     }
 
     // Reset após 2 segundos
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) {
-      setState(() => scannedCode = null);
-      await controller?.resumeCamera();
+      setState(() {
+        scannedCode = null;
+        isProcessing = false;
+      });
     }
   }
 
@@ -65,16 +62,15 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         children: [
           Expanded(
             flex: 4,
-            child: QRView(
-              key: qrKey,
-              onQRViewCreated: _onQRViewCreated,
-              overlay: QrScannerOverlayShape(
-                borderColor: Colors.purple,
-                borderRadius: 10,
-                borderLength: 30,
-                borderWidth: 10,
-                cutOutSize: 300,
-              ),
+            child: MobileScanner(
+              controller: controller,
+              onDetect: (capture) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
+                  final String code = barcodes.first.rawValue!;
+                  _handleScannedCode(code);
+                }
+              },
             ),
           ),
           Expanded(
@@ -100,13 +96,17 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.flash_off),
-                        onPressed: () => controller?.toggleFlash(),
+                        icon: Icon(
+                          controller.torchEnabled
+                              ? Icons.flash_on
+                              : Icons.flash_off,
+                        ),
+                        onPressed: () => controller.toggleTorch(),
                       ),
                       const SizedBox(width: 24),
                       IconButton(
                         icon: const Icon(Icons.flip_camera_android),
-                        onPressed: () => controller?.flipCamera(),
+                        onPressed: () => controller.switchCamera(),
                       ),
                     ],
                   ),

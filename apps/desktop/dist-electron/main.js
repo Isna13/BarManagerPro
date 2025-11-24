@@ -59,7 +59,7 @@ function createWindow() {
         title: 'BarManager Pro - Guiné-Bissau',
     });
     if (process.env.NODE_ENV === 'development') {
-        mainWindow.loadURL('http://localhost:5173');
+        mainWindow.loadURL('http://localhost:5175');
         mainWindow.webContents.openDevTools();
     }
     else {
@@ -91,10 +91,20 @@ electron_1.app.on('window-all-closed', () => {
 });
 electron_1.app.on('before-quit', async () => {
     if (syncManager) {
-        await syncManager.stop();
+        try {
+            await syncManager.stop();
+        }
+        catch (error) {
+            console.error('Erro ao parar sincronização:', error);
+        }
     }
     if (dbManager) {
-        dbManager.close();
+        try {
+            dbManager.close();
+        }
+        catch (error) {
+            console.error('Erro ao fechar banco:', error);
+        }
     }
 });
 // ============================================
@@ -104,9 +114,11 @@ electron_1.app.on('before-quit', async () => {
 electron_1.ipcMain.handle('auth:login', async (_, credentials) => {
     try {
         const result = await syncManager.login(credentials);
+        console.log('IPC auth:login result:', result);
         return { success: true, data: result };
     }
     catch (error) {
+        console.error('IPC auth:login error:', error);
         return { success: false, error: error.message };
     }
 });

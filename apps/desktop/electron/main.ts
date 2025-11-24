@@ -24,7 +24,7 @@ function createWindow() {
   });
 
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5175');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -62,10 +62,18 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   if (syncManager) {
-    await syncManager.stop();
+    try {
+      await syncManager.stop();
+    } catch (error) {
+      console.error('Erro ao parar sincronização:', error);
+    }
   }
   if (dbManager) {
-    dbManager.close();
+    try {
+      dbManager.close();
+    } catch (error) {
+      console.error('Erro ao fechar banco:', error);
+    }
   }
 });
 
@@ -79,6 +87,7 @@ ipcMain.handle('auth:login', async (_, credentials) => {
     const result = await syncManager.login(credentials);
     return { success: true, data: result };
   } catch (error) {
+    console.error('Erro no login:', error);
     return { success: false, error: (error as Error).message };
   }
 });

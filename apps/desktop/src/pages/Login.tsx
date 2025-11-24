@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
 export default function LoginPage() {
@@ -7,6 +8,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuthStore();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,8 +16,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      console.log('📝 Formulário enviado, tentando login...');
       await login({ email, password });
+      console.log('✅ Login bem-sucedido, navegando para dashboard...');
+      navigate('/');
     } catch (err: any) {
+      console.error('❌ Erro no formulário:', err);
       setError(err.message || 'Erro ao fazer login');
     } finally {
       setLoading(false);

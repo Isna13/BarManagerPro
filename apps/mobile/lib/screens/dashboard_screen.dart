@@ -12,7 +12,10 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _currencyFormat = NumberFormat.currency(symbol: 'XOF ', decimalDigits: 0);
+  final _currencyFormat = NumberFormat.currency(
+    symbol: 'XOF ',
+    decimalDigits: 0,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +43,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ? Icons.cloud_upload
                         : Icons.cloud_done,
                   ),
-            onPressed: syncProvider.isSyncing ? null : () => syncProvider.startSync(),
+            onPressed: syncProvider.isSyncing
+                ? null
+                : () => syncProvider.startSync(),
             tooltip: syncProvider.pendingItems > 0
                 ? '${syncProvider.pendingItems} itens pendentes'
                 : 'Sincronizado',
@@ -119,12 +124,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
                 children: [
-                  _buildMenuCard(context, 'PDV', Icons.point_of_sale, '/pos', Colors.blue),
-                  _buildMenuCard(context, 'Vendas', Icons.shopping_cart, '/sales', Colors.green),
-                  _buildMenuCard(context, 'Inventário', Icons.inventory, '/inventory', Colors.orange),
-                  _buildMenuCard(context, 'Scanner QR', Icons.qr_code_scanner, '/qr-scanner', Colors.purple),
-                  _buildMenuCard(context, 'Clientes', Icons.people, '/customers', Colors.teal),
-                  _buildMenuCard(context, 'Relatórios', Icons.bar_chart, '/reports', Colors.indigo),
+                  _buildMenuCard(
+                    context,
+                    'PDV',
+                    Icons.point_of_sale,
+                    '/pos',
+                    Colors.blue,
+                  ),
+                  _buildMenuCard(
+                    context,
+                    'Vendas',
+                    Icons.shopping_cart,
+                    '/sales',
+                    Colors.green,
+                  ),
+                  _buildMenuCard(
+                    context,
+                    'Inventário',
+                    Icons.inventory,
+                    '/inventory',
+                    Colors.orange,
+                  ),
+                  _buildMenuCard(
+                    context,
+                    'Scanner QR',
+                    Icons.qr_code_scanner,
+                    '/qr-scanner',
+                    Colors.purple,
+                  ),
+                  _buildMenuCard(
+                    context,
+                    'Clientes',
+                    Icons.people,
+                    '/customers',
+                    Colors.teal,
+                  ),
+                  _buildMenuCard(
+                    context,
+                    'Relatórios',
+                    Icons.bar_chart,
+                    '/reports',
+                    Colors.indigo,
+                  ),
                 ],
               ),
             ),
@@ -134,14 +175,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Card(
                   child: ListTile(
-                    leading: Icon(
-                      Icons.sync,
-                      color: Colors.green.shade700,
-                    ),
+                    leading: Icon(Icons.sync, color: Colors.green.shade700),
                     title: const Text('Última Sincronização'),
-                    subtitle: Text(
-                      _formatLastSync(syncProvider.lastSync!),
-                    ),
+                    subtitle: Text(_formatLastSync(syncProvider.lastSync!)),
                   ),
                 ),
               ),
@@ -169,10 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
                 Icon(icon, size: 20, color: color),
               ],

@@ -17,7 +17,10 @@ class SyncService {
 
   Future<SyncResult> syncAll() async {
     if (_isSyncing) {
-      return SyncResult(success: false, message: 'Sincronização já em andamento');
+      return SyncResult(
+        success: false,
+        message: 'Sincronização já em andamento',
+      );
     }
 
     _isSyncing = true;
@@ -122,9 +125,17 @@ class SyncService {
 }
 
 class SyncResult {
-  bool success = false;
-  String message = '';
-  int pulled = 0;
-  int pushed = 0;
-  int errors = 0;
+  bool success;
+  String message;
+  int pulled;
+  int pushed;
+  int errors;
+
+  SyncResult({
+    this.success = false,
+    this.message = '',
+    this.pulled = 0,
+    this.pushed = 0,
+    this.errors = 0,
+  });
 }

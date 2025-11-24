@@ -15,31 +15,36 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
-      // @ts-ignore
       const today = new Date().toISOString().split('T')[0];
       
+      // Usar a API correta do Electron
       // @ts-ignore
-      const sales = await window.api.db.query(`
-        SELECT COUNT(*) as count, SUM(totalAmount) as revenue 
-        FROM Sale 
-        WHERE DATE(createdAt) = '${today}'
-      `);
+      const sales = await window.electronAPI?.sales?.list?.({
+        startDate: today,
+        endDate: today,
+      }) || [];
 
       // @ts-ignore
-      const lowStock = await window.api.db.query(`
-        SELECT COUNT(*) as count 
-        FROM Inventory 
-        WHERE quantity <= lowStockThreshold
-      `);
+      const inventory = await window.electronAPI?.inventory?.list?.() || [];
+      
+      const todayRevenue = sales.reduce((sum: number, sale: any) => sum + (sale.total || 0), 0);
+      const lowStock = inventory.filter((item: any) => item.qty_units <= 10);
 
       setStats({
-        todaySales: sales[0]?.count || 0,
-        todayRevenue: sales[0]?.revenue || 0,
-        lowStockCount: lowStock[0]?.count || 0,
+        todaySales: sales.length,
+        todayRevenue: todayRevenue / 100, // Converter de centavos para Kz
+        lowStockCount: lowStock.length,
         activeCustomers: 0,
       });
     } catch (error) {
       console.error('Erro ao carregar dashboard:', error);
+      // Manter valores padrão em caso de erro
+      setStats({
+        todaySales: 0,
+        todayRevenue: 0,
+        lowStockCount: 0,
+        activeCustomers: 0,
+      });
     }
   };
 

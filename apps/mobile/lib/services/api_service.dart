@@ -7,25 +7,29 @@ class ApiService {
   String? _token;
 
   ApiService() {
-    _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
 
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        if (_token != null) {
-          options.headers['Authorization'] = 'Bearer $_token';
-        }
-        return handler.next(options);
-      },
-      onError: (error, handler) {
-        print('API Error: ${error.message}');
-        return handler.next(error);
-      },
-    ));
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          if (_token != null) {
+            options.headers['Authorization'] = 'Bearer $_token';
+          }
+          return handler.next(options);
+        },
+        onError: (error, handler) {
+          print('API Error: ${error.message}');
+          return handler.next(error);
+        },
+      ),
+    );
   }
 
   Future<void> loadToken() async {
@@ -48,10 +52,10 @@ class ApiService {
   // Auth
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      final response = await _dio.post('/auth/login', data: {
-        'email': email,
-        'password': password,
-      });
+      final response = await _dio.post(
+        '/auth/login',
+        data: {'email': email, 'password': password},
+      );
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
@@ -68,13 +72,19 @@ class ApiService {
   }
 
   // Products
-  Future<List<dynamic>> getProducts({String? categoryId, String? search}) async {
+  Future<List<dynamic>> getProducts({
+    String? categoryId,
+    String? search,
+  }) async {
     try {
       final queryParams = <String, dynamic>{};
       if (categoryId != null) queryParams['categoryId'] = categoryId;
       if (search != null) queryParams['search'] = search;
 
-      final response = await _dio.get('/products', queryParameters: queryParams);
+      final response = await _dio.get(
+        '/products',
+        queryParameters: queryParams,
+      );
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
@@ -91,7 +101,10 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> addSaleItem(String saleId, Map<String, dynamic> item) async {
+  Future<Map<String, dynamic>> addSaleItem(
+    String saleId,
+    Map<String, dynamic> item,
+  ) async {
     try {
       final response = await _dio.post('/sales/$saleId/items', data: item);
       return response.data;

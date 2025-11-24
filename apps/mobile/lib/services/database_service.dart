@@ -14,11 +14,7 @@ class DatabaseService {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'barmanager.db');
 
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _onCreate,
-    );
+    return await openDatabase(path, version: 1, onCreate: _onCreate);
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -112,13 +108,21 @@ class DatabaseService {
 
   Future<int> insertProduct(Map<String, dynamic> product) async {
     final db = await database;
-    return await db.insert('products', product,
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    return await db.insert(
+      'products',
+      product,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<int> updateProduct(String id, Map<String, dynamic> product) async {
     final db = await database;
-    return await db.update('products', product, where: 'id = ?', whereArgs: [id]);
+    return await db.update(
+      'products',
+      product,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // Sales
@@ -149,7 +153,11 @@ class DatabaseService {
   // Sale Items
   Future<List<Map<String, dynamic>>> getSaleItems(String saleId) async {
     final db = await database;
-    return await db.query('sale_items', where: 'saleId = ?', whereArgs: [saleId]);
+    return await db.query(
+      'sale_items',
+      where: 'saleId = ?',
+      whereArgs: [saleId],
+    );
   }
 
   Future<void> insertSaleItem(Map<String, dynamic> item) async {
@@ -165,11 +173,7 @@ class DatabaseService {
   // Sync Queue
   Future<List<Map<String, dynamic>>> getPendingSync() async {
     final db = await database;
-    return await db.query(
-      'sync_queue',
-      orderBy: 'createdAt ASC',
-      limit: 50,
-    );
+    return await db.query('sync_queue', orderBy: 'createdAt ASC', limit: 50);
   }
 
   Future<void> addToSyncQueue(Map<String, dynamic> item) async {

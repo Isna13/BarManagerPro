@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "nest build",
+    "build": "tsc -p tsconfig.json --noEmit false",
+    "build:nest": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "node dist/main",
     "dev": "nest start --watch",
