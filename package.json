@@ -1,0 +1,36 @@
+{
+  "name": "barmanager-pro-guine-bissau",
+  "version": "1.0.0",
+  "description": "Sistema completo de gestão para bares/restaurantes offline-first com sincronização automática",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "backend:dev": "pnpm --filter @barmanager/backend dev",
+    "desktop:dev": "pnpm --filter @barmanager/desktop dev",
+    "mobile:dev": "pnpm --filter @barmanager/mobile dev",
+    "pwa:dev": "pnpm --filter @barmanager/pwa dev",
+    "prisma:generate": "pnpm --filter @barmanager/backend prisma:generate",
+    "prisma:migrate": "pnpm --filter @barmanager/backend prisma:migrate",
+    "prisma:studio": "pnpm --filter @barmanager/backend prisma:studio"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "electron": "^39.2.3",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1",
+    "turbo": "^1.11.2",
+    "typescript": "^5.3.3"
+  }
+}

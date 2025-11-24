@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+*.log
+.DS_Store
+*.db
+*.db-journal
+apps/desktop/dist
+apps/desktop/.vite
+apps/mobile/.dart_tool
+apps/mobile/build
+.turbo

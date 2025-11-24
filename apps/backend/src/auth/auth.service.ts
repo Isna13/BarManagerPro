@@ -1,0 +1,143 @@
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../prisma/prisma.service';
+import { LoginDto, RegisterDto } from './dto';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
+
+  async validateUser(email: string, password: string): Promise<any> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        role: {
+          include: {
+            permissions: true,
+          },
+        },
+        branch: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Usuário desativado');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _, ...result } = user;
+    return result;
+  }
+
+  async login(loginDto: LoginDto) {
+    const user = await this.validateUser(loginDto.email, loginDto.password);
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      roleId: user.roleId,
+      branchId: user.branchId,
+    };
+
+    const token = this.jwtService.sign(payload);
+
+    // Create session
+    await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      },
+    });
+
+    // Update last login
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() },
+    });
+
+    return {
+      accessToken: token,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role.name,
+        branchId: user.branchId,
+        branch: user.branch,
+        permissions: user.role.permissions.map(p => `${p.resource}:${p.action}`),
+      },
+    };
+  }
+
+  async register(registerDto: RegisterDto) {
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email: registerDto.email,
+        password: hashedPassword,
+        fullName: registerDto.fullName,
+        phone: registerDto.phone,
+        roleId: registerDto.roleId,
+        branchId: registerDto.branchId,
+        language: registerDto.language || 'pt',
+      },
+      include: {
+        role: {
+          include: {
+            permissions: true,
+          },
+        },
+      },
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _, ...result } = user;
+    return result;
+  }
+
+  async logout(token: string) {
+    await this.prisma.session.delete({
+      where: { token },
+    });
+    return { message: 'Logout realizado com sucesso' };
+  }
+
+  async validateToken(token: string) {
+    const session = await this.prisma.session.findUnique({
+      where: { token },
+      include: {
+        user: {
+          include: {
+            role: {
+              include: {
+                permissions: true,
+              },
+            },
+            branch: true,
+          },
+        },
+      },
+    });
+
+    if (!session || session.expiresAt < new Date()) {
+      throw new UnauthorizedException('Sessão inválida ou expirada');
+    }
+
+    return session.user;
+  }
+}

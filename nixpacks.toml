@@ -1,0 +1,21 @@
+# BarManager Pro - Nixpacks Configuration for Railway
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = [
+  "cd apps/backend",
+  "pnpm prisma:generate",
+  "pnpm build"
+]
+
+[start]
+cmd = "cd apps/backend && node dist/main.js"
+
+[variables]
+NODE_ENV = "production"
