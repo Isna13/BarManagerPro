@@ -10,10 +10,13 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 
-# Instalar dependências
+# Copiar schema do Prisma ANTES de instalar dependências
+COPY apps/backend/prisma ./apps/backend/prisma
+
+# Instalar dependências (agora o prisma generate vai funcionar)
 RUN pnpm install --frozen-lockfile --filter=@barmanager/backend...
 
-# Copiar código do backend
+# Copiar resto do código do backend
 COPY apps/backend ./apps/backend
 
 # Gerar Prisma Client
