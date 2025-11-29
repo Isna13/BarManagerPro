@@ -15,7 +15,7 @@ COPY apps/backend/package.json ./apps/backend/
 COPY apps/backend/prisma ./apps/backend/prisma
 
 # Instalar dependências (agora o prisma generate vai funcionar)
-RUN pnpm install --frozen-lockfile --filter=@barmanager/backend...
+RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
 
 # Copiar resto do código do backend
 COPY apps/backend ./apps/backend
