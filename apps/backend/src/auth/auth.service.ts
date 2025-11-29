@@ -101,14 +101,23 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
 
+    // Verificar se já existe usuário com este email
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: registerDto.email },
+    });
+
+    if (existingUser) {
+      throw new UnauthorizedException('Email já cadastrado');
+    }
+
     const user = await this.prisma.user.create({
       data: {
         email: registerDto.email,
         password: hashedPassword,
         fullName: registerDto.fullName,
-        phone: registerDto.phone,
-        roleName: registerDto.role || 'cashier',
-        branchId: registerDto.branchId,
+        phone: registerDto.phone || null,
+        roleName: registerDto.role?.toLowerCase() || 'cashier',
+        branchId: registerDto.branchId || null,
         language: registerDto.language || 'pt',
       },
     });
