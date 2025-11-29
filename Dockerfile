@@ -21,7 +21,7 @@ COPY apps/backend/prisma ./apps/backend/prisma
 RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
 
 # Rebuild módulos nativos para Alpine Linux
-RUN cd apps/backend && pnpm rebuild bcrypt --build-from-source
+RUN cd apps/backend && pnpm rebuild bcrypt
 
 # Copiar resto do código do backend
 COPY apps/backend ./apps/backend
