@@ -19,6 +19,10 @@ COPY apps/backend/prisma ./prisma
 # Definir plataforma alvo do Prisma ANTES da instalação
 ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
 
+# DATABASE_URL temporária para o build (Prisma generate precisa dela)
+# Em runtime, Railway injeta a DATABASE_URL real automaticamente
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+
 # Instalar dependências com NPM (evita cache problemático do pnpm)
 RUN npm install --legacy-peer-deps
 
