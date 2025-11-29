@@ -36,5 +36,5 @@ RUN pnpm run build:docker
 # Expor porta
 EXPOSE 3000
 
-# Comando de inicialização
-CMD ["sh", "-c", "pnpm prisma db push --accept-data-loss && pnpm start:prod"]
+# Comando de inicialização (migrate deploy é mais seguro que db push em produção)
+CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push --accept-data-loss && node dist/main.js"]
