@@ -1,13 +1,10 @@
 # Dockerfile para Railway - BarManager Backend
-# V5 RADICAL - Usar NPM para evitar cache do pnpm
-FROM node:20-slim
-
-# Cache bust V5 - MUDAR para NPM
-ENV CACHE_BUST=2025-11-29-v5
+# V6 - DATABASE_URL apenas para build, removida em runtime
+FROM node:20-slim AS builder
 
 # Instalar dependências do sistema necessárias
 RUN apt-get update -y && \
-    apt-get install -y openssl libssl-dev ca-certificates procps && \
+    apt-get install -y openssl libssl-dev ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,13 +13,11 @@ WORKDIR /app
 COPY apps/backend/package.json ./
 COPY apps/backend/prisma ./prisma
 
-# Definir plataforma alvo do Prisma ANTES da instalação
+# DATABASE_URL temporária para build (Prisma precisa)
+ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db"
 ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
 
-# DATABASE_URL temporária APENAS para o build (ARG não persiste em runtime)
-ARG DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
-
-# Instalar dependências com NPM (evita cache problemático do pnpm)
+# Instalar dependências
 RUN npm install --legacy-peer-deps
 
 # Copiar código fonte
@@ -30,15 +25,31 @@ COPY apps/backend/src ./src
 COPY apps/backend/tsconfig*.json ./
 COPY apps/backend/nest-cli.json ./
 
-# Gerar Prisma Client (engine Debian será baixado)
-# Nota: DATABASE_URL do ARG é usada apenas aqui
-RUN DATABASE_URL="postgresql://x:x@localhost:5432/x" npx prisma generate
+# Gerar Prisma Client
+RUN npx prisma generate
 
 # Compilar TypeScript
 RUN npm run build:docker
 
+# ===== STAGE 2: Runtime (sem DATABASE_URL hardcoded) =====
+FROM node:20-slim
+
+RUN apt-get update -y && \
+    apt-get install -y openssl libssl-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copiar apenas o necessário do builder
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/package.json ./
+
+# NÃO definir DATABASE_URL aqui - Railway vai injetar automaticamente
+
 # Expor porta
 EXPOSE 3000
 
-# Inicialização (migrations + start)
+# Inicialização
 CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push --accept-data-loss && node dist/main.js"]
