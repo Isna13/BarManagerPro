@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bull';
+import { LoggerMiddleware } from './common/middleware/logger.middleware';
 
 // Core modules
 import { PrismaModule } from './prisma/prisma.module';
@@ -33,6 +34,7 @@ import { ReportsModule } from './reports/reports.module';
 import { BackupModule } from './backup/backup.module';
 import { AuditModule } from './audit/audit.module';
 import { WebSocketModule } from './websocket/websocket.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -79,6 +81,13 @@ import { WebSocketModule } from './websocket/websocket.module';
     BackupModule,
     AuditModule,
     WebSocketModule,
+    HealthModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(LoggerMiddleware)
+      .forRoutes('*'); // Aplicar logging em todas as rotas
+  }
+}

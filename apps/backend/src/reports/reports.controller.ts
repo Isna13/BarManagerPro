@@ -62,4 +62,22 @@ export class ReportsController {
       limit ? parseInt(limit) : 10
     );
   }
+
+  @Get('purchases')
+  purchasesReport(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('branchId') branchId?: string
+  ) {
+    return this.reportsService.purchasesReport(
+      new Date(startDate),
+      new Date(endDate),
+      branchId
+    );
+  }
+
+  @Get('dashboard')
+  async dashboardStats(@Query('branchId') branchId?: string) {
+    return this.reportsService.dashboardStats(branchId);
+  }
 }

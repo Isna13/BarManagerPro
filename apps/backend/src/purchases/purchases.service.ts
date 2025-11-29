@@ -7,18 +7,21 @@ export class PurchasesService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreatePurchaseDto, userId: string) {
+    const purchaseNumber = `PUR-${Date.now()}`;
     return this.prisma.purchase.create({
       data: {
-        branchId: createDto.branchId,
-        supplierId: createDto.supplierId,
-        userId,
+        purchaseNumber,
+        branch: { connect: { id: createDto.branchId } },
+        supplier: { connect: { id: createDto.supplierId } },
+        createdBy: userId,
         status: 'pending',
+        total: 0,
         notes: createDto.notes,
       },
       include: {
         supplier: true,
         branch: true,
-        user: true,
+        createdByUser: true,
       },
     });
   }
@@ -50,11 +53,13 @@ export class PurchasesService {
 
     const purchaseItem = await this.prisma.purchaseItem.create({
       data: {
-        purchaseId,
-        productId: itemDto.productId,
+        purchase: { connect: { id: purchaseId } },
+        product: { connect: { id: itemDto.productId } },
         qtyUnits: totalUnits,
+        qtyBoxes: itemDto.qtyBoxes || 0,
         unitCost: itemDto.unitCost,
-        totalCost,
+        subtotal: totalCost,
+        total: totalCost,
       },
       include: {
         product: true,
@@ -104,7 +109,7 @@ export class PurchasesService {
         },
         supplier: true,
         branch: true,
-        user: true,
+        createdByUser: true,
       },
     });
   }
@@ -118,7 +123,7 @@ export class PurchasesService {
       include: {
         supplier: true,
         branch: true,
-        user: true,
+        createdByUser: true,
         items: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -136,7 +141,7 @@ export class PurchasesService {
         },
         supplier: true,
         branch: true,
-        user: true,
+        createdByUser: true,
       },
     });
 

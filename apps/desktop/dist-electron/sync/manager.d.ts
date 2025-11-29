@@ -1,4 +1,5 @@
 import { DatabaseManager } from '../database/manager';
+import { BrowserWindow } from 'electron';
 export declare class SyncManager {
     private dbManager;
     private apiUrl;
@@ -6,7 +7,12 @@ export declare class SyncManager {
     private syncInterval;
     private isRunning;
     private token;
+    private lastSync;
+    private mainWindow;
+    private lastCredentials;
     constructor(dbManager: DatabaseManager, apiUrl: string);
+    setMainWindow(window: BrowserWindow): void;
+    private emit;
     login(credentials: {
         email: string;
         password: string;
@@ -22,7 +28,14 @@ export declare class SyncManager {
     getStatus(): {
         isRunning: boolean;
         pendingItems: number;
-        lastSync: Date;
+        lastSync: Date | null;
+        isOnline: boolean;
     };
+    checkConnection(): Promise<boolean>;
+    /**
+     * Tenta reautenticar com as últimas credenciais quando reconectar
+     * Usado para converter token offline para token válido
+     */
+    tryReauthenticate(retries?: number): Promise<boolean>;
 }
 //# sourceMappingURL=manager.d.ts.map

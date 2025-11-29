@@ -29,9 +29,9 @@ export class RegisterDto {
   @IsOptional()
   phone?: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
-  roleId: string;
+  role: string;
 
   @IsUUID()
   @IsOptional()

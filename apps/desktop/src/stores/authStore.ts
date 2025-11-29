@@ -35,19 +35,37 @@ export const useAuthStore = create<AuthState>()(
           
           // Suporta tanto formato online (result.success) quanto offline (result.user direto)
           if (result.success && result.data) {
-            console.log('✅ Formato online detectado');
+            const token = result.data.accessToken;
+            
+            // Verificar se é realmente online ou offline
+            if (token === 'offline-token') {
+              console.log('⚠️ Formato online detectado MAS token é offline-token');
+              console.log('📴 Login realizado em modo OFFLINE (backend indisponível)');
+            } else {
+              console.log('✅ Formato online detectado com token válido');
+              console.log('🌐 Login realizado em modo ONLINE');
+            }
+            
             set({
               user: result.data.user,
-              token: result.data.accessToken,
+              token: token,
               isAuthenticated: true,
             });
+            
+            // Salvar token no Electron store para uso em relatórios
+            await window.electronAPI.settings.set({ key: 'token', value: token });
           } else if (result.user) {
             console.log('✅ Formato offline detectado');
+            const token = result.accessToken;
+            
             set({
               user: result.user,
-              token: result.accessToken,
+              token: token,
               isAuthenticated: true,
             });
+            
+            // Salvar token no Electron store para uso em relatórios
+            await window.electronAPI.settings.set({ key: 'token', value: token });
           } else {
             console.error('❌ Formato de resposta inválido:', result);
             throw new Error(result.error || 'Formato de resposta inválido');

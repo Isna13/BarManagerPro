@@ -1,7 +1,10 @@
 module.exports = function (options, webpack) {
   return {
     ...options,
-    externals: [],
+    externals: {
+      'bcrypt': 'commonjs2 bcrypt',
+      '@mapbox/node-pre-gyp': 'commonjs2 @mapbox/node-pre-gyp',
+    },
     output: {
       ...options.output,
       libraryTarget: 'commonjs2',

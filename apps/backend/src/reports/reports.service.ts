@@ -252,6 +252,82 @@ export class ReportsService {
       .slice(0, limit);
   }
 
+  async purchasesReport(startDate: Date, endDate: Date, branchId?: string) {
+    const purchases = await this.prisma.purchase.findMany({
+      where: {
+        ...(branchId && { branchId }),
+        status: 'completed',
+        completedAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      include: {
+        supplier: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    const totalPurchases = purchases.reduce((sum, p) => sum + p.totalCost, 0);
+
+    // Agrupar por fornecedor
+    const supplierStats: Record<string, { name: string; count: number; total: number }> = {};
+    purchases.forEach(purchase => {
+      const supplierId = purchase.supplierId || 'sem-fornecedor';
+      const supplierName = purchase.supplier?.name || 'Sem Fornecedor';
+      
+      if (!supplierStats[supplierId]) {
+        supplierStats[supplierId] = { name: supplierName, count: 0, total: 0 };
+      }
+      supplierStats[supplierId].count++;
+      supplierStats[supplierId].total += purchase.totalCost;
+    });
+
+    // Produtos mais comprados
+    const productStats: Record<string, { 
+      name: string; 
+      sku: string;
+      qtyUnits: number; 
+      totalCost: number;
+      count: number;
+    }> = {};
+
+    purchases.forEach(purchase => {
+      purchase.items.forEach(item => {
+        if (!productStats[item.productId]) {
+          productStats[item.productId] = {
+            name: item.product.name,
+            sku: item.product.sku,
+            qtyUnits: 0,
+            totalCost: 0,
+            count: 0,
+          };
+        }
+        productStats[item.productId].qtyUnits += item.qtyUnits;
+        productStats[item.productId].totalCost += item.totalCost;
+        productStats[item.productId].count++;
+      });
+    });
+
+    return {
+      period: { startDate, endDate },
+      summary: {
+        totalPurchases,
+        purchasesCount: purchases.length,
+        averageTicket: purchases.length > 0 ? totalPurchases / purchases.length : 0,
+      },
+      suppliers: Object.values(supplierStats).sort((a, b) => b.total - a.total),
+      topProducts: Object.values(productStats)
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .slice(0, 10),
+      dailyPurchases: this.groupByDatePurchases(purchases),
+    };
+  }
+
   private groupByDate(sales: any[]) {
     const grouped: Record<string, { count: number; total: number }> = {};
     
@@ -268,5 +344,134 @@ export class ReportsService {
       date,
       ...stats,
     }));
+  }
+
+  private groupByDatePurchases(purchases: any[]) {
+    const grouped: Record<string, { count: number; total: number }> = {};
+    
+    purchases.forEach(purchase => {
+      const date = purchase.completedAt.toISOString().split('T')[0];
+      if (!grouped[date]) {
+        grouped[date] = { count: 0, total: 0 };
+      }
+      grouped[date].count++;
+      grouped[date].total += purchase.totalCost;
+    });
+
+    return Object.entries(grouped).map(([date, stats]) => ({
+      date,
+      ...stats,
+    }));
+  }
+
+  async dashboardStats(branchId?: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    // Vendas de hoje
+    const todaySales = await this.prisma.sale.aggregate({
+      where: {
+        ...(branchId && { branchId }),
+        status: 'closed',
+        closedAt: { gte: today, lt: tomorrow },
+      },
+      _sum: { total: true, subtotal: true },
+      _count: true,
+    });
+
+    // Custos de hoje (compras)
+    const todayCosts = await this.prisma.purchase.aggregate({
+      where: {
+        ...(branchId && { branchId }),
+        status: 'completed',
+        completedAt: { gte: today, lt: tomorrow },
+      },
+      _sum: { totalCost: true },
+    });
+
+    const todaySalesTotal = todaySales._sum.total || 0;
+    const todaySubtotal = todaySales._sum.subtotal || 0;
+    const todayCostsTotal = todayCosts._sum.totalCost || 0;
+    const todayProfit = todaySalesTotal - todayCostsTotal;
+    const todayMargin = todaySalesTotal > 0 ? (todayProfit / todaySalesTotal) * 100 : 0;
+
+    // Faturamento semanal
+    const weekRevenue = await this.prisma.sale.aggregate({
+      where: {
+        ...(branchId && { branchId }),
+        status: 'closed',
+        closedAt: { gte: weekStart },
+      },
+      _sum: { total: true },
+    });
+
+    // Faturamento mensal
+    const monthRevenue = await this.prisma.sale.aggregate({
+      where: {
+        ...(branchId && { branchId }),
+        status: 'closed',
+        closedAt: { gte: monthStart },
+      },
+      _sum: { total: true },
+    });
+
+    // Dívidas pendentes
+    const debts = await this.prisma.debt.aggregate({
+      where: {
+        ...(branchId && { customer: { branchId } }),
+        status: { in: ['pending', 'partial'] },
+      },
+      _sum: { balance: true },
+      _count: true,
+    });
+
+    // Dívidas vencidas
+    const overdueDebts = await this.prisma.debt.count({
+      where: {
+        ...(branchId && { customer: { branchId } }),
+        status: { in: ['pending', 'partial'] },
+        dueDate: { lt: today },
+      },
+    });
+
+    // Estoque baixo
+    const lowStockItems = await this.prisma.inventoryItem.count({
+      where: {
+        ...(branchId && { branchId }),
+        qtyUnits: { lte: this.prisma.inventoryItem.fields.minStock },
+      },
+    });
+
+    // Total de produtos
+    const productsCount = await this.prisma.product.count({
+      where: branchId ? { branchId } : undefined,
+    });
+
+    // Total de clientes
+    const customersCount = await this.prisma.customer.count({
+      where: branchId ? { branchId } : undefined,
+    });
+
+    return {
+      todaySales: todaySalesTotal,
+      todayProfit,
+      todayMargin,
+      todaySalesCount: todaySales._count,
+      weekRevenue: weekRevenue._sum.total || 0,
+      monthRevenue: monthRevenue._sum.total || 0,
+      pendingDebts: debts._sum.balance || 0,
+      pendingDebtsCount: debts._count,
+      overdueDebts,
+      lowStockCount: lowStockItems,
+      productsCount,
+      customersCount,
+    };
   }
 }

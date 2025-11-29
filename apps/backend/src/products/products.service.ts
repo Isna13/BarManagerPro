@@ -26,8 +26,14 @@ export class ProductsService {
       }
     }
 
+    const { categoryId, ...productData } = createDto;
     const product = await this.prisma.product.create({
-      data: createDto,
+      data: {
+        ...productData,
+        sku: createDto.sku || `SKU-${Date.now()}`,
+        costUnit: createDto.costUnit || 0,
+        category: categoryId ? { connect: { id: categoryId } } : undefined,
+      },
       include: {
         category: true,
       },
@@ -37,9 +43,11 @@ export class ProductsService {
     if (createDto.priceUnit) {
       await this.prisma.productPriceHistory.create({
         data: {
-          productId: product.id,
+          product: { connect: { id: product.id } },
           priceUnit: createDto.priceUnit,
-          priceBox: createDto.priceBox,
+          priceBox: createDto.priceBox || 0,
+          costUnit: createDto.costUnit || 0,
+          costBox: createDto.costBox || 0,
           reason: 'Preço inicial do produto',
         },
       });
@@ -112,9 +120,11 @@ export class ProductsService {
     if (priceChanged) {
       await this.prisma.productPriceHistory.create({
         data: {
-          productId: id,
+          product: { connect: { id } },
           priceUnit: updateDto.priceUnit || product.priceUnit,
-          priceBox: updateDto.priceBox || product.priceBox,
+          priceBox: updateDto.priceBox || product.priceBox || 0,
+          costUnit: updateDto.costUnit || product.costUnit,
+          costBox: updateDto.costBox || product.costBox || 0,
           reason: 'Atualização de preço',
         },
       });

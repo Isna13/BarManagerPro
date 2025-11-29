@@ -52,7 +52,7 @@ export class QrMenuService {
             id: true,
             name: true,
             description: true,
-            sellingPrice: true,
+            priceUnit: true,
             category: true,
           },
         },
@@ -70,7 +70,7 @@ export class QrMenuService {
       branch: {
         name: branch.name,
         code: branch.code,
-        products: branch.products,
+        products: [],
       },
     };
   }

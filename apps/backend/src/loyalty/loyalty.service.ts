@@ -122,7 +122,7 @@ export class LoyaltyService {
     return this.prisma.loyaltyTransaction.findMany({
       where: { customerId },
       include: {
-        sale: { select: { id: true, totalAmount: true, createdAt: true } },
+        sale: { select: { id: true, total: true, createdAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

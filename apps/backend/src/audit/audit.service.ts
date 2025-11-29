@@ -9,9 +9,10 @@ export class AuditService {
   async create(createAuditDto: CreateAuditDto) {
     return this.prisma.auditLog.create({
       data: {
-        userId: createAuditDto.userId,
+        user: createAuditDto.userId ? { connect: { id: createAuditDto.userId } } : undefined,
         action: createAuditDto.action,
         entity: createAuditDto.entity,
+        resource: createAuditDto.entity,
         entityId: createAuditDto.entityId,
         details: createAuditDto.details,
         ipAddress: createAuditDto.ipAddress,
@@ -54,7 +55,7 @@ export class AuditService {
 
   async getEntityAudit(entity: string, entityId: string) {
     return this.prisma.auditLog.findMany({
-      where: { entity, entityId },
+      where: { resource: entity, resourceId: entityId },
       include: {
         user: { select: { email: true } },
       },

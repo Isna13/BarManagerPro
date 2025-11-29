@@ -18,7 +18,7 @@ export class FeedbackService {
       },
       include: {
         customer: { select: { name: true, phone: true } },
-        sale: { select: { id: true, totalAmount: true, createdAt: true } },
+        sale: { select: { id: true, total: true, createdAt: true } },
         branch: { select: { name: true, code: true } },
       },
     });
@@ -37,8 +37,8 @@ export class FeedbackService {
     return this.prisma.feedback.findMany({
       where,
       include: {
-        customer: { select: { name: true, phone: true } },
-        sale: { select: { id: true, totalAmount: true, createdAt: true } },
+        customer: { select: { fullName: true, phone: true } },
+        sale: { select: { id: true, total: true, createdAt: true } },
         branch: { select: { name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -49,8 +49,8 @@ export class FeedbackService {
     const feedback = await this.prisma.feedback.findUnique({
       where: { id },
       include: {
-        customer: { select: { name: true, phone: true } },
-        sale: { select: { id: true, totalAmount: true, createdAt: true } },
+        customer: { select: { fullName: true, phone: true } },
+        sale: { select: { id: true, total: true, createdAt: true } },
         branch: { select: { name: true, code: true } },
       },
     });
@@ -70,7 +70,7 @@ export class FeedbackService {
     return this.prisma.feedback.findMany({
       where: { customerId },
       include: {
-        sale: { select: { id: true, totalAmount: true, createdAt: true } },
+        sale: { select: { id: true, total: true, createdAt: true } },
         branch: { select: { name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -122,7 +122,7 @@ export class FeedbackService {
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
-        customer: { select: { name: true } },
+        customer: { select: { fullName: true } },
       },
     });
 

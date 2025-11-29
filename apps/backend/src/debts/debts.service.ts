@@ -165,4 +165,38 @@ export class DebtsService {
 
     return debt;
   }
+
+  async getSummary() {
+    const [totalPending, totalOverdue, overdueCount] = await Promise.all([
+      this.prisma.debt.aggregate({
+        where: {
+          status: { in: ['pending', 'partial'] },
+        },
+        _sum: {
+          balance: true,
+        },
+      }),
+      this.prisma.debt.aggregate({
+        where: {
+          status: { in: ['pending', 'partial'] },
+          dueDate: { lt: new Date() },
+        },
+        _sum: {
+          balance: true,
+        },
+      }),
+      this.prisma.debt.count({
+        where: {
+          status: { in: ['pending', 'partial'] },
+          dueDate: { lt: new Date() },
+        },
+      }),
+    ]);
+
+    return {
+      totalPending: totalPending._sum.balance || 0,
+      totalOverdue: totalOverdue._sum.balance || 0,
+      overdueCount,
+    };
+  }
 }

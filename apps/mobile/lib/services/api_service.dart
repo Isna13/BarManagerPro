@@ -1,17 +1,17 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:3000/api/v1';
   late Dio _dio;
   String? _token;
 
   ApiService() {
     _dio = Dio(
       BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        baseUrl: ApiConfig.baseUrl,
+        connectTimeout: ApiConfig.connectTimeout,
+        receiveTimeout: ApiConfig.receiveTimeout,
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -148,9 +148,113 @@ class ApiService {
   }
 
   // Dashboard Stats
-  Future<Map<String, dynamic>> getDashboardStats(String branchId) async {
+  Future<Map<String, dynamic>> getDashboardStats({String? branchId}) async {
     try {
-      final response = await _dio.get('/reports/dashboard/$branchId');
+      final queryParams = <String, dynamic>{};
+      if (branchId != null) queryParams['branchId'] = branchId;
+
+      final response = await _dio.get(
+        '/reports/dashboard',
+        queryParameters: queryParams,
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Reports
+  Future<Map<String, dynamic>> getSalesReport({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? branchId,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/reports/sales',
+        queryParameters: {
+          'startDate': startDate.toIso8601String(),
+          'endDate': endDate.toIso8601String(),
+          if (branchId != null) 'branchId': branchId,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> getCashFlowReport({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? branchId,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/reports/cash-flow',
+        queryParameters: {
+          'startDate': startDate.toIso8601String(),
+          'endDate': endDate.toIso8601String(),
+          if (branchId != null) 'branchId': branchId,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<List<dynamic>> getTopProducts({int limit = 10}) async {
+    try {
+      final response = await _dio.get(
+        '/reports/top-products',
+        queryParameters: {'limit': limit},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Debts
+  Future<List<dynamic>> getDebts({String? status}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (status != null) queryParams['status'] = status;
+
+      final response = await _dio.get('/debts', queryParameters: queryParams);
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> getDebtsSummary() async {
+    try {
+      final response = await _dio.get('/debts/summary');
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<void> registerDebtPayment(String debtId, double amount) async {
+    try {
+      await _dio.post('/debts/$debtId/pay', data: {'amount': amount});
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Inventory
+  Future<List<dynamic>> getInventory({String? branchId, bool? lowStock}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (branchId != null) queryParams['branchId'] = branchId;
+      if (lowStock != null) queryParams['lowStock'] = lowStock;
+
+      final response =
+          await _dio.get('/inventory', queryParameters: queryParams);
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);

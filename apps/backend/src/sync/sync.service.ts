@@ -19,10 +19,11 @@ export class SyncService {
     return this.prisma.syncQueue.create({
       data: {
         entity: createSyncItemDto.entity,
+        entityType: createSyncItemDto.entity,
         operation: createSyncItemDto.operation,
         entityId: createSyncItemDto.entityId,
         data: createSyncItemDto.data,
-        branchId: createSyncItemDto.branchId,
+        branch: { connect: { id: createSyncItemDto.branchId } },
         deviceId: createSyncItemDto.deviceId,
         status: 'pending',
       },
@@ -208,7 +209,7 @@ export class SyncService {
       this.prisma.customer.findMany({
         where: { branchId, updatedAt: { gte: since } },
       }),
-      this.prisma.inventory.findMany({
+      this.prisma.inventoryItem.findMany({
         where: { branchId, updatedAt: { gte: since } },
       }),
       this.prisma.product.findMany({
@@ -218,7 +219,10 @@ export class SyncService {
         where: { branchId, updatedAt: { gte: since } },
       }),
       this.prisma.payment.findMany({
-        where: { debt: { branchId }, updatedAt: { gte: since } },
+        where: { 
+          debt: { branchId },
+          createdAt: { gte: since }
+        },
       }),
     ]);
 
@@ -267,10 +271,11 @@ export class SyncService {
     return this.prisma.syncConflict.create({
       data: {
         entity: item.entity,
+        entityType: item.entity,
         entityId: item.entityId,
         localData: JSON.stringify(conflict),
         remoteData: item.data,
-        branchId: item.branchId,
+        branch: item.branchId ? { connect: { id: item.branchId } } : undefined,
       },
     });
   }

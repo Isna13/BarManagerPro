@@ -15,11 +15,6 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email },
       include: {
-        role: {
-          include: {
-            permissions: true,
-          },
-        },
         branch: true,
       },
     });
@@ -48,7 +43,7 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      roleId: user.roleId,
+      role: user.role, // role é string, não roleId
       branchId: user.branchId,
     };
 
@@ -69,16 +64,36 @@ export class AuthService {
       data: { lastLogin: new Date() },
     });
 
+    // Define permissions baseadas no role
+    const rolePermissions: Record<string, string[]> = {
+      admin: ['*'], // Admin tem todas as permissões
+      owner: ['*'], // Owner também tem todas
+      manager: [
+        'users:read', 'users:write',
+        'products:*', 'inventory:*', 'sales:*',
+        'reports:read', 'customers:*', 'suppliers:*'
+      ],
+      cashier: [
+        'sales:create', 'sales:read',
+        'products:read', 'inventory:read',
+        'customers:read', 'customers:write'
+      ],
+      waiter: [
+        'sales:create', 'sales:read',
+        'products:read', 'customers:read'
+      ],
+    };
+
     return {
       accessToken: token,
       user: {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
-        role: user.role.name,
+        role: user.role, // role é string: 'admin', 'manager', etc
         branchId: user.branchId,
         branch: user.branch,
-        permissions: user.role.permissions.map(p => `${p.resource}:${p.action}`),
+        permissions: rolePermissions[user.role] || [],
       },
     };
   }
@@ -90,18 +105,12 @@ export class AuthService {
       data: {
         email: registerDto.email,
         password: hashedPassword,
+        name: registerDto.fullName, // Preencher name também
         fullName: registerDto.fullName,
         phone: registerDto.phone,
-        roleId: registerDto.roleId,
+        role: registerDto.role || 'cashier',
         branchId: registerDto.branchId,
         language: registerDto.language || 'pt',
-      },
-      include: {
-        role: {
-          include: {
-            permissions: true,
-          },
-        },
       },
     });
 
@@ -123,11 +132,6 @@ export class AuthService {
       include: {
         user: {
           include: {
-            role: {
-              include: {
-                permissions: true,
-              },
-            },
             branch: true,
           },
         },

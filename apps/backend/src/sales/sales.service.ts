@@ -22,7 +22,7 @@ export class SalesService {
         type: createSaleDto.type || 'counter',
         tableId: createSaleDto.tableId,
         customerId: createSaleDto.customerId,
-        userId: userId,
+        cashierId: userId,
         status: 'open',
       },
       include: {
@@ -33,7 +33,7 @@ export class SalesService {
         },
         table: true,
         customer: true,
-        user: true,
+        cashier: true,
       },
     });
   }
@@ -339,7 +339,7 @@ export class SalesService {
         payments: true,
         table: true,
         customer: true,
-        user: true,
+        cashier: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -358,7 +358,7 @@ export class SalesService {
         payments: true,
         table: true,
         customer: true,
-        user: true,
+        cashier: true,
         branch: true,
       },
     });

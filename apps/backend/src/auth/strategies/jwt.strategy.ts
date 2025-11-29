@@ -21,24 +21,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       include: {
-        role: {
-          include: {
-            permissions: true,
-          },
-        },
         branch: true,
       },
     });
 
     return {
-      id: user.id,
+      userId: user.id,
       email: user.email,
       fullName: user.fullName,
-      roleId: user.roleId,
-      role: user.role.name,
+      role: user.role,
       branchId: user.branchId,
       branch: user.branch,
-      permissions: user.role.permissions.map(p => `${p.resource}:${p.action}`),
+      permissions: [],
     };
   }
 }

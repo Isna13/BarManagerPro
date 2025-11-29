@@ -1,6 +1,8 @@
 # BarManager Pro — Guiné-Bissau
 
-Sistema completo de gestão para bares/restaurantes **offline-first** com sincronização automática.
+Sistema completo de gestão para bares/restaurantes **offline-first** com sincronização automática em **Desktop (Electron)** e **Mobile (Flutter Android)**.
+
+> **🚀 NOVIDADE**: Backend agora pronto para **cloud hosting** com acesso remoto via WiFi/internet de qualquer lugar!
 
 ## 🌍 Características Principais
 
@@ -12,6 +14,18 @@ Sistema completo de gestão para bares/restaurantes **offline-first** com sincro
 - ✅ **Dívidas/Fiados** - Controle de crédito com limites por cliente
 - ✅ **Multi-filial** - Gestão centralizada de várias unidades
 - ✅ **Backup Automático** - Segurança de dados com criptografia AES-256
+- ✅ **🆕 Modo Online/Offline** - Funciona sem internet com sincronização automática
+- ✅ **🆕 Multi-Usuário** - Múltiplos PCs acessando simultaneamente
+- ✅ **🆕 App Mobile Android** - Gestão completa do celular com notificações push
+
+### Sistema de Sincronização (v1.1.0) 🆕
+- 🟢 **Indicador Visual** - Status online/offline em tempo real
+- 🔄 **Sincronização Automática** - Ao reconectar, dados sincronizam automaticamente
+- 📱 **Trabalho Offline** - Todas as operações funcionam sem internet
+- 🗂️ **Fila de Sincronização** - Zero perda de dados garantida
+- 👥 **Multi-Usuário** - Vários PCs podem acessar simultaneamente
+- ⚡ **Sincronização Rápida** - Itens enviados a cada 30 segundos quando online
+- 🔄 **Sincronização Manual** - Botão para forçar sincronização imediata
 
 ### Funcionalidades Avançadas
 - 🔮 **Previsão de Demanda** - Forecasting com ML para reordenação automática
@@ -76,6 +90,71 @@ BarManagerPro/
 
 ---
 
+## 🔄 Sistema de Sincronização Online/Offline (v1.1.0)
+
+### Visão Geral
+
+O BarManager Pro agora possui um sistema completo de sincronização que garante:
+
+- ✅ **Funcionamento offline completo** quando não há internet
+- ✅ **Sincronização automática** ao reconectar à internet
+- ✅ **Múltiplos usuários** podem acessar simultaneamente de PCs diferentes
+- ✅ **Zero perda de dados** - todas as operações são enfileiradas
+- ✅ **Indicador visual** de status online/offline em tempo real
+
+### Indicador de Status
+
+**Localização**: Canto superior esquerdo da sidebar, logo abaixo do nome do usuário
+
+| Visual | Status | Descrição |
+|--------|--------|-----------|
+| 🟢 Verde (pulsante) | **Online** | Sistema conectado e sincronizado |
+| 🔴 Vermelho | **Offline** | Sem conexão - modo offline ativo |
+| 🟡 Amarelo (pulsante) | **Sincronizando** | Sincronização em andamento |
+| 🟠 Laranja | **Erro** | Erro na última sincronização |
+
+**Informações Exibidas**:
+- Status textual ("Online", "Offline", "Sincronizando...")
+- Última sincronização realizada ("Agora mesmo", "5m atrás", etc.)
+- Número de itens pendentes para sincronização
+- Botão para forçar sincronização manual (quando online)
+
+### Como Funciona
+
+#### Modo Offline
+1. Sistema detecta perda de conexão automaticamente
+2. Todas as operações continuam funcionando normalmente
+3. Dados são salvos no SQLite local
+4. Operações são adicionadas à **fila de sincronização**
+5. Indicador mostra status "Offline" e número de itens pendentes
+
+#### Reconexão Automática
+1. Sistema detecta restauração da conexão
+2. Sincronização inicia automaticamente
+3. Indicador mostra "Sincronizando..." (amarelo)
+4. Todos os itens da fila são enviados ao backend
+5. Indicador volta para "Online" (verde)
+6. Itens pendentes zerados
+
+#### Multi-Usuário
+- Cada PC mantém seu banco SQLite local
+- Sincronização com backend PostgreSQL central
+- Suporte a múltiplas filiais (branch_id)
+- Resolução de conflitos por timestamp
+
+### Documentação Completa
+
+Para mais detalhes sobre o sistema de sincronização, consulte:
+
+- **[SYNC_SYSTEM.md](docs/SYNC_SYSTEM.md)** - Documentação técnica completa (500+ linhas)
+- **[ONLINE_OFFLINE_SUMMARY.md](ONLINE_OFFLINE_SUMMARY.md)** - Resumo executivo da implementação
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Guia completo de testes
+- **[CHANGELOG.md](CHANGELOG.md)** - Histórico de mudanças
+- **🆕 [PRODUCTION_DEPLOY.md](PRODUCTION_DEPLOY.md)** - Deploy em produção (Railway/Cloud)
+- **🆕 [NETWORK_SETUP.md](NETWORK_SETUP.md)** - Configuração de rede local/remota
+
+---
+
 ## 🚀 Quick Start
 
 ### Pré-requisitos
@@ -121,7 +200,35 @@ cd apps/backend
 pnpm dev
 
 # API estará em http://localhost:3000/api/v1
+# Health check: http://localhost:3000/api/v1/health
 ```
+
+### ☁️ Deploy em Produção (Cloud)
+
+Para hospedar o backend na nuvem e permitir acesso remoto:
+
+```powershell
+# 1. Consultar guia completo
+# Ver: PRODUCTION_DEPLOY.md
+
+# 2. Testar funcionalidades localmente
+./apps/backend/test-production-features.ps1
+
+# 3. Deploy no Railway (recomendado)
+# - Criar projeto no railway.app
+# - Adicionar PostgreSQL
+# - Configurar variáveis de ambiente
+# - Deploy automático via GitHub
+```
+
+**Recursos de Produção:**
+- ✅ Rate limiting (100 req/min)
+- ✅ HTTP request logging
+- ✅ Health checks (/health, /health/ping)
+- ✅ Graceful shutdown
+- ✅ Security headers (Helmet)
+- ✅ CORS configurável
+- ✅ Database connection pooling
 
 ### 4. Iniciar Desktop (Electron)
 

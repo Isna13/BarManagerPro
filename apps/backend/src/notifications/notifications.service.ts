@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateNotificationDto } from './dto/create-notification.dto';
+import { CreateNotificationDto, NotificationType, NotificationPriority } from './dto/create-notification.dto';
 import { NotificationQueryDto } from './dto/notification-query.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
@@ -20,7 +20,7 @@ export class NotificationsService {
         metadata: createNotificationDto.metadata,
       },
       include: {
-        user: { select: { name: true, email: true } },
+        user: { select: { fullName: true, email: true } },
         branch: { select: { name: true, code: true } },
       },
     });
@@ -38,7 +38,7 @@ export class NotificationsService {
 
     if (query.type) where.type = query.type;
     if (query.priority) where.priority = query.priority;
-    if (query.isRead !== undefined) where.isRead = query.isRead;
+    if (query.isRead !== undefined) where.read = query.isRead;
     if (query.startDate || query.endDate) {
       where.createdAt = {};
       if (query.startDate) where.createdAt.gte = new Date(query.startDate);
@@ -48,7 +48,7 @@ export class NotificationsService {
     return this.prisma.notification.findMany({
       where,
       include: {
-        user: { select: { name: true, email: true } },
+        user: { select: { fullName: true, email: true } },
         branch: { select: { name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -59,7 +59,7 @@ export class NotificationsService {
     const notification = await this.prisma.notification.findUnique({
       where: { id },
       include: {
-        user: { select: { name: true, email: true } },
+        user: { select: { fullName: true, email: true } },
         branch: { select: { name: true, code: true } },
       },
     });
@@ -75,7 +75,7 @@ export class NotificationsService {
     const count = await this.prisma.notification.count({
       where: {
         OR: [{ userId }, { userId: null }],
-        isRead: false,
+        read: false,
       },
     });
 
@@ -85,7 +85,7 @@ export class NotificationsService {
   async markAsRead(id: string) {
     return this.prisma.notification.update({
       where: { id },
-      data: { isRead: true, readAt: new Date() },
+      data: { read: true, readAt: new Date() },
     });
   }
 
@@ -93,9 +93,9 @@ export class NotificationsService {
     return this.prisma.notification.updateMany({
       where: {
         OR: [{ userId }, { userId: null }],
-        isRead: false,
+        read: false,
       },
-      data: { isRead: true, readAt: new Date() },
+      data: { read: true, readAt: new Date() },
     });
   }
 
@@ -112,9 +112,9 @@ export class NotificationsService {
   // Automated notifications
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async checkLowStock() {
-    const lowStockItems = await this.prisma.inventory.findMany({
+    const lowStockItems = await this.prisma.inventoryItem.findMany({
       where: {
-        quantity: { lte: this.prisma.inventory.fields.lowStockThreshold },
+        qtyUnits: { lte: 10 },
       },
       include: {
         product: { select: { name: true } },
@@ -125,9 +125,9 @@ export class NotificationsService {
     for (const item of lowStockItems) {
       await this.create({
         title: 'Estoque Baixo',
-        message: `${item.product.name} está com estoque baixo (${item.quantity} unidades)`,
-        type: 'LOW_STOCK',
-        priority: 'HIGH',
+        message: `${item.product.name} está com estoque baixo (${item.qtyUnits} unidades)`,
+        type: NotificationType.LOW_STOCK,
+        priority: NotificationPriority.HIGH,
         branchId: item.branchId,
         metadata: JSON.stringify({ inventoryId: item.id, productId: item.productId }),
       });
@@ -154,12 +154,12 @@ export class NotificationsService {
     }, {} as Record<string, typeof overdueDebts>);
 
     for (const [branchId, debts] of Object.entries(grouped)) {
-      const totalAmount = debts.reduce((sum, d) => sum + (d.amount - d.amountPaid), 0);
+      const totalAmount = debts.reduce((sum, d) => sum + (d.amount - d.paid), 0);
       await this.create({
         title: 'Dívidas Vencidas',
         message: `${debts.length} dívida(s) vencida(s) totalizando ${totalAmount.toFixed(2)} Kz`,
-        type: 'OVERDUE_DEBT',
-        priority: 'URGENT',
+        type: NotificationType.OVERDUE_DEBT,
+        priority: NotificationPriority.URGENT,
         branchId,
         metadata: JSON.stringify({ debtIds: debts.map((d) => d.id) }),
       });
@@ -180,14 +180,14 @@ export class NotificationsService {
 
       const revenue = await this.prisma.sale.aggregate({
         where: { branchId: branch.id, createdAt: { gte: today } },
-        _sum: { totalAmount: true },
+        _sum: { total: true },
       });
 
       await this.create({
         title: 'Resumo Diário',
-        message: `${sales} venda(s) realizadas hoje, total: ${(revenue._sum.totalAmount || 0).toFixed(2)} Kz`,
-        type: 'DAILY_SUMMARY',
-        priority: 'LOW',
+        message: `${sales} venda(s) realizadas hoje, total: ${((revenue._sum.total || 0) / 100).toFixed(2)} FCFA`,
+        type: NotificationType.DAILY_SUMMARY,
+        priority: NotificationPriority.LOW,
         branchId: branch.id,
       });
     }

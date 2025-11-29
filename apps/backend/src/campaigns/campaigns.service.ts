@@ -17,11 +17,9 @@ export class CampaignsService {
         status: 'DRAFT',
         startDate: new Date(createCampaignDto.startDate),
         endDate: new Date(createCampaignDto.endDate),
-        discountPercentage: createCampaignDto.discountPercentage,
-        discountAmount: createCampaignDto.discountAmount,
+        discountPercent: createCampaignDto.discountPercentage,
         branchId: createCampaignDto.branchId,
         targetProducts: createCampaignDto.targetProducts,
-        targetCustomers: createCampaignDto.targetCustomers,
       },
       include: {
         branch: { select: { name: true, code: true } },
@@ -68,7 +66,7 @@ export class CampaignsService {
     const campaign = await this.prisma.campaign.findUnique({
       where: { id },
       include: {
-        branch: { select: { name: true, code: true } },
+        branch: { select: { id: true, name: true } },
       },
     });
 
@@ -88,11 +86,9 @@ export class CampaignsService {
         type: updateCampaignDto.type,
         startDate: new Date(updateCampaignDto.startDate),
         endDate: new Date(updateCampaignDto.endDate),
-        discountPercentage: updateCampaignDto.discountPercentage,
-        discountAmount: updateCampaignDto.discountAmount,
+        discountPercent: updateCampaignDto.discountPercentage,
         branchId: updateCampaignDto.branchId,
         targetProducts: updateCampaignDto.targetProducts,
-        targetCustomers: updateCampaignDto.targetCustomers,
       },
     });
   }
@@ -119,7 +115,7 @@ export class CampaignsService {
     // Get sales during campaign period
     const sales = await this.prisma.sale.findMany({
       where: {
-        branchId: campaign.branchId,
+        branchId: campaign.branch?.id,
         createdAt: {
           gte: campaign.startDate,
           lte: campaign.endDate,
@@ -133,12 +129,12 @@ export class CampaignsService {
 
     // Calculate metrics
     const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
     const avgSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
     const uniqueCustomers = new Set(sales.map((s) => s.customerId).filter(Boolean)).size;
 
     // Calculate discount impact
-    const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
+    const totalDiscount = sales.reduce((sum, sale) => sum + sale.discountTotal, 0);
 
     // Get target products performance if applicable
     let productPerformance = [];
@@ -152,7 +148,7 @@ export class CampaignsService {
         if (!acc[item.productId]) {
           acc[item.productId] = { quantity: 0, revenue: 0 };
         }
-        acc[item.productId].quantity += item.quantity;
+        acc[item.productId].quantity += item.qtyUnits;
         acc[item.productId].revenue += item.subtotal;
         return acc;
       }, {} as Record<string, any>);
@@ -206,18 +202,16 @@ export class CampaignsService {
 
     // Calculate discount
     let discount = 0;
-    if (campaign.discountPercentage) {
-      discount = (sale.totalAmount * campaign.discountPercentage) / 100;
-    } else if (campaign.discountAmount) {
-      discount = campaign.discountAmount;
+    if (campaign.discountPercent) {
+      discount = (sale.total * campaign.discountPercent) / 100;
     }
 
     // Apply discount to sale
     const updatedSale = await this.prisma.sale.update({
       where: { id: saleId },
       data: {
-        discount,
-        totalAmount: sale.totalAmount - discount,
+        discountTotal: discount,
+        total: sale.total - discount,
       },
     });
 

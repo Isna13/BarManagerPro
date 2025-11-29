@@ -34,6 +34,11 @@ export class DebtsController {
     return this.debtsService.getOverdue();
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.debtsService.getSummary();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.debtsService.findOne(id);

@@ -1,0 +1,19 @@
+directories:
+  output: release
+  buildResources: build
+appId: gw.barmanager.pro
+productName: BarManager Pro
+files:
+  - filter:
+      - dist/**/*
+      - dist-electron/**/*
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: build/icon.png
+electronVersion: 28.3.3

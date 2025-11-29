@@ -57,13 +57,13 @@ export class ForecastService {
           sales: [],
         };
       }
-      acc[key].totalQuantity += item.quantity;
+      acc[key].totalQuantity += item.qtyUnits;
       acc[key].sales.push(item);
       return acc;
     }, {} as Record<string, any>);
 
     // Get current inventory
-    const inventoryData = await this.prisma.inventory.findMany({
+    const inventoryData = await this.prisma.inventoryItem.findMany({
       where: {
         branchId,
         ...(productId && { productId }),
@@ -71,7 +71,7 @@ export class ForecastService {
     });
 
     const inventoryMap = inventoryData.reduce((acc, inv) => {
-      acc[inv.productId] = inv.quantity;
+      acc[inv.productId] = inv.qtyUnits;
       return acc;
     }, {} as Record<string, number>);
 
@@ -155,7 +155,7 @@ export class ForecastService {
       if (!trends[key][dayOfWeek]) {
         trends[key][dayOfWeek] = { total: 0, count: 0 };
       }
-      trends[key][dayOfWeek].total += item.quantity;
+      trends[key][dayOfWeek].total += item.qtyUnits;
       trends[key][dayOfWeek].count += 1;
     });
 
@@ -209,17 +209,12 @@ export class ForecastService {
         name: true,
         unitCost: true,
         unitsPerBox: true,
-        purchases: {
-          take: 1,
-          orderBy: { createdAt: 'desc' },
-          include: { supplier: { select: { id: true, name: true, phone: true } } },
-        },
       },
     });
 
     const recommendations = needsReorder.map((forecast) => {
       const product = products.find((p) => p.id === forecast.productId);
-      const lastPurchase = product?.purchases[0];
+      const lastPurchase = null;
 
       return {
         ...forecast,

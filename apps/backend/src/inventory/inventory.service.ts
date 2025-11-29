@@ -129,10 +129,11 @@ export class InventoryService {
     // Criar transferência
     const transfer = await this.prisma.inventoryTransfer.create({
       data: {
-        productId,
-        fromBranchId,
-        toBranchId,
+        product: { connect: { id: productId } },
+        fromBranch: { connect: { id: fromBranchId } },
+        toBranch: { connect: { id: toBranchId } },
         qtyUnits: totalUnits,
+        requestedBy: 'system',
         status: 'completed',
         notes,
       },
