@@ -74,7 +74,7 @@ export class InventoryService {
         data: {
           productId,
           branchId,
-          qtyUnits: transferDto.qtyUnits,
+          qtyUnits: qtyUnits || 0,
           minStock: 0,
         },
       });
@@ -92,7 +92,7 @@ export class InventoryService {
       data: {
         inventoryItemId: inventoryItem.id,
         type: 'purchase',
-        qtyUnits: transferDto.qtyUnits,
+        qtyUnits: qtyUnits || 0,
         reason: reason || `Entrada de estoque: ${qtyBoxes || 0} cx + ${qtyUnits || 0} un`,
       },
     });
@@ -132,7 +132,7 @@ export class InventoryService {
         
         fromBranch: { connect: { id: fromBranchId } },
         toBranch: { connect: { id: toBranchId } },
-        qtyUnits: transferDto.qtyUnits,
+        items: [],
         requestedBy: 'system',
         status: 'completed',
         notes,

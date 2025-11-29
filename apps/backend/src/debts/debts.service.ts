@@ -27,8 +27,10 @@ export class DebtsService {
 
     const debt = await this.prisma.debt.create({
       data: {
-        customerId: createDto.customerId,
-        createdBy: userId,
+        debtNumber: `DEBT-${Date.now()}`,
+        customer: { connect: { id: createDto.customerId } },
+        createdByUser: { connect: { id: userId } },
+        originalAmount: createDto.amount,
         amount: createDto.amount,
         balance: createDto.amount,
         dueDate: createDto.dueDate,

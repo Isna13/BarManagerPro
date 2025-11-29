@@ -17,12 +17,14 @@ export class CustomersService {
       }
     }
 
-    const { name, ...rest } = createDto;
+    const { name, branchId, ...rest } = createDto;
     return this.prisma.customer.create({
       data: {
         ...rest,
+        code: `CUST-${Date.now()}`,
         fullName: name || createDto.fullName,
         currentDebt: 0,
+        ...(branchId && { branch: { connect: { id: branchId } } }),
       },
     });
   }

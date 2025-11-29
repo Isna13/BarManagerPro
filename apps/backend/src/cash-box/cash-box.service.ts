@@ -21,8 +21,9 @@ export class CashBoxService {
 
     return this.prisma.cashBox.create({
       data: {
-        branchId: openDto.branchId,
-        openedBy: userId,
+        boxNumber: `BOX-${Date.now()}`,
+        branch: { connect: { id: openDto.branchId } },
+        openedByUser: { connect: { id: userId } },
         openingCash: openDto.openingAmount,
         status: 'open',
         notes: openDto.notes,

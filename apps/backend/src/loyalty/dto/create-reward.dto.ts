@@ -11,6 +11,10 @@ export class CreateRewardDto {
   @Min(1)
   pointsRequired: number;
 
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
   @IsNumber()
   @Min(0)
   @IsOptional()

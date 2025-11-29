@@ -9,6 +9,10 @@ export class CreateCustomerDto {
 
   @IsOptional()
   @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
   phone?: string;
 
   @IsOptional()

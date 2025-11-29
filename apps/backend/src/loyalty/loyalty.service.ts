@@ -128,11 +128,13 @@ export class LoyaltyService {
   }
 
   async createReward(createRewardDto: CreateRewardDto) {
+    const points = createRewardDto.pointsRequired || createRewardDto.value || 100;
     return this.prisma.loyaltyReward.create({
       data: {
         name: createRewardDto.name,
         description: createRewardDto.description,
-        pointsRequired: createRewardDto.pointsRequired || createRewardDto.value || 100,
+        pointsRequired: points,
+        pointsCost: points,
         branchId: createRewardDto.branchId,
       },
     });

@@ -121,9 +121,10 @@ export class NotificationsService {
     });
 
     for (const item of lowStockItems) {
+      const productData = await this.prisma.product.findUnique({ where: { id: item.productId } });
       await this.create({
         title: 'Estoque Baixo',
-        message: `${product.name} está com estoque baixo (${item.qtyUnits} unidades)`,
+        message: `${productData?.name || 'Produto'} está com estoque baixo (${item.qtyUnits} unidades)`,
         type: NotificationType.LOW_STOCK,
         priority: NotificationPriority.HIGH,
         branchId: item.branchId,

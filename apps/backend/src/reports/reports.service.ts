@@ -190,7 +190,7 @@ export class ReportsService {
     });
 
     const revenue = sales._sum.total || 0;
-    const expenses = purchases._sum.total || 0;
+    const expenses = purchases._sum.totalCost || 0;
     const profit = revenue - expenses;
 
     return {
@@ -278,7 +278,7 @@ export class ReportsService {
     const supplierStats: Record<string, { name: string; count: number; total: number }> = {};
     purchases.forEach(purchase => {
       const supplierId = purchase.supplierId || 'sem-fornecedor';
-      const supplierName = purchase.supplier?.fullName || 'Sem Fornecedor';
+      const supplierName = purchase.supplier?.name || 'Sem Fornecedor';
       
       if (!supplierStats[supplierId]) {
         supplierStats[supplierId] = { name: supplierName, count: 0, total: 0 };
@@ -322,7 +322,7 @@ export class ReportsService {
       },
       suppliers: Object.values(supplierStats).sort((a, b) => b.total - a.total),
       topProducts: Object.values(productStats)
-        .sort((a, b) => b.total - a.total)
+        .sort((a, b) => b.totalCost - a.totalCost)
         .slice(0, 10),
       dailyPurchases: this.groupByDatePurchases(purchases),
     };
@@ -398,7 +398,7 @@ export class ReportsService {
 
     const todaySalesTotal = todaySales._sum.total || 0;
     const todaySubtotal = todaySales._sum.subtotal || 0;
-    const todayCostsTotal = todayCosts._sum.total || 0;
+    const todayCostsTotal = todayCosts._sum.totalCost || 0;
     const todayProfit = todaySalesTotal - todayCostsTotal;
     const todayMargin = todaySalesTotal > 0 ? (todayProfit / todaySalesTotal) * 100 : 0;
 
