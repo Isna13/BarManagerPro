@@ -127,6 +127,16 @@ electron_1.app.on('before-quit', async () => {
 electron_1.ipcMain.handle('auth:login', async (_, credentials) => {
     try {
         const result = await syncManager.login(credentials);
+        // Após login bem-sucedido, iniciar sincronização automática
+        if (result) {
+            console.log('🔄 Iniciando sincronização automática após login...');
+            // Iniciar em background para não bloquear resposta do login
+            setTimeout(() => {
+                syncManager.start().catch(err => {
+                    console.error('Erro ao iniciar sincronização:', err);
+                });
+            }, 1000);
+        }
         return { success: true, data: result };
     }
     catch (error) {
