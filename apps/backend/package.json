@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "tsc -p tsconfig.json --noEmit false",
+    "build": "tsc -p tsconfig.json --noEmit false --skipLibCheck",
     "build:nest": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "node dist/main",
@@ -34,7 +34,7 @@
     "@nestjs/platform-socket.io": "^10.3.0",
     "@nestjs/schedule": "^4.0.0",
     "@nestjs/websockets": "^10.3.0",
-    "@prisma/client": "^5.7.1",
+    "@prisma/client": "^5.22.0",
     "bcrypt": "^5.1.1",
     "bull": "^4.12.0",
     "class-transformer": "^0.5.1",
