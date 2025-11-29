@@ -1,9 +1,9 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: 2025-11-29 - bcryptjs migration complete rebuild
+# Updated: 2025-11-29 - Fix OpenSSL 1.1 for Prisma
 FROM node:20-alpine
 
-# Instalar pnpm (não precisa mais de ferramentas de build com bcryptjs)
-RUN npm install -g pnpm@latest
+# Instalar pnpm e OpenSSL 1.1 (necessário para Prisma no Alpine)
+RUN apk add --no-cache openssl1.1-compat && npm install -g pnpm@latest
 
 WORKDIR /app
 
