@@ -21,7 +21,7 @@ export class NotificationsService {
       },
       include: {
         user: { select: { fullName: true, email: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
     });
 
@@ -49,7 +49,7 @@ export class NotificationsService {
       where,
       include: {
         user: { select: { fullName: true, email: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -60,7 +60,7 @@ export class NotificationsService {
       where: { id },
       include: {
         user: { select: { fullName: true, email: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
     });
 
@@ -117,8 +117,8 @@ export class NotificationsService {
         qtyUnits: { lte: 10 },
       },
       include: {
-        product: { select: { name: true } },
-        branch: { select: { id: true, name: true } },
+        product: { select: { fullName: true } },
+        branch: { select: { id: true, fullName: true } },
       },
     });
 
@@ -142,8 +142,8 @@ export class NotificationsService {
         dueDate: { lt: new Date() },
       },
       include: {
-        customer: { select: { name: true, phone: true } },
-        branch: { select: { id: true, name: true } },
+        customer: { select: { fullName: true, phone: true } },
+        branch: { select: { id: true, fullName: true } },
       },
     });
 

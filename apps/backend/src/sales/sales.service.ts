@@ -80,7 +80,7 @@ export class SalesService {
 
     const saleItem = await this.prisma.saleItem.create({
       data: {
-        saleId,
+        saleId: saleId,
         productId: product.id,
         qtyUnits,
         isMuntu,
@@ -163,18 +163,19 @@ export class SalesService {
         method: paymentDto.method,
         provider: paymentDto.provider,
         amount: paymentDto.amount,
-        reference: paymentDto.referenceNumber,
+        referenceNumber: paymentDto.referenceNumber,
         status: 'completed',
       },
     });
 
     // Se fiado, criar dívida
-    if (paymentDto.method === 'debt') {
+    if (paymentDto.method === 'debt' && sale.customerId) {
       await this.prisma.debt.create({
         data: {
-          customerId: sale.customerId,
-          userId: userId,
-          amount: sale.total,
+          customer: { connect: { id: sale.customerId } },
+          createdByUser: { connect: { id: userId } },
+          originalAmount: sale.total,
+          paidAmount: 0,
           balance: sale.total,
           status: 'pending',
         },

@@ -73,7 +73,7 @@ export class ReportsService {
         lowStockItems: lowStockItems.length,
       },
       items: inventory.map(item => ({
-        product: item.product.name,
+        product: item.product.fullName,
         sku: item.product.sku,
         qtyUnits: item.qtyUnits,
         minStock: item.minStock,
@@ -81,7 +81,7 @@ export class ReportsService {
         isLowStock: item.qtyUnits <= item.minStock,
       })),
       lowStock: lowStockItems.map(item => ({
-        product: item.product.name,
+        product: item.product.fullName,
         sku: item.product.sku,
         qtyUnits: item.qtyUnits,
         minStock: item.minStock,
@@ -115,7 +115,7 @@ export class ReportsService {
         .sort((a, b) => b.currentDebt - a.currentDebt)
         .slice(0, 10)
         .map(c => ({
-          name: c.name,
+          name: c.fullName,
           phone: c.phone,
           currentDebt: c.currentDebt,
           openDebts: c.debts.length,
@@ -154,7 +154,7 @@ export class ReportsService {
         overdue: { count: overdue.length, total: totalOverdue },
       },
       overdueList: overdue.map(d => ({
-        customer: d.customer.name,
+        customer: d.customer.fullName,
         phone: d.customer.phone,
         amount: d.amount,
         balance: d.balance,
@@ -190,7 +190,7 @@ export class ReportsService {
     });
 
     const revenue = sales._sum.total || 0;
-    const expenses = purchases._sum.totalCost || 0;
+    const expenses = purchases._sum.total || 0;
     const profit = revenue - expenses;
 
     return {
@@ -234,7 +234,7 @@ export class ReportsService {
       sale.items.forEach(item => {
         if (!productStats[item.productId]) {
           productStats[item.productId] = {
-            name: item.product.name,
+            name: item.product.fullName,
             sku: item.product.sku,
             qtyUnits: 0,
             revenue: 0,
@@ -272,7 +272,7 @@ export class ReportsService {
       },
     });
 
-    const totalPurchases = purchases.reduce((sum, p) => sum + p.totalCost, 0);
+    const totalPurchases = purchases.reduce((sum, p) => sum + p.total, 0);
 
     // Agrupar por fornecedor
     const supplierStats: Record<string, { name: string; count: number; total: number }> = {};
@@ -284,7 +284,7 @@ export class ReportsService {
         supplierStats[supplierId] = { name: supplierName, count: 0, total: 0 };
       }
       supplierStats[supplierId].count++;
-      supplierStats[supplierId].total += purchase.totalCost;
+      supplierStats[supplierId].total += purchase.total;
     });
 
     // Produtos mais comprados
@@ -300,7 +300,7 @@ export class ReportsService {
       purchase.items.forEach(item => {
         if (!productStats[item.productId]) {
           productStats[item.productId] = {
-            name: item.product.name,
+            name: item.product.fullName,
             sku: item.product.sku,
             qtyUnits: 0,
             totalCost: 0,
@@ -308,7 +308,7 @@ export class ReportsService {
           };
         }
         productStats[item.productId].qtyUnits += item.qtyUnits;
-        productStats[item.productId].totalCost += item.totalCost;
+        productStats[item.productId].totalCost += item.total;
         productStats[item.productId].count++;
       });
     });
@@ -322,7 +322,7 @@ export class ReportsService {
       },
       suppliers: Object.values(supplierStats).sort((a, b) => b.total - a.total),
       topProducts: Object.values(productStats)
-        .sort((a, b) => b.totalCost - a.totalCost)
+        .sort((a, b) => b.total - a.total)
         .slice(0, 10),
       dailyPurchases: this.groupByDatePurchases(purchases),
     };
@@ -355,7 +355,7 @@ export class ReportsService {
         grouped[date] = { count: 0, total: 0 };
       }
       grouped[date].count++;
-      grouped[date].total += purchase.totalCost;
+      grouped[date].total += purchase.total;
     });
 
     return Object.entries(grouped).map(([date, stats]) => ({
@@ -398,7 +398,7 @@ export class ReportsService {
 
     const todaySalesTotal = todaySales._sum.total || 0;
     const todaySubtotal = todaySales._sum.subtotal || 0;
-    const todayCostsTotal = todayCosts._sum.totalCost || 0;
+    const todayCostsTotal = todayCosts._sum.total || 0;
     const todayProfit = todaySalesTotal - todayCostsTotal;
     const todayMargin = todaySalesTotal > 0 ? (todayProfit / todaySalesTotal) * 100 : 0;
 

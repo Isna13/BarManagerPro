@@ -23,8 +23,9 @@ export class UsersService {
       data: {
         email: createUserDto.email,
         password: hashedPassword,
-        role: createUserDto.role,
-        branchId: createUserDto.branchId,
+        fullName: createUserDto.email.split('@')[0], // Fallback name
+        roleName: createUserDto.role,
+        branchId: createUserDto.branchId || null,
         isActive: createUserDto.isActive ?? true,
       },
       select: {
@@ -136,21 +137,24 @@ export class UsersService {
   }
 
   async getBranchUserStats(branchId: string) {
-    const [total, active, byRole] = await Promise.all([
+    const [total, active, users] = await Promise.all([
       this.prisma.user.count({ where: { branchId } }),
       this.prisma.user.count({ where: { branchId, isActive: true } }),
-      this.prisma.user.groupBy({
-        by: ['role'],
-        where: { branchId },
-        _count: { role: true },
-      }),
+      this.prisma.user.findMany({ where: { branchId }, select: { roleName: true } }),
     ]);
+
+    // Manual grouping by roleName
+    const roleCounts = users.reduce((acc, user) => {
+      const role = user.roleName || 'unknown';
+      acc[role] = (acc[role] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
 
     return {
       total,
       active,
       inactive: total - active,
-      byRole: byRole.map((r) => ({ role: r.role, count: r._count.role })),
+      byRole: Object.entries(roleCounts).map(([role, count]) => ({ role, count })),
     };
   }
 }

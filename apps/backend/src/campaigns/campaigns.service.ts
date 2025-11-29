@@ -122,8 +122,7 @@ export class CampaignsService {
         },
       },
       include: {
-        items: true,
-        customer: { select: { id: true, name: true } },
+        customer: { select: { id: true, fullName: true } },
       },
     });
 
@@ -138,7 +137,8 @@ export class CampaignsService {
 
     // Get target products performance if applicable
     let productPerformance = [];
-    if (campaign.targetProducts) {
+    // TODO: Re-implement with proper SaleItem relations
+    /* if (campaign.targetProducts) {
       const targetIds = JSON.parse(campaign.targetProducts);
       const productSales = sales.flatMap((s) =>
         s.items.filter((item) => targetIds.includes(item.productId)),
@@ -157,7 +157,7 @@ export class CampaignsService {
         productId,
         ...data,
       }));
-    }
+    } */
 
     return {
       campaign: {
@@ -203,7 +203,7 @@ export class CampaignsService {
     // Calculate discount
     let discount = 0;
     if (campaign.discountPercent) {
-      discount = (sale.total * campaign.discountPercent) / 100;
+      discount = (sale.total * Number(campaign.discountPercent)) / 100;
     }
 
     // Apply discount to sale

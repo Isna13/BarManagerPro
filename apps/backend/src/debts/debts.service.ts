@@ -28,7 +28,7 @@ export class DebtsService {
     const debt = await this.prisma.debt.create({
       data: {
         customerId: createDto.customerId,
-        userId,
+        createdBy: userId,
         amount: createDto.amount,
         balance: createDto.amount,
         dueDate: createDto.dueDate,
@@ -38,7 +38,7 @@ export class DebtsService {
       },
       include: {
         customer: true,
-        user: true,
+        createdByUser: true,
       },
     });
 
@@ -77,7 +77,7 @@ export class DebtsService {
         debtId: id,
         method: payDto.method,
         amount: payDto.amount,
-        reference: payDto.reference,
+        referenceNumber: payDto.reference,
         notes: payDto.notes,
         status: 'completed',
       },
@@ -113,7 +113,7 @@ export class DebtsService {
       where: status ? { status } : undefined,
       include: {
         customer: true,
-        user: true,
+        createdByUser: true,
         payments: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -125,7 +125,7 @@ export class DebtsService {
       where: { customerId },
       include: {
         payments: true,
-        user: true,
+        createdByUser: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -141,7 +141,7 @@ export class DebtsService {
       },
       include: {
         customer: true,
-        user: true,
+        createdByUser: true,
       },
       orderBy: { dueDate: 'asc' },
     });
@@ -152,7 +152,7 @@ export class DebtsService {
       where: { id },
       include: {
         customer: true,
-        user: true,
+        createdByUser: true,
         payments: {
           orderBy: { createdAt: 'desc' },
         },

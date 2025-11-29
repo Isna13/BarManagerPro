@@ -75,7 +75,7 @@ export class InventoryService {
           productId,
           branchId,
           qtyUnits: totalUnits,
-          minStock: product.minStock || 0,
+          minStock: 0,
         },
       });
     } else {
@@ -129,7 +129,7 @@ export class InventoryService {
     // Criar transferência
     const transfer = await this.prisma.inventoryTransfer.create({
       data: {
-        product: { connect: { id: productId } },
+        
         fromBranch: { connect: { id: fromBranchId } },
         toBranch: { connect: { id: toBranchId } },
         qtyUnits: totalUnits,
@@ -167,7 +167,7 @@ export class InventoryService {
           productId,
           branchId: toBranchId,
           qtyUnits: totalUnits,
-          minStock: product.minStock || 0,
+          minStock: 0,
         },
       });
     } else {

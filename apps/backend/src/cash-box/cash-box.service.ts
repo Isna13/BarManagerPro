@@ -22,13 +22,13 @@ export class CashBoxService {
     return this.prisma.cashBox.create({
       data: {
         branchId: openDto.branchId,
-        userId,
-        openingAmount: openDto.openingAmount,
+        openedBy: userId,
+        openingCash: openDto.openingCash,
         status: 'open',
         notes: openDto.notes,
       },
       include: {
-        user: true,
+        openedByUser: true,
         branch: true,
       },
     });
@@ -72,13 +72,13 @@ export class CashBoxService {
       return sum + cashAmount;
     }, 0);
 
-    const expectedAmount = cashBox.openingAmount + cashPayments;
+    const expectedAmount = cashBox.openingCash + cashPayments;
     const difference = closeDto.closingAmount - expectedAmount;
 
     return this.prisma.cashBox.update({
       where: { id },
       data: {
-        closingAmount: closeDto.closingAmount,
+        closingCash: closeDto.closingAmount,
         expectedAmount,
         difference,
         status: 'closed',
@@ -86,7 +86,7 @@ export class CashBoxService {
         closingNotes: closeDto.notes,
       },
       include: {
-        user: true,
+        openedByUser: true,
         branch: true,
       },
     });
@@ -113,7 +113,7 @@ export class CashBoxService {
     await this.prisma.cashBox.update({
       where: { id },
       data: {
-        openingAmount: { increment: amountChange },
+        openingCash: { increment: amountChange },
       },
     });
 
@@ -132,7 +132,7 @@ export class CashBoxService {
         status: 'open',
       },
       include: {
-        user: true,
+        openedByUser: true,
         branch: true,
       },
     });
@@ -165,7 +165,7 @@ export class CashBoxService {
       stats: {
         totalSales,
         cashPayments,
-        currentAmount: cashBox.openingAmount + cashPayments,
+        currentAmount: cashBox.openingCash + cashPayments,
         salesCount: sales.length,
       },
     };
@@ -175,7 +175,7 @@ export class CashBoxService {
     return this.prisma.cashBox.findMany({
       where: { branchId },
       include: {
-        user: true,
+        openedByUser: true,
       },
       orderBy: { openedAt: 'desc' },
       take: limit,
@@ -186,7 +186,7 @@ export class CashBoxService {
     const cashBox = await this.prisma.cashBox.findUnique({
       where: { id },
       include: {
-        user: true,
+        openedByUser: true,
         branch: true,
       },
     });

@@ -17,9 +17,9 @@ export class FeedbackService {
         branchId: createFeedbackDto.branchId,
       },
       include: {
-        customer: { select: { name: true, phone: true } },
+        customer: { select: { fullName: true, phone: true } },
         sale: { select: { id: true, total: true, createdAt: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
     });
   }
@@ -37,9 +37,9 @@ export class FeedbackService {
     return this.prisma.feedback.findMany({
       where,
       include: {
-        customer: { select: { fullName: true, phone: true } },
+        customer: { select: { fullfullName: true, phone: true } },
         sale: { select: { id: true, total: true, createdAt: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -49,9 +49,9 @@ export class FeedbackService {
     const feedback = await this.prisma.feedback.findUnique({
       where: { id },
       include: {
-        customer: { select: { fullName: true, phone: true } },
+        customer: { select: { fullfullName: true, phone: true } },
         sale: { select: { id: true, total: true, createdAt: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
     });
 
@@ -71,7 +71,7 @@ export class FeedbackService {
       where: { customerId },
       include: {
         sale: { select: { id: true, total: true, createdAt: true } },
-        branch: { select: { name: true, code: true } },
+        branch: { select: { fullName: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -122,7 +122,7 @@ export class FeedbackService {
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
-        customer: { select: { fullName: true } },
+        customer: { select: { fullfullName: true } },
       },
     });
 

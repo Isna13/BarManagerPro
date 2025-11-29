@@ -11,8 +11,8 @@ export class PurchasesService {
     return this.prisma.purchase.create({
       data: {
         purchaseNumber,
-        branch: { connect: { id: createDto.branchId } },
-        supplier: { connect: { id: createDto.supplierId } },
+        branchId: createDto.branchId,
+        supplierId: createDto.supplierId,
         createdBy: userId,
         status: 'pending',
         total: 0,
@@ -157,7 +157,7 @@ export class PurchasesService {
       where: { purchaseId },
     });
 
-    const total = items.reduce((sum, item) => sum + item.totalCost, 0);
+    const total = items.reduce((sum, item) => sum + item.total, 0);
 
     await this.prisma.purchase.update({
       where: { id: purchaseId },
@@ -180,7 +180,7 @@ export class PurchasesService {
           productId,
           branchId,
           qtyUnits,
-          minStock: product.minStock || 0,
+          minStock: 0,
         },
       });
     } else {

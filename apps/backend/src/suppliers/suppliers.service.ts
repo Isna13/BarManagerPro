@@ -7,8 +7,12 @@ export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateSupplierDto) {
+    const { branchId, ...data } = createDto;
     return this.prisma.supplier.create({
-      data: createDto,
+      data: {
+        ...data,
+        ...(branchId && { branch: { connect: { id: branchId } } }),
+      },
       include: {
         branch: true,
       },

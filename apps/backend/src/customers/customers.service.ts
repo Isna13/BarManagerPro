@@ -21,7 +21,6 @@ export class CustomersService {
       data: {
         ...createDto,
         currentDebt: 0,
-        totalPurchases: 0,
       },
     });
   }
@@ -32,13 +31,13 @@ export class CustomersService {
         ...(branchId && { branchId }),
         ...(search && {
           OR: [
-            { name: { contains: search } },
+            { fullName: { contains: search } },
             { phone: { contains: search } },
             { email: { contains: search } },
           ],
         }),
       },
-      orderBy: { name: 'asc' },
+      orderBy: { fullName: 'asc' },
     });
   }
 

@@ -108,7 +108,7 @@ export class AuthService {
         name: registerDto.fullName, // Preencher name também
         fullName: registerDto.fullName,
         phone: registerDto.phone,
-        role: registerDto.role || 'cashier',
+        roleName: registerDto.role || 'cashier',
         branchId: registerDto.branchId,
         language: registerDto.language || 'pt',
       },

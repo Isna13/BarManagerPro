@@ -207,7 +207,7 @@ export class ForecastService {
       select: {
         id: true,
         name: true,
-        unitCost: true,
+        costUnit: true,
         unitsPerBox: true,
       },
     });
@@ -218,12 +218,12 @@ export class ForecastService {
 
       return {
         ...forecast,
-        unitCost: product?.unitCost || 0,
+        costUnit: product?.costUnit || 0,
         unitsPerBox: product?.unitsPerBox || 1,
         boxesToOrder: Math.ceil(forecast.recommendedReorder / (product?.unitsPerBox || 1)),
         estimatedCost:
           Math.ceil(forecast.recommendedReorder / (product?.unitsPerBox || 1)) *
-          (product?.unitCost || 0) *
+          (product?.costUnit || 0) *
           (product?.unitsPerBox || 1),
         lastSupplier: lastPurchase?.supplier,
         priority: forecast.daysUntilStockout <= 3 ? 'urgent' : forecast.daysUntilStockout <= 7 ? 'high' : 'medium',

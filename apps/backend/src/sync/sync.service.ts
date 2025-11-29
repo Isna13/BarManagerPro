@@ -19,11 +19,10 @@ export class SyncService {
     return this.prisma.syncQueue.create({
       data: {
         entity: createSyncItemDto.entity,
-        entityType: createSyncItemDto.entity,
         operation: createSyncItemDto.operation,
         entityId: createSyncItemDto.entityId,
         data: createSyncItemDto.data,
-        branch: { connect: { id: createSyncItemDto.branchId } },
+        branchId: createSyncItemDto.branchId,
         deviceId: createSyncItemDto.deviceId,
         status: 'pending',
       },
@@ -89,9 +88,6 @@ export class SyncService {
 
     return this.prisma.syncConflict.findMany({
       where,
-      include: {
-        branch: { select: { name: true, code: true } },
-      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -109,15 +105,15 @@ export class SyncService {
 
     switch (action) {
       case 'keep_local':
-        resolvedData = conflict.localData;
+        resolvedData = JSON.stringify(conflict.localData);
         break;
       case 'keep_remote':
-        resolvedData = conflict.remoteData;
+        resolvedData = JSON.stringify(conflict.remoteData);
         break;
       case 'merge':
         // Simple merge strategy: merge non-conflicting fields
-        const local = JSON.parse(conflict.localData);
-        const remote = JSON.parse(conflict.remoteData);
+        const local = typeof conflict.localData === 'string' ? JSON.parse(conflict.localData) : conflict.localData;
+        const remote = typeof conflict.remoteData === 'string' ? JSON.parse(conflict.remoteData) : conflict.remoteData;
         const merged = { ...local, ...remote };
         resolvedData = JSON.stringify(merged);
         break;
@@ -155,15 +151,15 @@ export class SyncService {
       }),
       this.prisma.syncQueue.findFirst({
         where: { branchId, status: 'synced' },
-        orderBy: { syncedAt: 'desc' },
-        select: { syncedAt: true },
+        orderBy: { processedAt: 'desc' },
+        select: { processedAt: true },
       }),
     ]);
 
     return {
       pendingItems: pending,
       conflicts,
-      lastSyncAt: lastSync?.syncedAt,
+      lastSyncAt: lastSync?.processedAt,
       status: conflicts > 0 ? 'conflicts' : pending > 0 ? 'pending' : 'synced',
     };
   }
@@ -271,11 +267,11 @@ export class SyncService {
     return this.prisma.syncConflict.create({
       data: {
         entity: item.entity,
-        entityType: item.entity,
         entityId: item.entityId,
         localData: JSON.stringify(conflict),
         remoteData: item.data,
-        branch: item.branchId ? { connect: { id: item.branchId } } : undefined,
+        branchId: item.branchId,
+        deviceId: item.deviceId || 'unknown',
       },
     });
   }

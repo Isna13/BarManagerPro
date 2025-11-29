@@ -82,7 +82,7 @@ export class ProductsService {
       include: {
         category: true,
         priceHistory: {
-          orderBy: { changedAt: 'desc' },
+          orderBy: { createdAt: 'desc' },
           take: 10,
         },
       },
@@ -152,7 +152,7 @@ export class ProductsService {
   async getPriceHistory(id: string) {
     return this.prisma.productPriceHistory.findMany({
       where: { productId: id },
-      orderBy: { changedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

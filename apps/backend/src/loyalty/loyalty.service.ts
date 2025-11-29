@@ -24,7 +24,7 @@ export class LoyaltyService {
         customerId: addPointsDto.customerId,
         points: addPointsDto.points,
         type: 'earn',
-        reason: addPointsDto.reason,
+        notes: addPointsDto.reason,
         saleId: addPointsDto.saleId,
       },
     });
@@ -63,7 +63,7 @@ export class LoyaltyService {
         customerId: redeemPointsDto.customerId,
         points: -redeemPointsDto.points,
         type: 'redeem',
-        reason: `Redeemed: ${redeemPointsDto.reward}`,
+        notes: `Redeemed: ${redeemPointsDto.reward}`,
       },
     });
 
@@ -87,7 +87,7 @@ export class LoyaltyService {
       where: { id: customerId },
       select: {
         id: true,
-        name: true,
+        fullName: true,
         phone: true,
         loyaltyPoints: true,
       },
@@ -122,7 +122,7 @@ export class LoyaltyService {
     return this.prisma.loyaltyTransaction.findMany({
       where: { customerId },
       include: {
-        sale: { select: { id: true, total: true, createdAt: true } },
+        // sale: { select: { id: true, total: true, createdAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -134,7 +134,7 @@ export class LoyaltyService {
         name: createRewardDto.name,
         description: createRewardDto.description,
         pointsRequired: createRewardDto.pointsRequired,
-        value: createRewardDto.value,
+        pointsRequired: createRewardDto.value,
         stock: createRewardDto.stock,
       },
     });
@@ -172,7 +172,7 @@ export class LoyaltyService {
         name: updateRewardDto.name,
         description: updateRewardDto.description,
         pointsRequired: updateRewardDto.pointsRequired,
-        value: updateRewardDto.value,
+        pointsRequired: updateRewardDto.value,
         stock: updateRewardDto.stock,
       },
     });
@@ -191,7 +191,7 @@ export class LoyaltyService {
       take: limit,
       select: {
         id: true,
-        name: true,
+        fullName: true,
         phone: true,
         loyaltyPoints: true,
         _count: {
