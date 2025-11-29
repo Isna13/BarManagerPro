@@ -17,14 +17,15 @@ COPY apps/backend/package.json ./apps/backend/
 # Copiar schema do Prisma ANTES de instalar dependências
 COPY apps/backend/prisma ./apps/backend/prisma
 
-# Instalar dependências (agora o prisma generate vai funcionar)
+# Instalar dependências
 RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
 
 # Copiar resto do código do backend
 COPY apps/backend ./apps/backend
 
-# Gerar Prisma Client
+# Gerar Prisma Client (FORÇAR regeneração para Linux Debian, não Alpine)
 WORKDIR /app/apps/backend
+RUN rm -rf node_modules/.prisma node_modules/@prisma/client
 RUN pnpm prisma:generate
 
 # Build usando script Docker que usa tsconfig.build.json standalone
