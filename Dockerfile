@@ -25,7 +25,7 @@ WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
 # Build usando tsconfig.build.json standalone (sem extends)
-RUN tsc -p tsconfig.build.json --skipLibCheck
+RUN npx tsc -p tsconfig.build.json --skipLibCheck
 
 # Expor porta
 EXPOSE 3000
