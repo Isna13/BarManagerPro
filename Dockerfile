@@ -24,8 +24,8 @@ COPY apps/backend ./apps/backend
 WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
-# Build com Nest CLI (não usar tsc diretamente)
-RUN pnpm run build:nest
+# Build usando tsconfig.build.json standalone (sem extends)
+RUN tsc -p tsconfig.build.json --skipLibCheck
 
 # Expor porta
 EXPOSE 3000
