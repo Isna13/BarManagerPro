@@ -1,48 +1,47 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: 2025-11-29 - Forçar rebuild completo sem cache Alpine
+# Versão SIMPLIFICADA - Debian com instalação limpa
 FROM node:20-slim
 
-# FORÇAR INVALIDAÇÃO DE CACHE - Mudar este número força rebuild completo
-ENV CACHE_BUST=2025-11-29-v2
+# Cache bust para forçar rebuild completo
+ENV CACHE_BUST=2025-11-29-v3
 
-# Instalar OpenSSL e outras dependências necessárias para Prisma
+# Instalar dependências do sistema necessárias
 RUN apt-get update -y && \
-    apt-get install -y openssl libssl-dev ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g pnpm@latest
+    apt-get install -y openssl libssl-dev ca-certificates procps && \
+    rm -rf /var/lib/apt/lists/*
+
+# Instalar pnpm globalmente
+RUN npm install -g pnpm@latest
 
 WORKDIR /app
 
-# Copiar arquivos do workspace root (SEM lockfile para forçar reinstalação)
+# Copiar APENAS os arquivos de configuração (SEM lockfile)
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
-
-# Copiar schema do Prisma
 COPY apps/backend/prisma ./apps/backend/prisma
 
-# FORÇAR Prisma a usar engine Debian através de variável de ambiente
+# Definir plataforma alvo do Prisma ANTES da instalação
 ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
-ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 
-# Limpar COMPLETAMENTE qualquer cache anterior do pnpm
-RUN pnpm store prune || true
+# Instalar dependências (pnpm vai baixar a engine correta)
+RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend
 
-# Instalar dependências SEM lockfile (forçará download da engine Debian)
-RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
+# Copiar código fonte
+COPY apps/backend/src ./apps/backend/src
+COPY apps/backend/tsconfig*.json ./apps/backend/
+COPY apps/backend/nest-cli.json ./apps/backend/
 
-# Copiar código fonte do backend
-COPY apps/backend ./apps/backend
-
-# Gerar Prisma Client FORÇANDO engine Debian (limpar cache primeiro)
+# Mudar para o diretório do backend
 WORKDIR /app/apps/backend
-RUN rm -rf node_modules/.prisma node_modules/@prisma || true
-RUN npx prisma generate --force
 
-# Build da aplicação
+# Gerar Prisma Client (vai usar a engine que acabou de ser instalada)
+RUN npx prisma generate
+
+# Compilar TypeScript
 RUN pnpm run build:docker
 
 # Expor porta
 EXPOSE 3000
 
-# Comando de inicialização (migrate deploy é mais seguro que db push em produção)
+# Comando de inicialização com migração
 CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push --accept-data-loss && node dist/main.js"]
