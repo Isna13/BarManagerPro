@@ -1,5 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: 2025-11-29 - Force rebuild with npx tsc fix
+# Updated: 2025-11-29 - Fix bcrypt rebuild command
 FROM node:20-alpine
 
 # Instalar dependências de build para módulos nativos (bcrypt, etc)
