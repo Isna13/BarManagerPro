@@ -73,7 +73,7 @@ export class ReportsService {
         lowStockItems: lowStockItems.length,
       },
       items: inventory.map(item => ({
-        product: item.product.fullName,
+        product: item.product.name,
         sku: item.product.sku,
         qtyUnits: item.qtyUnits,
         minStock: item.minStock,
@@ -81,7 +81,7 @@ export class ReportsService {
         isLowStock: item.qtyUnits <= item.minStock,
       })),
       lowStock: lowStockItems.map(item => ({
-        product: item.product.fullName,
+        product: item.product.name,
         sku: item.product.sku,
         qtyUnits: item.qtyUnits,
         minStock: item.minStock,
@@ -234,7 +234,7 @@ export class ReportsService {
       sale.items.forEach(item => {
         if (!productStats[item.productId]) {
           productStats[item.productId] = {
-            name: item.product.fullName,
+            name: item.product.name,
             sku: item.product.sku,
             qtyUnits: 0,
             revenue: 0,
@@ -278,7 +278,7 @@ export class ReportsService {
     const supplierStats: Record<string, { name: string; count: number; total: number }> = {};
     purchases.forEach(purchase => {
       const supplierId = purchase.supplierId || 'sem-fornecedor';
-      const supplierName = purchase.supplier?.name || 'Sem Fornecedor';
+      const supplierName = purchase.supplier?.fullName || 'Sem Fornecedor';
       
       if (!supplierStats[supplierId]) {
         supplierStats[supplierId] = { name: supplierName, count: 0, total: 0 };
@@ -300,7 +300,7 @@ export class ReportsService {
       purchase.items.forEach(item => {
         if (!productStats[item.productId]) {
           productStats[item.productId] = {
-            name: item.product.fullName,
+            name: item.product.name,
             sku: item.product.sku,
             qtyUnits: 0,
             totalCost: 0,
@@ -475,3 +475,4 @@ export class ReportsService {
     };
   }
 }
+

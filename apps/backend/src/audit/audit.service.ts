@@ -13,7 +13,6 @@ export class AuditService {
         action: createAuditDto.action,
         entity: createAuditDto.entity,
         resource: createAuditDto.entity,
-        entityId: createAuditDto.entityId,
         details: createAuditDto.details,
         ipAddress: createAuditDto.ipAddress,
       },

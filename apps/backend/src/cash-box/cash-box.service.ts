@@ -79,11 +79,10 @@ export class CashBoxService {
       where: { id },
       data: {
         closingCash: closeDto.closingAmount,
-        expectedAmount,
         difference,
         status: 'closed',
         closedAt: new Date(),
-        closingNotes: closeDto.notes,
+        notes: closeDto.notes,
       },
       include: {
         openedByUser: true,
@@ -198,3 +197,6 @@ export class CashBoxService {
     return cashBox;
   }
 }
+
+
+

@@ -25,8 +25,7 @@ export class LoyaltyService {
         points: addPointsDto.points,
         type: 'earn',
         notes: addPointsDto.reason,
-        saleId: addPointsDto.saleId,
-      },
+        },
     });
 
     // Update customer total points
@@ -133,9 +132,7 @@ export class LoyaltyService {
       data: {
         name: createRewardDto.name,
         description: createRewardDto.description,
-        pointsRequired: createRewardDto.pointsRequired,
-        pointsRequired: createRewardDto.value,
-        stock: createRewardDto.stock,
+        pointsRequired: createRewardDto.pointsRequired || createRewardDto.value || 100,
       },
     });
   }
@@ -171,9 +168,7 @@ export class LoyaltyService {
       data: {
         name: updateRewardDto.name,
         description: updateRewardDto.description,
-        pointsRequired: updateRewardDto.pointsRequired,
-        pointsRequired: updateRewardDto.value,
-        stock: updateRewardDto.stock,
+        pointsRequired: updateRewardDto.pointsRequired || updateRewardDto.value,
       },
     });
   }
@@ -241,3 +236,5 @@ export class LoyaltyService {
     };
   }
 }
+
+

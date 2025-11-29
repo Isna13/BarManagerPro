@@ -105,7 +105,6 @@ export class AuthService {
       data: {
         email: registerDto.email,
         password: hashedPassword,
-        name: registerDto.fullName, // Preencher name também
         fullName: registerDto.fullName,
         phone: registerDto.phone,
         roleName: registerDto.role || 'cashier',
@@ -145,3 +144,4 @@ export class AuthService {
     return session.user;
   }
 }
+

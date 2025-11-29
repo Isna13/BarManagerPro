@@ -8,10 +8,12 @@ export class SuppliersService {
 
   async create(createDto: CreateSupplierDto) {
     const { branchId, ...data } = createDto;
+    const code = `SUP-${Date.now()}`;
     return this.prisma.supplier.create({
       data: {
+        code,
         ...data,
-        ...(branchId && { branch: { connect: { id: branchId } } }),
+        ...(branchId && { branchId }),
       },
       include: {
         branch: true,
@@ -77,3 +79,4 @@ export class SuppliersService {
     });
   }
 }
+

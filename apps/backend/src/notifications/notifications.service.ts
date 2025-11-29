@@ -21,7 +21,7 @@ export class NotificationsService {
       },
       include: {
         user: { select: { fullName: true, email: true } },
-        branch: { select: { fullName: true, code: true } },
+        branch: { select: { name: true, code: true } },
       },
     });
 
@@ -49,7 +49,7 @@ export class NotificationsService {
       where,
       include: {
         user: { select: { fullName: true, email: true } },
-        branch: { select: { fullName: true, code: true } },
+        branch: { select: { name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -60,7 +60,7 @@ export class NotificationsService {
       where: { id },
       include: {
         user: { select: { fullName: true, email: true } },
-        branch: { select: { fullName: true, code: true } },
+        branch: { select: { name: true, code: true } },
       },
     });
 
@@ -117,15 +117,13 @@ export class NotificationsService {
         qtyUnits: { lte: 10 },
       },
       include: {
-        product: { select: { fullName: true } },
-        branch: { select: { id: true, fullName: true } },
-      },
+        },
     });
 
     for (const item of lowStockItems) {
       await this.create({
         title: 'Estoque Baixo',
-        message: `${item.product.name} está com estoque baixo (${item.qtyUnits} unidades)`,
+        message: `${product.name} está com estoque baixo (${item.qtyUnits} unidades)`,
         type: NotificationType.LOW_STOCK,
         priority: NotificationPriority.HIGH,
         branchId: item.branchId,
@@ -143,7 +141,6 @@ export class NotificationsService {
       },
       include: {
         customer: { select: { fullName: true, phone: true } },
-        branch: { select: { id: true, fullName: true } },
       },
     });
 
@@ -193,3 +190,5 @@ export class NotificationsService {
     }
   }
 }
+
+

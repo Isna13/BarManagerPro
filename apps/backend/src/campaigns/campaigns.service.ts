@@ -19,8 +19,7 @@ export class CampaignsService {
         endDate: new Date(createCampaignDto.endDate),
         discountPercent: createCampaignDto.discountPercentage,
         branchId: createCampaignDto.branchId,
-        targetProducts: createCampaignDto.targetProducts,
-      },
+        },
       include: {
         branch: { select: { name: true, code: true } },
       },
@@ -88,8 +87,7 @@ export class CampaignsService {
         endDate: new Date(updateCampaignDto.endDate),
         discountPercent: updateCampaignDto.discountPercentage,
         branchId: updateCampaignDto.branchId,
-        targetProducts: updateCampaignDto.targetProducts,
-      },
+        },
     });
   }
 
