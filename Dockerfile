@@ -20,12 +20,14 @@ RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
 # Copiar resto do código do backend
 COPY apps/backend ./apps/backend
 
-# Gerar Prisma Client e rebuild bcrypt DEPOIS de copiar todo o código
+# Gerar Prisma Client
 WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
-# Forçar reinstalação do bcrypt para Alpine Linux
-RUN pnpm remove bcrypt && pnpm add bcrypt@5.1.1
+# Instalar node-gyp globalmente e recompilar bcrypt do zero
+RUN npm install -g node-gyp && \
+    cd /app/node_modules/.pnpm/bcrypt@5.1.1/node_modules/bcrypt && \
+    node-gyp rebuild
 
 # Build usando script Docker que usa tsconfig.build.json standalone
 RUN pnpm run build:docker
