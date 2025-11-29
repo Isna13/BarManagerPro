@@ -1,9 +1,12 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: 2025-11-29 - Fix OpenSSL 1.1 for Prisma
-FROM node:20-alpine
+# Updated: 2025-11-29 - Usar Debian Slim para melhor compatibilidade com Prisma
+FROM node:20-slim
 
-# Instalar pnpm e OpenSSL 1.1 (necessário para Prisma no Alpine)
-RUN apk add --no-cache openssl1.1-compat && npm install -g pnpm@latest
+# Instalar OpenSSL e outras dependências necessárias para Prisma
+RUN apt-get update -y && \
+    apt-get install -y openssl libssl-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g pnpm@latest
 
 WORKDIR /app
 
