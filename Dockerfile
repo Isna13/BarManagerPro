@@ -1,12 +1,9 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: 2025-11-29 - Fix bcrypt rebuild command
+# Updated: 2025-11-29 - Force complete rebuild v2
 FROM node:20-alpine
 
 # Instalar dependências de build para módulos nativos (bcrypt, etc)
-RUN apk add --no-cache python3 make g++
-
-# Instalar pnpm
-RUN npm install -g pnpm
+RUN apk add --no-cache python3 make g++ && npm install -g pnpm@latest
 
 WORKDIR /app
 
