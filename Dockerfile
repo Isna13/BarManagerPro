@@ -1,9 +1,9 @@
 # Dockerfile para Railway - BarManager Backend
-# Versão SIMPLIFICADA - Debian com instalação limpa
+# VERSÃO FINAL - Forçar limpeza total do store pnpm
 FROM node:20-slim
 
-# Cache bust para forçar rebuild completo
-ENV CACHE_BUST=2025-11-29-v3
+# Cache bust V4 - FORÇA rebuild SEM qualquer cache
+ENV CACHE_BUST=2025-11-29-v4
 
 # Instalar dependências do sistema necessárias
 RUN apt-get update -y && \
@@ -23,8 +23,11 @@ COPY apps/backend/prisma ./apps/backend/prisma
 # Definir plataforma alvo do Prisma ANTES da instalação
 ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
 
-# Instalar dependências (pnpm vai baixar a engine correta)
-RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend
+# LIMPAR store do pnpm para evitar cache Alpine
+RUN rm -rf ~/.local/share/pnpm/store /root/.local/share/pnpm/store || true
+
+# Instalar dependências FORÇANDO reinstalação completa
+RUN pnpm install --no-frozen-lockfile --force --filter=@barmanager/backend
 
 # Copiar código fonte
 COPY apps/backend/src ./apps/backend/src
@@ -34,8 +37,11 @@ COPY apps/backend/nest-cli.json ./apps/backend/
 # Mudar para o diretório do backend
 WORKDIR /app/apps/backend
 
-# Gerar Prisma Client (vai usar a engine que acabou de ser instalada)
-RUN npx prisma generate
+# DELETAR qualquer engine Prisma antiga que possa existir
+RUN rm -rf node_modules/.prisma node_modules/@prisma/engines || true
+
+# Gerar Prisma Client LIMPO (forçar download do engine Debian)
+RUN npx prisma generate --force
 
 # Compilar TypeScript
 RUN pnpm run build:docker
@@ -43,5 +49,5 @@ RUN pnpm run build:docker
 # Expor porta
 EXPOSE 3000
 
-# Comando de inicialização com migração
-CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push --accept-data-loss && node dist/main.js"]
+# REGENERAR Prisma Client em RUNTIME para garantir engine Debian
+CMD ["sh", "-c", "rm -rf node_modules/.prisma && npx prisma generate && (npx prisma migrate deploy || npx prisma db push --accept-data-loss) && node dist/main.js"]
