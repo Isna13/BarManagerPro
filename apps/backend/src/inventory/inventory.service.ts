@@ -74,7 +74,7 @@ export class InventoryService {
         data: {
           productId,
           branchId,
-          qtyUnits: dto.qtyUnits,
+          qtyUnits: transferDto.qtyUnits,
           minStock: 0,
         },
       });
@@ -92,7 +92,7 @@ export class InventoryService {
       data: {
         inventoryItemId: inventoryItem.id,
         type: 'purchase',
-        qtyUnits: dto.qtyUnits,
+        qtyUnits: transferDto.qtyUnits,
         reason: reason || `Entrada de estoque: ${qtyBoxes || 0} cx + ${qtyUnits || 0} un`,
       },
     });
@@ -132,7 +132,7 @@ export class InventoryService {
         
         fromBranch: { connect: { id: fromBranchId } },
         toBranch: { connect: { id: toBranchId } },
-        qtyUnits: dto.qtyUnits,
+        qtyUnits: transferDto.qtyUnits,
         requestedBy: 'system',
         status: 'completed',
         notes,
@@ -166,7 +166,7 @@ export class InventoryService {
         data: {
           productId,
           branchId: toBranchId,
-          qtyUnits: dto.qtyUnits,
+          qtyUnits: transferDto.qtyUnits,
           minStock: 0,
         },
       });
@@ -181,7 +181,7 @@ export class InventoryService {
       data: {
         inventoryItemId: toItem.id,
         type: 'transfer_in',
-        qtyUnits: dto.qtyUnits,
+        qtyUnits: transferDto.qtyUnits,
         reason: `Transferência de outra filial`,
         referenceType: 'transfer',
         referenceId: transfer.id,
@@ -245,5 +245,6 @@ export class InventoryService {
     return items.filter(item => item.qtyUnits <= item.minStock);
   }
 }
+
 
 

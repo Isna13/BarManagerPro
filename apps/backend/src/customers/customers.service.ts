@@ -17,9 +17,11 @@ export class CustomersService {
       }
     }
 
+    const { name, ...rest } = createDto;
     return this.prisma.customer.create({
       data: {
-        ...createDto,
+        ...rest,
+        fullName: name || createDto.fullName,
         currentDebt: 0,
       },
     });

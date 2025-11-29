@@ -23,7 +23,7 @@ export class CashBoxService {
       data: {
         branchId: openDto.branchId,
         openedBy: userId,
-        openingCash: openDto.openingCash,
+        openingCash: openDto.openingAmount,
         status: 'open',
         notes: openDto.notes,
       },

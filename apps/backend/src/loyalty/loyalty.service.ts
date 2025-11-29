@@ -133,6 +133,7 @@ export class LoyaltyService {
         name: createRewardDto.name,
         description: createRewardDto.description,
         pointsRequired: createRewardDto.pointsRequired || createRewardDto.value || 100,
+        branchId: createRewardDto.branchId,
       },
     });
   }

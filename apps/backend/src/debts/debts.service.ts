@@ -32,7 +32,6 @@ export class DebtsService {
         amount: createDto.amount,
         balance: createDto.amount,
         dueDate: createDto.dueDate,
-        description: createDto.description,
         notes: createDto.notes,
         status: 'pending',
       },
