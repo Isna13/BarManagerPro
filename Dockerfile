@@ -24,11 +24,6 @@ COPY apps/backend ./apps/backend
 WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
-# Instalar node-gyp globalmente e recompilar bcrypt do zero
-RUN npm install -g node-gyp && \
-    cd /app/node_modules/.pnpm/bcrypt@5.1.1/node_modules/bcrypt && \
-    node-gyp rebuild
-
 # Build usando script Docker que usa tsconfig.build.json standalone
 RUN pnpm run build:docker
 
