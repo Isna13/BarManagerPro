@@ -8,9 +8,8 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # Copiar arquivos do workspace root (Prisma 5.22.0)
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
-COPY apps/backend/tsconfig.json ./apps/backend/
 
 # Copiar schema do Prisma ANTES de instalar dependências
 COPY apps/backend/prisma ./apps/backend/prisma
@@ -25,8 +24,8 @@ COPY apps/backend ./apps/backend
 WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
-# Build
-RUN pnpm build
+# Build com Nest CLI (não usar tsc diretamente)
+RUN pnpm run build:nest
 
 # Expor porta
 EXPOSE 3000
