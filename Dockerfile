@@ -17,15 +17,19 @@ COPY apps/backend/package.json ./apps/backend/
 # Copiar schema do Prisma
 COPY apps/backend/prisma ./apps/backend/prisma
 
-# Instalar dependências (pnpm vai baixar engine Debian do Prisma)
-RUN pnpm install --frozen-lockfile=false --filter=@barmanager/backend...
+# FORÇAR Prisma a usar engine Debian através de variável de ambiente
+ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+
+# Instalar dependências SEM Prisma Client gerado
+RUN pnpm install --frozen-lockfile=false --filter=@barmanager/backend... --ignore-scripts
 
 # Copiar código fonte do backend
 COPY apps/backend ./apps/backend
 
-# Gerar Prisma Client com engine Debian
+# Gerar Prisma Client FORÇANDO engine Debian
 WORKDIR /app/apps/backend
-RUN npx prisma generate
+RUN npx prisma generate --generator client
 
 # Build da aplicação
 RUN pnpm run build:docker
