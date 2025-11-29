@@ -10,8 +10,8 @@ RUN apt-get update -y && \
 
 WORKDIR /app
 
-# Copiar arquivos do workspace root
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copiar arquivos do workspace root (SEM lockfile para forçar reinstalação)
+COPY package.json pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 
 # Copiar schema do Prisma
@@ -21,15 +21,15 @@ COPY apps/backend/prisma ./apps/backend/prisma
 ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
 ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 
-# Instalar dependências SEM Prisma Client gerado
-RUN pnpm install --frozen-lockfile=false --filter=@barmanager/backend... --ignore-scripts
+# Instalar dependências SEM lockfile (forçará download da engine Debian)
+RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
 
 # Copiar código fonte do backend
 COPY apps/backend ./apps/backend
 
 # Gerar Prisma Client FORÇANDO engine Debian
 WORKDIR /app/apps/backend
-RUN npx prisma generate --generator client
+RUN npx prisma generate
 
 # Build da aplicação
 RUN pnpm run build:docker
