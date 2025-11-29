@@ -5,6 +5,7 @@
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "tsc -p tsconfig.json --noEmit false --skipLibCheck",
+    "build:docker": "tsc -p tsconfig.build.json --skipLibCheck",
     "build:nest": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "node dist/main",

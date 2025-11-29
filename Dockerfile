@@ -24,8 +24,8 @@ COPY apps/backend ./apps/backend
 WORKDIR /app/apps/backend
 RUN pnpm prisma:generate
 
-# Build usando tsconfig.build.json standalone (sem extends)
-RUN npx tsc -p tsconfig.build.json --skipLibCheck
+# Build usando script Docker que usa tsconfig.build.json standalone
+RUN pnpm run build:docker
 
 # Expor porta
 EXPOSE 3000
