@@ -1,5 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: Force rebuild to use latest version
+# Updated: 2025-11-29 - Force rebuild with Prisma 5.22.0
 FROM node:20-alpine
 
 # Instalar pnpm
@@ -7,7 +7,7 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Copiar arquivos do workspace root
+# Copiar arquivos do workspace root (Prisma 5.22.0)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 
