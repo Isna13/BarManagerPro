@@ -1,5 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
-# Updated: 2025-11-29 - Force rebuild with Prisma 5.22.0
+# Updated: 2025-11-29 - Force rebuild with npx tsc fix
 FROM node:20-alpine
 
 # Instalar pnpm
