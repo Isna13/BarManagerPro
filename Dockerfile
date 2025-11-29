@@ -10,28 +10,24 @@ RUN apt-get update -y && \
 
 WORKDIR /app
 
-# Copiar arquivos do workspace root (Prisma 5.22.0)
+# Copiar arquivos do workspace root
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 
-# Copiar schema do Prisma ANTES de instalar dependências
+# Copiar schema do Prisma
 COPY apps/backend/prisma ./apps/backend/prisma
 
-# Copiar resto do código do backend
+# Instalar dependências (pnpm vai baixar engine Debian do Prisma)
+RUN pnpm install --frozen-lockfile=false --filter=@barmanager/backend...
+
+# Copiar código fonte do backend
 COPY apps/backend ./apps/backend
 
-# LIMPAR COMPLETAMENTE node_modules e pnpm store para evitar cache Alpine
-RUN rm -rf node_modules apps/backend/node_modules ~/.local/share/pnpm/store
-
-# Instalar dependências DO ZERO (sem cache de Alpine)
-WORKDIR /app
-RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
-
-# Gerar Prisma Client (agora vai usar engine Debian correta)
+# Gerar Prisma Client com engine Debian
 WORKDIR /app/apps/backend
-RUN pnpm prisma:generate
+RUN npx prisma generate
 
-# Build usando script Docker que usa tsconfig.build.json standalone
+# Build da aplicação
 RUN pnpm run build:docker
 
 # Expor porta
