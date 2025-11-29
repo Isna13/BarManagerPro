@@ -19,9 +19,8 @@ COPY apps/backend/prisma ./prisma
 # Definir plataforma alvo do Prisma ANTES da instalação
 ENV PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x"
 
-# DATABASE_URL temporária para o build (Prisma generate precisa dela)
-# Em runtime, Railway injeta a DATABASE_URL real automaticamente
-ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+# DATABASE_URL temporária APENAS para o build (ARG não persiste em runtime)
+ARG DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
 # Instalar dependências com NPM (evita cache problemático do pnpm)
 RUN npm install --legacy-peer-deps
@@ -32,7 +31,8 @@ COPY apps/backend/tsconfig*.json ./
 COPY apps/backend/nest-cli.json ./
 
 # Gerar Prisma Client (engine Debian será baixado)
-RUN npx prisma generate
+# Nota: DATABASE_URL do ARG é usada apenas aqui
+RUN DATABASE_URL="postgresql://x:x@localhost:5432/x" npx prisma generate
 
 # Compilar TypeScript
 RUN npm run build:docker
