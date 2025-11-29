@@ -2,6 +2,9 @@
 # Updated: 2025-11-29 - Force rebuild with npx tsc fix
 FROM node:20-alpine
 
+# Instalar dependências de build para módulos nativos (bcrypt, etc)
+RUN apk add --no-cache python3 make g++
+
 # Instalar pnpm
 RUN npm install -g pnpm
 
@@ -16,6 +19,9 @@ COPY apps/backend/prisma ./apps/backend/prisma
 
 # Instalar dependências (agora o prisma generate vai funcionar)
 RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
+
+# Rebuild módulos nativos para Alpine Linux
+RUN cd apps/backend && pnpm rebuild bcrypt --build-from-source
 
 # Copiar resto do código do backend
 COPY apps/backend ./apps/backend
