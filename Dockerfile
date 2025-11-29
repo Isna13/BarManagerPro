@@ -1,4 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
+# Updated: Force rebuild to use latest version
 FROM node:20-alpine
 
 # Instalar pnpm
