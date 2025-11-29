@@ -127,6 +127,36 @@ export class AuthService {
     return result;
   }
 
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        branch: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _, ...result } = user;
+
+    // Adicionar permissions baseadas no role
+    const rolePermissions: Record<string, string[]> = {
+      admin: ['*'],
+      owner: ['*'],
+      manager: ['users:read', 'users:write', 'products:*', 'inventory:*', 'sales:*', 'reports:read', 'customers:*', 'suppliers:*'],
+      cashier: ['sales:create', 'sales:read', 'products:read', 'inventory:read', 'customers:read', 'customers:write'],
+      waiter: ['sales:create', 'sales:read', 'products:read', 'customers:read'],
+    };
+
+    return {
+      ...result,
+      permissions: rolePermissions[user.roleName || 'cashier'] || [],
+    };
+  }
+
   async logout(token: string) {
     await this.prisma.session.delete({
       where: { token },
