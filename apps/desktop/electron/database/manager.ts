@@ -5478,6 +5478,165 @@ export class DatabaseManager {
     }
   }
 
+  // ============================================
+  // Sync Helper Methods (for Railway sync)
+  // ============================================
+
+  /**
+   * Obtém a última data de sincronização
+   */
+  getLastSyncDate(): Date | null {
+    try {
+      const result = this.db.prepare(
+        "SELECT value FROM settings WHERE key = 'last_sync_date'"
+      ).get() as { value: string } | undefined;
+      
+      if (result?.value) {
+        return new Date(result.value);
+      }
+      return null;
+    } catch (error) {
+      console.error('Erro ao obter última data de sincronização:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Define a última data de sincronização
+   */
+  setLastSyncDate(date: Date) {
+    try {
+      this.db.prepare(`
+        INSERT OR REPLACE INTO settings (key, value, created_at, updated_at)
+        VALUES ('last_sync_date', ?, datetime('now'), datetime('now'))
+      `).run(date.toISOString());
+    } catch (error) {
+      console.error('Erro ao definir última data de sincronização:', error);
+    }
+  }
+
+  /**
+   * Obtém uma filial pelo ID
+   */
+  getBranchById(id: string) {
+    try {
+      return this.db.prepare('SELECT * FROM branches WHERE id = ?').get(id);
+    } catch (error) {
+      console.error('Erro ao buscar branch por ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Cria uma nova filial
+   */
+  createBranch(data: any) {
+    try {
+      const id = data.id || this.generateUUID();
+      this.db.prepare(`
+        INSERT INTO branches (
+          id, name, code, address, phone, is_main, is_active, synced, last_sync, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).run(
+        id,
+        data.name,
+        data.code,
+        data.address || null,
+        data.phone || null,
+        data.is_main || 0,
+        data.is_active !== undefined ? data.is_active : 1,
+        data.synced || 0,
+        data.last_sync || null
+      );
+      return { id, ...data };
+    } catch (error) {
+      console.error('Erro ao criar branch:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualiza uma filial existente
+   */
+  updateBranch(id: string, data: any) {
+    try {
+      const fields = [];
+      const values = [];
+
+      if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
+      if (data.code !== undefined) { fields.push('code = ?'); values.push(data.code); }
+      if (data.address !== undefined) { fields.push('address = ?'); values.push(data.address); }
+      if (data.phone !== undefined) { fields.push('phone = ?'); values.push(data.phone); }
+      if (data.is_main !== undefined) { fields.push('is_main = ?'); values.push(data.is_main); }
+      if (data.is_active !== undefined) { fields.push('is_active = ?'); values.push(data.is_active); }
+      if (data.synced !== undefined) { fields.push('synced = ?'); values.push(data.synced); }
+      if (data.last_sync !== undefined) { fields.push('last_sync = ?'); values.push(data.last_sync); }
+
+      if (fields.length > 0) {
+        fields.push('updated_at = datetime(\'now\')');
+        values.push(id);
+        this.db.prepare(`UPDATE branches SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      }
+      return this.getBranchById(id);
+    } catch (error) {
+      console.error('Erro ao atualizar branch:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtém um fornecedor pelo ID
+   */
+  getSupplierById(id: string) {
+    try {
+      return this.db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id);
+    } catch (error) {
+      console.error('Erro ao buscar supplier por ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtém uma categoria pelo ID
+   */
+  getCategoryById(id: string) {
+    try {
+      return this.db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    } catch (error) {
+      console.error('Erro ao buscar category por ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Atualiza usuário a partir de dados do servidor (sem sobrescrever senha)
+   */
+  updateUserFromServer(id: string, data: any) {
+    try {
+      const fields = [];
+      const values = [];
+
+      if (data.email !== undefined) { fields.push('email = ?'); values.push(data.email); }
+      if (data.full_name !== undefined) { fields.push('full_name = ?'); values.push(data.full_name); }
+      if (data.role !== undefined) { fields.push('role = ?'); values.push(data.role); }
+      if (data.branch_id !== undefined) { fields.push('branch_id = ?'); values.push(data.branch_id); }
+      if (data.phone !== undefined) { fields.push('phone = ?'); values.push(data.phone); }
+      if (data.is_active !== undefined) { fields.push('is_active = ?'); values.push(data.is_active); }
+      if (data.synced !== undefined) { fields.push('synced = ?'); values.push(data.synced); }
+      if (data.last_sync !== undefined) { fields.push('last_sync = ?'); values.push(data.last_sync); }
+
+      if (fields.length > 0) {
+        fields.push('updated_at = datetime(\'now\')');
+        values.push(id);
+        this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      }
+      return this.getUserById(id);
+    } catch (error) {
+      console.error('Erro ao atualizar usuário do servidor:', error);
+      throw error;
+    }
+  }
+
   close() {
     if (this.db) {
       this.db.close();

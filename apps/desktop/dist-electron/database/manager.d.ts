@@ -652,6 +652,38 @@ export declare class DatabaseManager {
      * Criar vendas de exemplo para testes de relatórios
      */
     seedSampleSales(): void;
+    /**
+     * Obtém a última data de sincronização
+     */
+    getLastSyncDate(): Date | null;
+    /**
+     * Define a última data de sincronização
+     */
+    setLastSyncDate(date: Date): void;
+    /**
+     * Obtém uma filial pelo ID
+     */
+    getBranchById(id: string): unknown;
+    /**
+     * Cria uma nova filial
+     */
+    createBranch(data: any): any;
+    /**
+     * Atualiza uma filial existente
+     */
+    updateBranch(id: string, data: any): unknown;
+    /**
+     * Obtém um fornecedor pelo ID
+     */
+    getSupplierById(id: string): unknown;
+    /**
+     * Obtém uma categoria pelo ID
+     */
+    getCategoryById(id: string): unknown;
+    /**
+     * Atualiza usuário a partir de dados do servidor (sem sobrescrever senha)
+     */
+    updateUserFromServer(id: string, data: any): unknown;
     close(): void;
 }
 export {};

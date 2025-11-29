@@ -77,8 +77,10 @@ electron_1.app.whenReady().then(async () => {
     dbManager = new manager_1.DatabaseManager(dbPath);
     await dbManager.initialize();
     // Inicializar sincronização
-    // Usar 127.0.0.1 ao invés de localhost para evitar resolução IPv6 (::1)
-    const apiUrl = store.get('apiUrl', 'http://127.0.0.1:3000/api/v1');
+    // URL do Railway para produção, com fallback para local em desenvolvimento
+    const defaultApiUrl = 'https://barmanagerbackend-production.up.railway.app/api/v1';
+    const apiUrl = store.get('apiUrl', defaultApiUrl);
+    console.log('🌐 API URL configurada:', apiUrl);
     syncManager = new manager_2.SyncManager(dbManager, apiUrl);
     createWindow();
     // Passar referência da janela para o SyncManager (para emitir eventos)
@@ -460,9 +462,11 @@ electron_1.ipcMain.handle('backup:create', async () => {
 electron_1.ipcMain.handle('backup:restore', async (_, filePath) => {
     return dbManager.restoreBackup(filePath);
 });
+// URL padrão do Railway
+const DEFAULT_API_URL = 'https://barmanagerbackend-production.up.railway.app/api/v1';
 // Reports - Usando API online do backend com fallback para dados locais
 electron_1.ipcMain.handle('reports:sales', async (_, { startDate, endDate, branchId }) => {
-    const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1');
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
     const token = store.get('token');
     try {
         const response = await axios_1.default.get(`${apiUrl}/reports/sales`, {
@@ -522,7 +526,7 @@ electron_1.ipcMain.handle('reports:sales', async (_, { startDate, endDate, branc
     }
 });
 electron_1.ipcMain.handle('reports:purchases', async (_, { startDate, endDate, branchId }) => {
-    const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1');
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
     const token = store.get('token');
     try {
         const response = await axios_1.default.get(`${apiUrl}/reports/purchases`, {
@@ -549,7 +553,7 @@ electron_1.ipcMain.handle('reports:purchases', async (_, { startDate, endDate, b
     }
 });
 electron_1.ipcMain.handle('reports:inventory', async (_, { branchId }) => {
-    const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1');
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
     const token = store.get('token');
     try {
         const response = await axios_1.default.get(`${apiUrl}/reports/inventory`, {
@@ -602,7 +606,7 @@ electron_1.ipcMain.handle('reports:inventory', async (_, { branchId }) => {
     }
 });
 electron_1.ipcMain.handle('reports:customers', async (_, { branchId }) => {
-    const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1');
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
     const token = store.get('token');
     try {
         const response = await axios_1.default.get(`${apiUrl}/reports/customers`, {
@@ -627,7 +631,7 @@ electron_1.ipcMain.handle('reports:customers', async (_, { branchId }) => {
     }
 });
 electron_1.ipcMain.handle('reports:debts', async (_, { branchId }) => {
-    const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1');
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
     const token = store.get('token');
     try {
         const response = await axios_1.default.get(`${apiUrl}/reports/debts`, {

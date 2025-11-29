@@ -44,8 +44,10 @@ app.whenReady().then(async () => {
   await dbManager.initialize();
 
   // Inicializar sincronização
-  // Usar 127.0.0.1 ao invés de localhost para evitar resolução IPv6 (::1)
-  const apiUrl = store.get('apiUrl', 'http://127.0.0.1:3000/api/v1') as string;
+  // URL do Railway para produção, com fallback para local em desenvolvimento
+  const defaultApiUrl = 'https://barmanagerbackend-production.up.railway.app/api/v1';
+  const apiUrl = store.get('apiUrl', defaultApiUrl) as string;
+  console.log('🌐 API URL configurada:', apiUrl);
   syncManager = new SyncManager(dbManager, apiUrl);
 
   createWindow();
@@ -98,6 +100,18 @@ app.on('before-quit', async () => {
 ipcMain.handle('auth:login', async (_, credentials) => {
   try {
     const result = await syncManager.login(credentials);
+    
+    // Após login bem-sucedido, iniciar sincronização automática
+    if (result) {
+      console.log('🔄 Iniciando sincronização automática após login...');
+      // Iniciar em background para não bloquear resposta do login
+      setTimeout(() => {
+        syncManager.start().catch(err => {
+          console.error('Erro ao iniciar sincronização:', err);
+        });
+      }, 1000);
+    }
+    
     return { success: true, data: result };
   } catch (error) {
     console.error('Erro no login:', error);
@@ -531,9 +545,12 @@ ipcMain.handle('backup:restore', async (_, filePath) => {
   return dbManager.restoreBackup(filePath);
 });
 
+// URL padrão do Railway
+const DEFAULT_API_URL = 'https://barmanagerbackend-production.up.railway.app/api/v1';
+
 // Reports - Usando API online do backend com fallback para dados locais
 ipcMain.handle('reports:sales', async (_, { startDate, endDate, branchId }) => {
-  const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1') as string;
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
   try {
@@ -602,7 +619,7 @@ ipcMain.handle('reports:sales', async (_, { startDate, endDate, branchId }) => {
 });
 
 ipcMain.handle('reports:purchases', async (_, { startDate, endDate, branchId }) => {
-  const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1') as string;
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
   try {
@@ -631,7 +648,7 @@ ipcMain.handle('reports:purchases', async (_, { startDate, endDate, branchId }) 
 });
 
 ipcMain.handle('reports:inventory', async (_, { branchId }) => {
-  const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1') as string;
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
   try {
@@ -689,7 +706,7 @@ ipcMain.handle('reports:inventory', async (_, { branchId }) => {
 });
 
 ipcMain.handle('reports:customers', async (_, { branchId }) => {
-  const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1') as string;
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
   try {
@@ -716,7 +733,7 @@ ipcMain.handle('reports:customers', async (_, { branchId }) => {
 });
 
 ipcMain.handle('reports:debts', async (_, { branchId }) => {
-  const apiUrl = store.get('apiUrl', 'http://localhost:3000/api/v1') as string;
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
   try {

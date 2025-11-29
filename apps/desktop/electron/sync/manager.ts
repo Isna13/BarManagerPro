@@ -298,10 +298,281 @@ export class SyncManager {
   }
 
   private async pullServerChanges() {
-    // TODO: Implementar pull de mudanças do servidor
-    // 1. Buscar última data de sincronização
-    // 2. Requisitar mudanças desde essa data
-    // 3. Aplicar mudanças localmente (com resolução de conflitos)
+    console.log('📥 Iniciando pull de dados do servidor...');
+    
+    try {
+      // 1. Buscar última data de sincronização
+      const lastSyncDate = this.dbManager.getLastSyncDate();
+      console.log('📅 Última sincronização:', lastSyncDate || 'Nunca sincronizado');
+      
+      // 2. Pull de cada entidade importante
+      const entities = [
+        { name: 'branches', endpoint: '/branches' },
+        { name: 'users', endpoint: '/users' },
+        { name: 'categories', endpoint: '/categories' },
+        { name: 'products', endpoint: '/products' },
+        { name: 'customers', endpoint: '/customers' },
+        { name: 'suppliers', endpoint: '/suppliers' },
+      ];
+      
+      for (const entity of entities) {
+        try {
+          console.log(`📥 Sincronizando ${entity.name}...`);
+          
+          // Construir URL com parâmetro de data se houver última sincronização
+          let url = entity.endpoint;
+          if (lastSyncDate) {
+            url += `?updatedAfter=${lastSyncDate.toISOString()}`;
+          }
+          
+          const response = await this.apiClient.get(url, { timeout: 30000 });
+          const items = Array.isArray(response.data) ? response.data : response.data?.data || [];
+          
+          if (items.length > 0) {
+            console.log(`✅ ${entity.name}: ${items.length} itens recebidos`);
+            await this.mergeEntityData(entity.name, items);
+          } else {
+            console.log(`ℹ️ ${entity.name}: nenhum item novo`);
+          }
+        } catch (entityError: any) {
+          // Ignorar erros 404 (endpoint não existe)
+          if (entityError?.response?.status === 404) {
+            console.log(`⚠️ ${entity.name}: endpoint não disponível (404)`);
+          } else if (entityError?.response?.status === 403) {
+            console.log(`⚠️ ${entity.name}: sem permissão (403)`);
+          } else {
+            console.error(`❌ Erro ao sincronizar ${entity.name}:`, entityError?.message);
+          }
+        }
+      }
+      
+      // 3. Atualizar data da última sincronização
+      this.dbManager.setLastSyncDate(new Date());
+      console.log('✅ Pull do servidor concluído');
+      
+    } catch (error: any) {
+      console.error('❌ Erro geral no pull:', error?.message);
+      throw error;
+    }
+  }
+  
+  /**
+   * Mescla dados recebidos do servidor com dados locais
+   * Estratégia: servidor tem prioridade, mas não apaga dados locais não sincronizados
+   */
+  private async mergeEntityData(entityName: string, items: any[]) {
+    const mergeStrategies: Record<string, (items: any[]) => void> = {
+      branches: (items) => {
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getBranchById(item.id);
+            if (existing) {
+              this.dbManager.updateBranch(item.id, {
+                name: item.name,
+                code: item.code,
+                address: item.address,
+                phone: item.phone,
+                is_main: item.isMain ? 1 : 0,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            } else {
+              this.dbManager.createBranch({
+                id: item.id,
+                name: item.name,
+                code: item.code,
+                address: item.address,
+                phone: item.phone,
+                is_main: item.isMain ? 1 : 0,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar branch ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      users: (items) => {
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getUserByEmail(item.email);
+            if (existing) {
+              // Não sobrescrever senha local se usuário já existe
+              this.dbManager.updateUserFromServer(item.id, {
+                email: item.email,
+                full_name: item.fullName,
+                role: item.role,
+                branch_id: item.branchId,
+                phone: item.phone,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            }
+            // Não criar usuários do servidor localmente sem senha
+          } catch (e: any) {
+            console.error(`Erro ao mesclar user ${item.email}:`, e?.message);
+          }
+        }
+      },
+      
+      categories: (items) => {
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getCategoryById(item.id);
+            if (existing) {
+              this.dbManager.updateCategory(item.id, {
+                name: item.name,
+                description: item.description,
+                parent_id: item.parentId,
+                sort_order: item.sortOrder || 0,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            } else {
+              this.dbManager.createCategory({
+                id: item.id,
+                name: item.name,
+                description: item.description,
+                parent_id: item.parentId,
+                sort_order: item.sortOrder || 0,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar category ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      products: (items) => {
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getProductById(item.id);
+            if (existing) {
+              this.dbManager.updateProduct(item.id, {
+                name: item.name,
+                sku: item.sku,
+                barcode: item.barcode,
+                description: item.description,
+                category_id: item.categoryId,
+                box_price: item.boxPrice,
+                unit_price: item.unitPrice,
+                unit_cost: item.unitCost,
+                units_per_box: item.unitsPerBox,
+                min_stock: item.minStock,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            } else {
+              this.dbManager.createProduct({
+                id: item.id,
+                name: item.name,
+                sku: item.sku,
+                barcode: item.barcode,
+                description: item.description,
+                category_id: item.categoryId,
+                box_price: item.boxPrice || 0,
+                unit_price: item.unitPrice || 0,
+                unit_cost: item.unitCost || 0,
+                units_per_box: item.unitsPerBox || 1,
+                min_stock: item.minStock || 0,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar product ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      customers: (items) => {
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getCustomerById(item.id);
+            if (existing) {
+              this.dbManager.updateCustomer(item.id, {
+                name: item.name,
+                email: item.email,
+                phone: item.phone,
+                code: item.code,
+                address: item.address,
+                credit_limit: item.creditLimit,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            } else {
+              this.dbManager.createCustomer({
+                id: item.id,
+                name: item.name,
+                email: item.email,
+                phone: item.phone,
+                code: item.code,
+                address: item.address,
+                credit_limit: item.creditLimit || 0,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar customer ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      suppliers: (items) => {
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getSupplierById(item.id);
+            if (existing) {
+              this.dbManager.updateSupplier(item.id, {
+                name: item.name,
+                email: item.email,
+                phone: item.phone,
+                address: item.address,
+                contact_person: item.contactPerson,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            } else {
+              this.dbManager.createSupplier({
+                id: item.id,
+                name: item.name,
+                email: item.email,
+                phone: item.phone,
+                address: item.address,
+                contact_person: item.contactPerson,
+                is_active: item.isActive !== false ? 1 : 0,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              });
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar supplier ${item.id}:`, e?.message);
+          }
+        }
+      },
+    };
+    
+    const strategy = mergeStrategies[entityName];
+    if (strategy) {
+      strategy(items);
+    } else {
+      console.warn(`⚠️ Sem estratégia de merge para: ${entityName}`);
+    }
   }
 
   private getEndpoint(entity: string, operation: string): string {

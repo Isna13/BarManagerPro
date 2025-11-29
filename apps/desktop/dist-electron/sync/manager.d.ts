@@ -23,6 +23,11 @@ export declare class SyncManager {
     syncNow(): Promise<void>;
     private pushLocalChanges;
     private pullServerChanges;
+    /**
+     * Mescla dados recebidos do servidor com dados locais
+     * Estratégia: servidor tem prioridade, mas não apaga dados locais não sincronizados
+     */
+    private mergeEntityData;
     private getEndpoint;
     forcePush(): Promise<void>;
     getStatus(): {
