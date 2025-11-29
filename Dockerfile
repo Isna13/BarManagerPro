@@ -17,15 +17,18 @@ COPY apps/backend/package.json ./apps/backend/
 # Copiar schema do Prisma ANTES de instalar dependências
 COPY apps/backend/prisma ./apps/backend/prisma
 
-# Instalar dependências
-RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
-
 # Copiar resto do código do backend
 COPY apps/backend ./apps/backend
 
-# Gerar Prisma Client (FORÇAR regeneração para Linux Debian, não Alpine)
+# LIMPAR COMPLETAMENTE node_modules e pnpm store para evitar cache Alpine
+RUN rm -rf node_modules apps/backend/node_modules ~/.local/share/pnpm/store
+
+# Instalar dependências DO ZERO (sem cache de Alpine)
+WORKDIR /app
+RUN pnpm install --no-frozen-lockfile --filter=@barmanager/backend...
+
+# Gerar Prisma Client (agora vai usar engine Debian correta)
 WORKDIR /app/apps/backend
-RUN rm -rf node_modules/.prisma node_modules/@prisma/client
 RUN pnpm prisma:generate
 
 # Build usando script Docker que usa tsconfig.build.json standalone
