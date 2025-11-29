@@ -3,10 +3,6 @@
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
-# Passar DATABASE_URL durante o build para Prisma generate
-[build.args]
-DATABASE_URL = "${{Postgres.DATABASE_URL}}"
-
 [deploy]
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
