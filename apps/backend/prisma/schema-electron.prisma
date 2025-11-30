@@ -29,25 +29,15 @@ model Branch {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relacionamentos
-  users          User[]
-  sales          Sale[]
-  cashBoxes      CashBox[]
-  debts          Debt[]
-  purchases      Purchase[]
-  tables         Table[]
-  tableSessions  TableSession[]
-  inventory      Inventory[]
-  inventoryItems InventoryItem[]
+  users         User[]
+  sales         Sale[]
+  cashBoxes     CashBox[]
+  debts         Debt[]
+  purchases     Purchase[]
+  tables        Table[]
+  tableSessions TableSession[]
+  inventory     Inventory[]
   stockMovements StockMovement[]
-  auditLogs      AuditLog[]
-  notifications  Notification[]
-  campaigns      Campaign[]
-  feedbacks      Feedback[]
-  customers      Customer[]
-  suppliers      Supplier[]
-  products       Product[]
-  transfersFrom  InventoryTransfer[] @relation("TransfersFrom")
-  transfersTo    InventoryTransfer[] @relation("TransfersTo")
 
   @@map("branches")
 }
@@ -58,33 +48,20 @@ model Branch {
 
 model User {
   id           String    @id @default(uuid())
-  username     String?   @unique
+  username     String    @unique
   email        String    @unique
   fullName     String    @map("full_name")
-  password     String    // Para autenticação do backend
-  passwordHash String?   @map("password_hash") // Hash do Electron
+  passwordHash String    @map("password_hash")
   role         String    @default("cashier")
-  roleName     String?   @map("role_name") // Compatibilidade
   branchId     String?   @map("branch_id")
   branch       Branch?   @relation(fields: [branchId], references: [id])
   phone        String?
-  language     String?   @default("pt")
   isActive     Boolean   @default(true) @map("is_active")
   lastLogin    DateTime? @map("last_login")
   synced       Boolean   @default(false)
   lastSync     DateTime? @map("last_sync")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
-
-  // Relacionamentos
-  debts             Debt[]
-  sessions          Session[]
-  auditLogs         AuditLog[]
-  notifications     Notification[]
-  cashBoxesOpened   CashBox[]  @relation("CashBoxOpenedBy")
-  cashBoxesClosed   CashBox[]  @relation("CashBoxClosedBy")
-  purchasesCreated  Purchase[] @relation("PurchaseCreatedBy")
-  sales             Sale[]
 
   @@map("users")
 }
@@ -96,8 +73,6 @@ model User {
 model Category {
   id          String     @id @default(uuid())
   name        String
-  nameKriol   String?    @map("name_kriol")
-  nameFr      String?    @map("name_fr")
   description String?
   parentId    String?    @map("parent_id")
   parent      Category?  @relation("SubCategories", fields: [parentId], references: [id])
@@ -122,8 +97,6 @@ model Supplier {
   id            String    @id @default(uuid())
   code          String    @unique
   name          String
-  branchId      String?   @map("branch_id")
-  branch        Branch?   @relation(fields: [branchId], references: [id])
   contactPerson String?   @map("contact_person")
   phone         String?
   email         String?
@@ -152,13 +125,10 @@ model Product {
   sku              String    @unique
   barcode          String?   @unique
   name             String
-  description      String?
   nameKriol        String?   @map("name_kriol")
   nameFr           String?   @map("name_fr")
   categoryId       String?   @map("category_id")
   category         Category? @relation(fields: [categoryId], references: [id])
-  branchId         String?   @map("branch_id")
-  branch           Branch?   @relation(fields: [branchId], references: [id])
   supplierId       String?   @map("supplier_id")
   supplier         Supplier? @relation(fields: [supplierId], references: [id])
   priceUnit        Int       @map("price_unit")
@@ -172,7 +142,6 @@ model Product {
   isMuntuEligible  Boolean   @default(false) @map("is_muntu_eligible")
   muntuQuantity    Int?      @map("muntu_quantity")
   muntuPrice       Int?      @map("muntu_price")
-  maxDiscountMuntu Float?    @map("max_discount_muntu")
   minMarginPercent Float     @default(0) @map("min_margin_percent")
   taxRate          Float     @default(0) @map("tax_rate")
   isActive         Boolean   @default(true) @map("is_active")
@@ -189,7 +158,6 @@ model Product {
   inventoryItems InventoryItem[]
   stockMovements StockMovement[]
   tableOrders    TableOrder[]
-  priceHistory   ProductPriceHistory[]
 
   @@map("products")
 }
@@ -204,26 +172,18 @@ model Customer {
   fullName      String    @map("full_name")
   phone         String?
   email         String?
-  address       String?
-  branchId      String?   @map("branch_id")
-  branch        Branch?   @relation(fields: [branchId], references: [id])
   creditLimit   Int       @default(0) @map("credit_limit")
   currentDebt   Int       @default(0) @map("current_debt")
   isBlocked     Boolean   @default(false) @map("is_blocked")
   loyaltyPoints Int       @default(0) @map("loyalty_points")
-  totalSpent    Int       @default(0) @map("total_spent")
-  notes         String?
-  isActive      Boolean   @default(true) @map("is_active")
   synced        Boolean   @default(false)
   lastSync      DateTime? @map("last_sync")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  sales               Sale[]
-  debts               Debt[]
-  tableCustomers      TableCustomer[]
-  feedbacks           Feedback[]
-  loyaltyTransactions LoyaltyTransaction[]
+  sales          Sale[]
+  debts          Debt[]
+  tableCustomers TableCustomer[]
 
   @@map("customers")
 }
@@ -246,7 +206,6 @@ model Table {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   sessions TableSession[]
-  sales    Sale[]
 
   @@unique([branchId, number])
   @@map("tables")
@@ -394,11 +353,9 @@ model Sale {
   branch        Branch    @relation(fields: [branchId], references: [id])
   type          String    @default("counter")
   tableId       String?   @map("table_id")
-  table         Table?    @relation(fields: [tableId], references: [id])
   customerId    String?   @map("customer_id")
   customer      Customer? @relation(fields: [customerId], references: [id])
   cashierId     String    @map("cashier_id")
-  cashier       User?     @relation(fields: [cashierId], references: [id])
   status        String    @default("open")
   subtotal      Int       @default(0)
   taxTotal      Int       @default(0) @map("tax_total")
@@ -414,11 +371,10 @@ model Sale {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  items          SaleItem[]
-  payments       Payment[]
-  debts          Debt[]
+  items    SaleItem[]
+  payments Payment[]
+  debts    Debt[]
   stockMovements StockMovement[]
-  feedbacks      Feedback[]
 
   @@map("sales")
 }
@@ -438,7 +394,6 @@ model SaleItem {
   unitPrice      Int      @map("unit_price")
   unitCost       Int      @map("unit_cost")
   subtotal       Int
-  tax            Float    @default(0)
   taxAmount      Int      @default(0) @map("tax_amount")
   discountAmount Int      @default(0) @map("discount_amount")
   total          Int
@@ -461,7 +416,6 @@ model Payment {
   saleId          String?   @map("sale_id")
   sale            Sale?     @relation(fields: [saleId], references: [id])
   debtId          String?   @map("debt_id")
-  debt            Debt?     @relation(fields: [debtId], references: [id])
   method          String
   provider        String?
   amount          Int
@@ -490,10 +444,8 @@ model Debt {
   customer       Customer  @relation(fields: [customerId], references: [id])
   saleId         String?   @map("sale_id")
   sale           Sale?     @relation(fields: [saleId], references: [id])
-  branchId       String?   @map("branch_id")
-  branch         Branch?   @relation(fields: [branchId], references: [id])
-  amount         Int       @default(0)               // Para compatibilidade backend
-  paid           Int       @default(0)               // Para compatibilidade backend
+  branchId       String    @map("branch_id")
+  branch         Branch    @relation(fields: [branchId], references: [id])
   originalAmount Int       @map("original_amount")
   paidAmount     Int       @default(0) @map("paid_amount")
   balance        Int
@@ -501,13 +453,11 @@ model Debt {
   dueDate        DateTime? @map("due_date")
   notes          String?
   createdBy      String?   @map("created_by")
-  createdByUser  User?     @relation(fields: [createdBy], references: [id])
   synced         Boolean   @default(false)
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   debtPayments DebtPayment[]
-  payments     Payment[]
 
   @@map("debts")
 }
@@ -543,9 +493,7 @@ model CashBox {
   branchId        String    @map("branch_id")
   branch          Branch    @relation(fields: [branchId], references: [id])
   openedBy        String    @map("opened_by")
-  openedByUser    User      @relation("CashBoxOpenedBy", fields: [openedBy], references: [id])
   closedBy        String?   @map("closed_by")
-  closedByUser    User?     @relation("CashBoxClosedBy", fields: [closedBy], references: [id])
   status          String    @default("open")
   openingCash     Int       @default(0) @map("opening_cash")
   totalSales      Int       @default(0) @map("total_sales")
@@ -576,15 +524,11 @@ model Purchase {
   branch         Branch    @relation(fields: [branchId], references: [id])
   supplierId     String?   @map("supplier_id")
   supplier       Supplier? @relation(fields: [supplierId], references: [id])
-  createdBy      String?   @map("created_by")
-  createdByUser  User?     @relation("PurchaseCreatedBy", fields: [createdBy], references: [id])
   status         String    @default("pending")
   subtotal       Int       @default(0)
   taxTotal       Int       @default(0) @map("tax_total")
   discountTotal  Int       @default(0) @map("discount_total")
   total          Int       @default(0)
-  totalCost      Int       @default(0) @map("total_cost")
-  completedAt    DateTime? @map("completed_at")
   paymentMethod  String?   @map("payment_method")
   paymentStatus  String?   @map("payment_status")
   notes          String?
@@ -611,7 +555,6 @@ model PurchaseItem {
   productId      String    @map("product_id")
   product        Product   @relation(fields: [productId], references: [id])
   qtyUnits       Int       @map("qty_units")
-  qtyBoxes       Int       @default(0) @map("qty_boxes")
   unitCost       Int       @map("unit_cost")
   subtotal       Int
   taxAmount      Int       @default(0) @map("tax_amount")
@@ -658,12 +601,9 @@ model InventoryItem {
   productId         String    @map("product_id")
   product           Product   @relation(fields: [productId], references: [id])
   branchId          String    @map("branch_id")
-  branch            Branch    @relation(fields: [branchId], references: [id])
   qtyUnits          Int       @default(0) @map("qty_units")
-  qtyBoxes          Int       @default(0) @map("qty_boxes")
   closedBoxes       Int       @default(0) @map("closed_boxes")
   openBoxUnits      Int       @default(0) @map("open_box_units")
-  minStock          Int       @default(10) @map("min_stock")
   batchNumber       String?   @map("batch_number")
   expiryDate        DateTime? @map("expiry_date")
   location          String?
@@ -676,8 +616,6 @@ model InventoryItem {
   lastSync          DateTime? @map("last_sync")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
-
-  movements InventoryMovement[]
 
   @@map("inventory_items")
 }
@@ -725,8 +663,6 @@ model SyncQueue {
   entity      String
   entityId    String    @map("entity_id")
   data        String
-  branchId    String?   @map("branch_id")
-  deviceId    String?   @map("device_id")
   priority    Int       @default(0)
   status      String    @default("pending")
   retryCount  Int       @default(0) @map("retry_count")
@@ -748,199 +684,3 @@ model Setting {
 
   @@map("settings")
 }
-
-// ============================================
-// TABELAS ADICIONAIS PARA COMPATIBILIDADE COM BACKEND
-// (Não usadas pelo Electron desktop ainda)
-// ============================================
-
-model Session {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
-  user       User     @relation(fields: [userId], references: [id])
-  token      String   @unique
-  deviceInfo String?  @map("device_info")
-  ipAddress  String?  @map("ip_address")
-  expiresAt  DateTime @map("expires_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  @@map("sessions")
-}
-
-model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String?  @map("user_id")
-  user       User?    @relation(fields: [userId], references: [id])
-  branchId   String?  @map("branch_id")
-  branch     Branch?  @relation(fields: [branchId], references: [id])
-  action     String
-  entity     String
-  resource   String?
-  resourceId String?  @map("resource_id")
-  details    String?
-  entityId   String?  @map("entity_id")
-  oldData    String?  @map("old_data")
-  newData    String?  @map("new_data")
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  @@map("audit_logs")
-}
-
-model Notification {
-  id        String    @id @default(uuid())
-  userId    String?   @map("user_id")
-  user      User?     @relation(fields: [userId], references: [id])
-  branchId  String?   @map("branch_id")
-  branch    Branch?   @relation(fields: [branchId], references: [id])
-  type      String
-  title     String
-  message   String
-  data      String?
-  metadata  String?
-  priority  String?   @default("normal")
-  read      Boolean   @default(false)
-  isRead    Boolean   @default(false) @map("is_read")
-  readAt    DateTime? @map("read_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-
-  @@map("notifications")
-}
-
-model Campaign {
-  id              String    @id @default(uuid())
-  name            String
-  description     String?
-  type            String
-  status          String    @default("draft")
-  branchId        String?   @map("branch_id")
-  branch          Branch?   @relation(fields: [branchId], references: [id])
-  discountPercent Float?    @map("discount_percent")
-  startDate       DateTime? @map("start_date")
-  endDate         DateTime? @map("end_date")
-  rules           String?
-  createdBy       String?   @map("created_by")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-
-  @@map("campaigns")
-}
-
-model Feedback {
-  id         String    @id @default(uuid())
-  customerId String?   @map("customer_id")
-  customer   Customer? @relation(fields: [customerId], references: [id])
-  saleId     String?   @map("sale_id")
-  sale       Sale?     @relation(fields: [saleId], references: [id])
-  branchId   String?   @map("branch_id")
-  branch     Branch?   @relation(fields: [branchId], references: [id])
-  rating     Int
-  comment    String?
-  category   String?
-  createdAt  DateTime  @default(now()) @map("created_at")
-
-  @@map("feedbacks")
-}
-
-model LoyaltyTransaction {
-  id          String    @id @default(uuid())
-  customerId  String    @map("customer_id")
-  customer    Customer  @relation(fields: [customerId], references: [id])
-  type        String
-  points      Int
-  description String?
-  notes       String?
-  referenceId String?   @map("reference_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  @@map("loyalty_transactions")
-}
-
-model LoyaltyReward {
-  id             String   @id @default(uuid())
-  name           String
-  description    String?
-  branchId       String?  @map("branch_id")
-  pointsCost     Int      @map("points_cost")
-  pointsRequired Int      @default(0) @map("points_required")
-  rewardType     String   @default("discount") @map("reward_type")
-  rewardValue    String?  @map("reward_value")
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  @@map("loyalty_rewards")
-}
-
-model InventoryMovement {
-  id              String        @id @default(uuid())
-  inventoryItemId String        @map("inventory_item_id")
-  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
-  type            String
-  qtyUnits        Int           @map("qty_units")
-  reason          String?
-  notes           String?
-  referenceType   String?       @map("reference_type")
-  referenceId     String?       @map("reference_id")
-  performedBy     String?       @map("performed_by")
-  createdAt       DateTime      @default(now()) @map("created_at")
-
-  @@map("inventory_movements")
-}
-
-model ProductPriceHistory {
-  id            String    @id @default(uuid())
-  productId     String    @map("product_id")
-  product       Product   @relation(fields: [productId], references: [id])
-  priceUnit     Int       @map("price_unit")
-  priceBox      Int?      @map("price_box")
-  costUnit      Int       @map("cost_unit")
-  costBox       Int?      @map("cost_box")
-  reason        String?
-  changedBy     String?   @map("changed_by")
-  effectiveFrom DateTime  @default(now()) @map("effective_from")
-  effectiveTo   DateTime? @map("effective_to")
-  createdAt     DateTime  @default(now()) @map("created_at")
-
-  @@map("product_price_history")
-}
-
-model SyncConflict {
-  id         String    @id @default(uuid())
-  deviceId   String    @map("device_id")
-  branchId   String?   @map("branch_id")
-  entity     String
-  entityId   String    @map("entity_id")
-  localData  String    @map("local_data")
-  remoteData String    @map("remote_data")
-  resolution String?
-  resolved   Boolean   @default(false)
-  resolvedBy String?   @map("resolved_by")
-  resolvedAt DateTime? @map("resolved_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-
-  @@map("sync_conflicts")
-}
-
-// ============================================
-// TRANSFERÊNCIA DE INVENTÁRIO (Backend only)
-// ============================================
-
-model InventoryTransfer {
-  id           String   @id @default(uuid())
-  fromBranchId String   @map("from_branch_id")
-  fromBranch   Branch   @relation("TransfersFrom", fields: [fromBranchId], references: [id])
-  toBranchId   String   @map("to_branch_id")
-  toBranch     Branch   @relation("TransfersTo", fields: [toBranchId], references: [id])
-  items        Json     @default("[]")
-  requestedBy  String   @map("requested_by")
-  approvedBy   String?  @map("approved_by")
-  status       String   @default("pending")
-  notes        String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  @@map("inventory_transfers")
-}
-
