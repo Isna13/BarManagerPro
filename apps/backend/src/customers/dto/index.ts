@@ -9,6 +9,10 @@ export class CreateCustomerDto {
   @IsString()
   branchId?: string;
 
+  @IsOptional()
+  @IsString()
+  code?: string;
+
   @IsString()
   name: string;
 
