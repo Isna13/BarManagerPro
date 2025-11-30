@@ -59,25 +59,16 @@ export class ImportController {
     try {
       console.log('🚀 Iniciando importação...');
 
-      // Obter primeiro admin existente para usar como fallback
+      // Obter primeiro admin existente para usar como fallback para cashierId
       const adminUser = await this.prisma.user.findFirst({
+        where: { email: 'isnatchuda1@gmail.com' },
+      }) || await this.prisma.user.findFirst({
         where: { isActive: true },
         orderBy: { createdAt: 'asc' },
       });
+      
       const fallbackUserId = adminUser?.id;
-
-      // Criar usuário default-user se não existir (para vendas antigas)
-      const defaultUser = await this.prisma.user.upsert({
-        where: { id: 'default-user' },
-        create: {
-          id: 'default-user',
-          email: 'default@barmanager.local',
-          password: 'not-used',
-          fullName: 'Usuário Padrão (Sistema)',
-          isActive: true,
-        },
-        update: {},
-      });
+      console.log(`📌 Usando usuário fallback: ${adminUser?.email} (${fallbackUserId})`);
 
       // Importar Branches
       for (const b of data.branches || []) {
@@ -178,13 +169,20 @@ export class ImportController {
       // Importar Vendas
       for (const s of data.sales || []) {
         if (!s.branch_id) continue; // branchId é obrigatório
+        
+        // Usar fallback se cashier_id for 'default-user' ou não existir
+        let cashierId = s.cashier_id || s.user_id;
+        if (cashierId === 'default-user' || !cashierId) {
+          cashierId = fallbackUserId;
+        }
+        
         await this.prisma.sale.upsert({
           where: { id: s.id },
           create: {
             id: s.id,
             saleNumber: s.sale_number || `SALE-${Date.now()}`,
             customerId: s.customer_id || null,
-            cashierId: s.user_id || s.cashier_id,
+            cashierId: cashierId,
             branchId: s.branch_id,
             status: s.status || 'closed',
             total: parseInt(s.total_amount) || parseInt(s.total) || 0,
@@ -220,13 +218,19 @@ export class ImportController {
 
       // Importar Caixas
       for (const box of data.cash_boxes || []) {
+        // Usar fallback se opened_by for 'default-user'
+        let openedBy = box.opened_by;
+        if (openedBy === 'default-user' || !openedBy) {
+          openedBy = fallbackUserId;
+        }
+        
         await this.prisma.cashBox.upsert({
           where: { id: box.id },
           create: {
             id: box.id,
             boxNumber: box.box_number,
             branchId: box.branch_id,
-            openedBy: box.opened_by,
+            openedBy: openedBy,
             status: box.status,
           },
           update: {},
@@ -235,6 +239,12 @@ export class ImportController {
 
       // Importar Dívidas
       for (const debt of data.debts || []) {
+        // Usar fallback se created_by for 'default-user'
+        let createdBy = debt.created_by;
+        if (createdBy === 'default-user' || !createdBy) {
+          createdBy = fallbackUserId;
+        }
+        
         await this.prisma.debt.upsert({
           where: { id: debt.id },
           create: {
@@ -248,7 +258,7 @@ export class ImportController {
             amount: parseInt(debt.original_amount) || 0,
             paid: parseInt(debt.paid_amount) || 0,
             status: debt.status,
-            createdBy: debt.created_by,
+            createdBy: createdBy,
           },
           update: {},
         });
