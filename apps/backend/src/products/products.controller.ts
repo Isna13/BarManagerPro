@@ -19,7 +19,9 @@ export class ProductsController {
     @Query('search') search?: string,
     @Query('active') active?: string
   ) {
-    return this.productsService.findAll(categoryId, search, active === 'true');
+    // Só passa active se explicitamente definido como 'true' ou 'false'
+    const activeFilter = active === 'true' ? true : active === 'false' ? false : undefined;
+    return this.productsService.findAll(categoryId, search, activeFilter);
   }
 
   @Get(':id')

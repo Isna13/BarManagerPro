@@ -59,6 +59,26 @@ export class ImportController {
     try {
       console.log('🚀 Iniciando importação...');
 
+      // Obter primeiro admin existente para usar como fallback
+      const adminUser = await this.prisma.user.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const fallbackUserId = adminUser?.id;
+
+      // Criar usuário default-user se não existir (para vendas antigas)
+      const defaultUser = await this.prisma.user.upsert({
+        where: { id: 'default-user' },
+        create: {
+          id: 'default-user',
+          email: 'default@barmanager.local',
+          password: 'not-used',
+          fullName: 'Usuário Padrão (Sistema)',
+          isActive: true,
+        },
+        update: {},
+      });
+
       // Importar Branches
       for (const b of data.branches || []) {
         await this.prisma.branch.upsert({
