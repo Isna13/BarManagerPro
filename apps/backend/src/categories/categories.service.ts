@@ -8,9 +8,31 @@ export class CategoriesService {
 
   async create(createDto: CreateCategoryDto) {
     const { parentId, id, ...data } = createDto;
+    
+    // Usar upsert para suportar sincronização (criar ou atualizar se ID já existir)
+    if (id) {
+      return this.prisma.category.upsert({
+        where: { id },
+        create: {
+          id,
+          ...data,
+          sortOrder: createDto.sortOrder || 0,
+          isActive: createDto.isActive ?? true,
+          ...(parentId && { parent: { connect: { id: parentId } } }),
+        },
+        update: {
+          ...data,
+          ...(createDto.sortOrder !== undefined && { sortOrder: createDto.sortOrder }),
+          ...(createDto.isActive !== undefined && { isActive: createDto.isActive }),
+          ...(parentId !== undefined && {
+            parent: parentId ? { connect: { id: parentId } } : { disconnect: true },
+          }),
+        },
+      });
+    }
+    
     return this.prisma.category.create({
       data: {
-        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
         ...data,
         sortOrder: createDto.sortOrder || 0,
         isActive: createDto.isActive ?? true,

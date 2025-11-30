@@ -18,7 +18,33 @@ export class ProductsService {
       }
     }
 
-    // Verificar se já existe produto com mesmo SKU
+    const { categoryId, id, ...productData } = createDto;
+
+    // Se tem ID, usar upsert para sincronização
+    if (id) {
+      const product = await this.prisma.product.upsert({
+        where: { id },
+        create: {
+          id,
+          ...productData,
+          sku: createDto.sku || `SKU-${Date.now()}`,
+          costUnit: createDto.costUnit || 0,
+          unitsPerBox: createDto.unitsPerBox || 1,
+          priceUnit: createDto.priceUnit || 0,
+          category: categoryId ? { connect: { id: categoryId } } : undefined,
+        },
+        update: {
+          ...productData,
+          category: categoryId ? { connect: { id: categoryId } } : undefined,
+        },
+        include: {
+          category: true,
+        },
+      });
+      return product;
+    }
+
+    // Verificar se já existe produto com mesmo SKU (apenas para novos produtos)
     if (createDto.sku) {
       const existing = await this.prisma.product.findUnique({
         where: { sku: createDto.sku },
@@ -28,10 +54,8 @@ export class ProductsService {
       }
     }
 
-    const { categoryId, id, ...productData } = createDto;
     const product = await this.prisma.product.create({
       data: {
-        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
         ...productData,
         sku: createDto.sku || `SKU-${Date.now()}`,
         costUnit: createDto.costUnit || 0,
