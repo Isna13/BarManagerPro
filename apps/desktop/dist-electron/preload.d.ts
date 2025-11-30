@@ -128,6 +128,7 @@ declare const api: {
         stop: () => Promise<any>;
         status: () => Promise<any>;
         forcePush: () => Promise<any>;
+        pushFullInitialSync: () => Promise<any>;
         checkConnection: () => Promise<any>;
         tryReauthenticate: () => Promise<any>;
         onSyncStart: (callback: () => void) => () => Electron.IpcRenderer;

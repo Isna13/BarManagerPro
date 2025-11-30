@@ -7,9 +7,10 @@ export class CategoriesService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateCategoryDto) {
-    const { parentId, ...data } = createDto;
+    const { parentId, id, ...data } = createDto;
     return this.prisma.category.create({
       data: {
+        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
         ...data,
         sortOrder: createDto.sortOrder || 0,
         isActive: createDto.isActive ?? true,

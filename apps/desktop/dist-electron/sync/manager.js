@@ -707,6 +707,167 @@ class SyncManager {
             return false;
         }
     }
+    /**
+     * Push inicial completo - envia TODOS os dados existentes no SQLite para o servidor
+     * Use esta função quando precisar sincronizar dados que já existiam antes do sistema de sync
+     */
+    async pushFullInitialSync() {
+        console.log('🚀 Iniciando PUSH INICIAL COMPLETO de todos os dados...');
+        this.emit('sync:progress', { progress: 0, message: 'Iniciando push completo...' });
+        if (!this.token || this.token === 'offline-token') {
+            console.error('❌ Token inválido para push completo');
+            return { success: false, summary: {} };
+        }
+        const summary = {};
+        // Entidades a sincronizar na ordem correta (respeitando dependências)
+        // Usando métodos existentes do DatabaseManager
+        const entities = [
+            { name: 'categories', getter: () => this.dbManager.getCategories(), endpoint: '/categories' },
+            { name: 'suppliers', getter: () => this.dbManager.getSuppliers(), endpoint: '/suppliers' },
+            { name: 'products', getter: () => this.dbManager.getProducts(), endpoint: '/products' },
+            { name: 'customers', getter: () => this.dbManager.getCustomers(), endpoint: '/customers' },
+        ];
+        let totalProgress = 0;
+        const progressStep = 100 / entities.length;
+        for (const entity of entities) {
+            console.log(`📦 Sincronizando ${entity.name}...`);
+            summary[entity.name] = { sent: 0, errors: 0 };
+            try {
+                const items = entity.getter();
+                console.log(`   📊 ${items.length} itens encontrados`);
+                for (const item of items) {
+                    try {
+                        // Preparar dados (remover campos que não devem ser enviados)
+                        const data = this.prepareDataForSync(entity.name, item);
+                        // Tentar criar no servidor (POST)
+                        await this.apiClient.post(entity.endpoint, data);
+                        summary[entity.name].sent++;
+                        console.log(`   ✅ ${entity.name}[${item.id}] sincronizado`);
+                    }
+                    catch (error) {
+                        // Se já existe (409 Conflict), tentar atualizar (PUT)
+                        if (error?.response?.status === 409 || error?.response?.status === 400) {
+                            try {
+                                const data = this.prepareDataForSync(entity.name, item);
+                                await this.apiClient.put(`${entity.endpoint}/${item.id}`, data);
+                                summary[entity.name].sent++;
+                                console.log(`   🔄 ${entity.name}[${item.id}] atualizado (já existia)`);
+                            }
+                            catch (updateError) {
+                                summary[entity.name].errors++;
+                                console.error(`   ❌ ${entity.name}[${item.id}] erro ao atualizar:`, updateError?.message);
+                            }
+                        }
+                        else {
+                            summary[entity.name].errors++;
+                            console.error(`   ❌ ${entity.name}[${item.id}] erro:`, error?.response?.data?.message || error?.message);
+                        }
+                    }
+                }
+            }
+            catch (entityError) {
+                console.error(`❌ Erro ao processar ${entity.name}:`, entityError?.message);
+                summary[entity.name].errors++;
+            }
+            totalProgress += progressStep;
+            this.emit('sync:progress', {
+                progress: Math.min(totalProgress, 100),
+                message: `${entity.name}: ${summary[entity.name].sent} enviados, ${summary[entity.name].errors} erros`
+            });
+        }
+        console.log('📊 RESUMO DO PUSH INICIAL:');
+        let totalSent = 0;
+        let totalErrors = 0;
+        for (const [entityName, stats] of Object.entries(summary)) {
+            console.log(`   ${entityName}: ${stats.sent} enviados, ${stats.errors} erros`);
+            totalSent += stats.sent;
+            totalErrors += stats.errors;
+        }
+        console.log(`   TOTAL: ${totalSent} enviados, ${totalErrors} erros`);
+        const success = totalErrors === 0;
+        this.emit('sync:completed', {
+            success,
+            type: 'full-initial-sync',
+            summary,
+            lastSync: new Date()
+        });
+        return { success, summary };
+    }
+    /**
+     * Prepara os dados de uma entidade para envio ao servidor
+     * Mapeia campos do SQLite para o formato esperado pelo backend
+     */
+    prepareDataForSync(entityName, item) {
+        // Clone para não modificar o original
+        const data = {};
+        // Mapeamentos específicos por entidade (SQLite -> Backend)
+        if (entityName === 'categories') {
+            data.name = item.name;
+            data.description = item.description;
+            data.parentId = item.parent_id;
+            data.sortOrder = item.sort_order || 0;
+            data.isActive = item.is_active === 1;
+            if (item.id)
+                data.id = item.id;
+        }
+        else if (entityName === 'suppliers') {
+            data.name = item.name;
+            data.code = item.code;
+            data.contactPerson = item.contact_person;
+            data.phone = item.phone;
+            data.email = item.email;
+            data.address = item.address;
+            data.taxId = item.tax_id;
+            data.paymentTerms = item.payment_terms;
+            data.notes = item.notes;
+            data.isActive = item.is_active === 1;
+            if (item.id)
+                data.id = item.id;
+        }
+        else if (entityName === 'products') {
+            data.name = item.name;
+            data.description = item.description;
+            data.sku = item.sku;
+            data.barcode = item.barcode;
+            data.categoryId = item.category_id;
+            data.unitsPerBox = item.units_per_box || 1;
+            data.priceUnit = Math.round((item.sell_price || 0) * 100); // Converter para centavos
+            data.priceBox = Math.round((item.sell_price || 0) * (item.units_per_box || 1) * 100);
+            data.costUnit = Math.round((item.cost_price || 0) * 100);
+            data.costBox = Math.round((item.cost_price || 0) * (item.units_per_box || 1) * 100);
+            data.minStock = item.low_stock_alert || 0;
+            data.isActive = item.is_active === 1;
+            data.trackInventory = true;
+            if (item.id)
+                data.id = item.id;
+        }
+        else if (entityName === 'customers') {
+            data.name = item.name || item.full_name;
+            data.fullName = item.full_name || item.name;
+            data.phone = item.phone;
+            data.email = item.email;
+            data.creditLimit = item.credit_limit || 0;
+            data.notes = item.notes;
+            data.branchId = item.branch_id || 'main-branch'; // Default branch ID
+            if (item.id)
+                data.id = item.id;
+        }
+        else {
+            // Fallback: copiar todos os campos com mapeamento básico
+            for (const [key, value] of Object.entries(item)) {
+                // Converter snake_case para camelCase
+                const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+                data[camelKey] = value;
+            }
+        }
+        // Remover campos nulos ou undefined
+        for (const key of Object.keys(data)) {
+            if (data[key] === null || data[key] === undefined) {
+                delete data[key];
+            }
+        }
+        return data;
+    }
 }
 exports.SyncManager = SyncManager;
 //# sourceMappingURL=manager.js.map

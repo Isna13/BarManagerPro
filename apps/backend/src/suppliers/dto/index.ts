@@ -1,15 +1,28 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsBoolean } from 'class-validator';
 
 export class CreateSupplierDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsOptional()
   @IsString()
-  branchId: string;
+  branchId?: string;
 
   @IsString()
   name: string;
 
   @IsOptional()
   @IsString()
+  code?: string;
+
+  @IsOptional()
+  @IsString()
   contact?: string;
+
+  @IsOptional()
+  @IsString()
+  contactPerson?: string;
 
   @IsOptional()
   @IsString()

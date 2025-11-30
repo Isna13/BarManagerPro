@@ -1,8 +1,13 @@
-import { IsString, IsOptional, IsInt, Min, IsEmail } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, IsEmail, IsUUID, IsBoolean } from 'class-validator';
 
 export class CreateCustomerDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsOptional()
   @IsString()
-  branchId: string;
+  branchId?: string;
 
   @IsString()
   name: string;

@@ -8,7 +8,7 @@ export class CustomersService {
 
   async create(createDto: CreateCustomerDto) {
     // Verificar se já existe cliente com mesmo telefone ou email
-    if (createDto.phone) {
+    if (createDto.phone && createDto.branchId) {
       const existing = await this.prisma.customer.findFirst({
         where: { phone: createDto.phone, branchId: createDto.branchId },
       });
@@ -17,12 +17,13 @@ export class CustomersService {
       }
     }
 
-    const { name, branchId, ...rest } = createDto;
+    const { name, branchId, id, ...rest } = createDto;
     return this.prisma.customer.create({
       data: {
+        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
         ...rest,
         code: `CUST-${Date.now()}`,
-        fullName: name || createDto.fullName,
+        fullName: name || createDto.fullName || 'Cliente',
         currentDebt: 0,
         ...(branchId && { branch: { connect: { id: branchId } } }),
       },

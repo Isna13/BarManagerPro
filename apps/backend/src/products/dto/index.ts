@@ -1,8 +1,13 @@
-import { IsString, IsInt, IsOptional, IsBoolean, Min } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsBoolean, Min, IsUUID, IsNumber } from 'class-validator';
 
 export class CreateProductDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsOptional()
   @IsString()
-  categoryId: string;
+  categoryId?: string;
 
   @IsString()
   name: string;
@@ -19,13 +24,15 @@ export class CreateProductDto {
   @IsString()
   barcode?: string;
 
+  @IsOptional()
   @IsInt()
   @Min(1)
-  unitsPerBox: number;
+  unitsPerBox?: number;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  priceUnit: number;
+  priceUnit?: number;
 
   @IsOptional()
   @IsInt()

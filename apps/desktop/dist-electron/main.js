@@ -453,6 +453,10 @@ electron_1.ipcMain.handle('sync:forcePush', async () => {
     await syncManager.forcePush();
     return { success: true };
 });
+// Push inicial completo - envia TODOS os dados existentes para o servidor
+electron_1.ipcMain.handle('sync:pushFullInitialSync', async () => {
+    return await syncManager.pushFullInitialSync();
+});
 // Settings
 electron_1.ipcMain.handle('settings:get', async (_, key) => {
     return store.get(key);

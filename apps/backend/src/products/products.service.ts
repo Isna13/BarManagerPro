@@ -7,13 +7,15 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateProductDto) {
-    // Verificar se categoria existe
-    const category = await this.prisma.category.findUnique({
-      where: { id: createDto.categoryId },
-    });
+    // Verificar se categoria existe (se fornecida)
+    if (createDto.categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: createDto.categoryId },
+      });
 
-    if (!category) {
-      throw new NotFoundException('Categoria não encontrada');
+      if (!category) {
+        throw new NotFoundException('Categoria não encontrada');
+      }
     }
 
     // Verificar se já existe produto com mesmo SKU
@@ -26,12 +28,15 @@ export class ProductsService {
       }
     }
 
-    const { categoryId, ...productData } = createDto;
+    const { categoryId, id, ...productData } = createDto;
     const product = await this.prisma.product.create({
       data: {
+        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
         ...productData,
         sku: createDto.sku || `SKU-${Date.now()}`,
         costUnit: createDto.costUnit || 0,
+        unitsPerBox: createDto.unitsPerBox || 1,
+        priceUnit: createDto.priceUnit || 0,
         category: categoryId ? { connect: { id: categoryId } } : undefined,
       },
       include: {

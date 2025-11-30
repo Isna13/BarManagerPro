@@ -42,5 +42,21 @@ export declare class SyncManager {
      * Usado para converter token offline para token válido
      */
     tryReauthenticate(retries?: number): Promise<boolean>;
+    /**
+     * Push inicial completo - envia TODOS os dados existentes no SQLite para o servidor
+     * Use esta função quando precisar sincronizar dados que já existiam antes do sistema de sync
+     */
+    pushFullInitialSync(): Promise<{
+        success: boolean;
+        summary: Record<string, {
+            sent: number;
+            errors: number;
+        }>;
+    }>;
+    /**
+     * Prepara os dados de uma entidade para envio ao servidor
+     * Mapeia campos do SQLite para o formato esperado pelo backend
+     */
+    private prepareDataForSync;
 }
 //# sourceMappingURL=manager.d.ts.map

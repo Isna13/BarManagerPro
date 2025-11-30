@@ -7,10 +7,11 @@ export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateSupplierDto) {
-    const { branchId, ...data } = createDto;
-    const code = `SUP-${Date.now()}`;
+    const { branchId, id, code: providedCode, ...data } = createDto;
+    const code = providedCode || `SUP-${Date.now()}`;
     return this.prisma.supplier.create({
       data: {
+        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
         code,
         ...data,
         ...(branchId && { branchId }),

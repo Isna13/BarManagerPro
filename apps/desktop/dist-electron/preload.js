@@ -152,6 +152,7 @@ const api = {
         stop: () => electron_1.ipcRenderer.invoke('sync:stop'),
         status: () => electron_1.ipcRenderer.invoke('sync:status'),
         forcePush: () => electron_1.ipcRenderer.invoke('sync:forcePush'),
+        pushFullInitialSync: () => electron_1.ipcRenderer.invoke('sync:pushFullInitialSync'),
         checkConnection: () => electron_1.ipcRenderer.invoke('sync:checkConnection'),
         tryReauthenticate: () => electron_1.ipcRenderer.invoke('sync:tryReauthenticate'),
         // Listeners
