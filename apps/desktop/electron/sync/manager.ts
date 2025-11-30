@@ -252,38 +252,6 @@ export class SyncManager {
     }
   }
 
-  // Converte snake_case para camelCase
-  private snakeToCamel(str: string): string {
-    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-  }
-
-  // Prepara dados para envio ao backend (converte formato SQLite para API)
-  private prepareDataForSync(entity: string, data: any): any {
-    const result: any = {};
-    
-    for (const [key, value] of Object.entries(data)) {
-      // Ignorar campos internos que não devem ser sincronizados
-      if (['synced', 'last_sync', 'created_at', 'updated_at'].includes(key)) {
-        continue;
-      }
-      
-      // Converter snake_case para camelCase
-      const camelKey = this.snakeToCamel(key);
-      
-      // Converter valores
-      if (typeof value === 'number' && (key.includes('is_') || key.includes('_active') || key === 'synced')) {
-        // Converter 0/1 para boolean para campos booleanos
-        result[camelKey] = value === 1;
-      } else if (value === null || value === 'null') {
-        result[camelKey] = null;
-      } else {
-        result[camelKey] = value;
-      }
-    }
-    
-    return result;
-  }
-
   private async pushLocalChanges() {
     const pendingItems = this.dbManager.getPendingSyncItems() as SyncItem[];
     
