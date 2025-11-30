@@ -1,5 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
-# V9 - DATABASE_URL hardcoded no RUN, não em ENV
+# V10 - FORCE RESET para limpar banco e recriar schema
 FROM node:20-slim
 
 # Instalar dependências do sistema necessárias
