@@ -437,7 +437,7 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             } else {
               this.dbManager.createCategory({
                 id: item.id,
@@ -448,7 +448,7 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar category ${item.id}:`, e?.message);
@@ -475,7 +475,7 @@ export class SyncManager {
                 isActive: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 lastSync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             } else {
               this.dbManager.createProduct({
                 id: item.id,
@@ -492,7 +492,7 @@ export class SyncManager {
                 isActive: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 lastSync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar product ${item.id}:`, e?.message);
@@ -515,7 +515,7 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             } else {
               this.dbManager.createCustomer({
                 id: item.id,
@@ -528,7 +528,7 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar customer ${item.id}:`, e?.message);
@@ -550,7 +550,7 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             } else {
               this.dbManager.createSupplier({
                 id: item.id,
@@ -562,7 +562,7 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
-              });
+              }, true); // skipSyncQueue = true para evitar loop
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar supplier ${item.id}:`, e?.message);

@@ -1,0 +1,1325 @@
+// Schema Prisma para BarManager Pro - Guiné-Bissau
+// Banco central PostgreSQL para sincronização
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTENTICAÇÃO E AUTORIZAÇÃO
+// ============================================
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  phone            String?   @unique
+  password         String
+  fullName         String
+  language         String    @default("pt") // pt, kriol, fr
+  isActive         Boolean   @default(true)
+  lastLogin        DateTime?
+  twoFactorEnabled Boolean   @default(false)
+  twoFactorSecret  String?
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  roleId   String?
+  role     Role?   @relation(fields: [roleId], references: [id])
+  roleName String? // Fallback para role como string simples
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  sales         Sale[]
+  cashBoxes     CashBox[]
+  debts         Debt[]
+  purchases     Purchase[]
+  notifications Notification[] @relation("UserNotifications")
+
+  @@index([email])
+  @@index([branchId])
+  @@map("users")
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  name        String  @unique // admin, manager, cashier, waiter, owner
+  description String?
+  isSystem    Boolean @default(false)
+
+  permissions Permission[]
+  users       User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  resource    String // sales, inventory, cash, reports, settings
+  action      String // create, read, update, delete, approve
+  description String?
+
+  roles Role[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  deviceInfo String?
+  ipAddress  String?
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ============================================
+// MULTI-UNIDADE / FILIAIS
+// ============================================
+
+model Branch {
+  id            String  @id @default(uuid())
+  name          String
+  code          String  @unique // código único da filial
+  address       String?
+  phone         String?
+  email         String?
+  nif           String? // NIF da filial
+  isActive      Boolean @default(true)
+  isHeadquarter Boolean @default(false)
+  timezone      String  @default("GMT+0")
+
+  settings Json? // configurações específicas da filial
+
+  users          User[]
+  products       Product[]
+  inventoryItems InventoryItem[]
+  sales          Sale[]
+  cashBoxes      CashBox[]
+  customers      Customer[]
+  suppliers      Supplier[]
+  purchases      Purchase[]
+  tables         Table[]
+  printers       Printer[]
+
+  transfersFrom InventoryTransfer[] @relation("TransferFrom")
+  transfersTo   InventoryTransfer[] @relation("TransferTo")
+  notifications Notification[]      @relation("BranchNotifications")
+  campaigns     Campaign[]          @relation("BranchCampaigns")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@map("branches")
+}
+
+// ============================================
+// PRODUTOS E INVENTÁRIO
+// ============================================
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String
+  nameKriol   String?
+  nameFr      String?
+  description String?
+  parentId    String?
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id])
+  children    Category[] @relation("SubCategories")
+
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("categories")
+}
+
+model Product {
+  id          String  @id @default(uuid())
+  sku         String  @unique
+  barcode     String? @unique
+  name        String
+  nameKriol   String?
+  nameFr      String?
+  description String?
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  // Unidade base
+  unitName String @default("unidade") // unidade, litro, kg, etc
+
+  // Caixa (conversão)
+  boxEnabled  Boolean @default(false)
+  unitsPerBox Int     @default(1)
+  boxName     String  @default("caixa")
+
+  // Preços (em FCFA - XOF)
+  priceUnit Int // preço por unidade (centavos FCFA)
+  priceBox  Int? // preço por caixa
+  costUnit  Int // custo unitário
+  costBox   Int? // custo por caixa
+
+  // Margens Muntu (economia por volume)
+  minMarginPercent Decimal @default(0) @db.Decimal(5, 2)
+  maxDiscountMuntu Decimal @default(0) @db.Decimal(5, 2)
+
+  // Impostos
+  taxRate Decimal @default(0) @db.Decimal(5, 2)
+
+  // Estoque
+  trackInventory Boolean @default(true)
+  lowStockAlert  Int     @default(10) // alerta quando menor que X unidades
+  reorderPoint   Int     @default(20) // ponto de reordenação automática
+  reorderQty     Int     @default(50) // quantidade a reordenar
+
+  // Validade
+  hasExpiry  Boolean @default(false)
+  expiryDays Int? // dias até expirar após entrada
+
+  // Configurações
+  allowFractions  Boolean @default(false)
+  isActive        Boolean @default(true)
+  isMuntuEligible Boolean @default(true)
+
+  // Produção (KDS)
+  productionStation String? // kitchen, bar, drinks
+  preparationTime   Int? // minutos
+
+  imageUrl String?
+
+  inventoryItems InventoryItem[]
+  saleItems      SaleItem[]
+  priceHistory   ProductPriceHistory[]
+  purchaseItems  PurchaseItem[]
+  forecastItems  ForecastItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sku])
+  @@index([barcode])
+  @@index([categoryId])
+  @@index([branchId])
+  @@map("products")
+}
+
+model ProductPriceHistory {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  priceUnit Int
+  priceBox  Int?
+  costUnit  Int
+  costBox   Int?
+
+  reason    String? // ajuste manual, compra, promoção
+  changedBy String?
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_price_history")
+}
+
+model InventoryItem {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  // Estoque em unidades (sempre convertido)
+  qtyUnits Int @default(0)
+  qtyBoxes Int @default(0) // calculado: qtyUnits / unitsPerBox
+  minStock Int @default(10) // estoque mínimo para alertas
+
+  // Lote e validade
+  batchNumber String?
+  expiryDate  DateTime?
+
+  // Localização
+  location String? // prateleira, geladeira, depósito
+
+  lastCountDate DateTime?
+  lastCountBy   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements InventoryMovement[]
+
+  @@unique([productId, branchId, batchNumber])
+  @@index([productId])
+  @@index([branchId])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id              String        @id @default(uuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  type     String // in (entrada), out (saída), adjustment (ajuste), transfer, sale, waste (perda)
+  qtyUnits Int // quantidade em unidades (positivo = entrada, negativo = saída)
+
+  reason String?
+  notes  String?
+
+  referenceType String? // sale, purchase, transfer, count
+  referenceId   String? // ID da venda/compra/transferência
+
+  performedBy String?
+
+  createdAt DateTime @default(now())
+
+  @@index([inventoryItemId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+model InventoryTransfer {
+  id String @id @default(uuid())
+
+  fromBranchId String
+  fromBranch   Branch @relation("TransferFrom", fields: [fromBranchId], references: [id])
+
+  toBranchId String
+  toBranch   Branch @relation("TransferTo", fields: [toBranchId], references: [id])
+
+  status String @default("pending") // pending, in_transit, received, cancelled
+
+  requestedBy String
+  approvedBy  String?
+  sentBy      String?
+  receivedBy  String?
+
+  items Json // [ { productId, qtyUnits, notes } ]
+  notes String?
+
+  requestedAt DateTime  @default(now())
+  approvedAt  DateTime?
+  sentAt      DateTime?
+  receivedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fromBranchId])
+  @@index([toBranchId])
+  @@index([status])
+  @@map("inventory_transfers")
+}
+
+// ============================================
+// VENDAS E PDV
+// ============================================
+
+model Table {
+  id       String @id @default(uuid())
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  number String // número/nome da mesa
+  seats  Int     @default(4)
+  area   String? // salão interno, terraço, vip
+  qrCode String? @unique // QR code para menu digital
+
+  isActive Boolean @default(true)
+
+  sales Sale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, number])
+  @@index([branchId])
+  @@map("tables")
+}
+
+model Sale {
+  id         String @id @default(uuid())
+  saleNumber String @unique // número sequencial da venda
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  type String @default("counter") // counter (balcão), table (mesa)
+
+  tableId String?
+  table   Table?  @relation(fields: [tableId], references: [id])
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  cashierId String
+  cashier   User   @relation(fields: [cashierId], references: [id])
+
+  // Status
+  status String @default("open") // open, closed, cancelled
+
+  // Totais (em centavos FCFA)
+  subtotal      Int @default(0)
+  taxTotal      Int @default(0)
+  discountTotal Int @default(0)
+  total         Int @default(0)
+
+  // Descontos Muntu
+  muntuSavings Int @default(0) // economia total com Muntu
+
+  // Observações
+  notes String?
+
+  // Timestamps
+  openedAt    DateTime  @default(now())
+  closedAt    DateTime?
+  cancelledAt DateTime?
+
+  items     SaleItem[]
+  payments  Payment[]
+  debts     Debt[]
+  feedbacks Feedback[] @relation("SaleFeedbacks")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([saleNumber])
+  @@index([branchId])
+  @@index([customerId])
+  @@index([status])
+  @@index([openedAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id     String @id @default(uuid())
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Quantidade
+  qtyUnits Int // sempre em unidades
+  isMuntu  Boolean @default(false) // venda por caixa com economia
+
+  // Preços no momento da venda
+  unitPrice Int
+  unitCost  Int
+
+  // Totais
+  subtotal       Int // qtyUnits * unitPrice
+  tax            Int @default(0) // valor do imposto (alias para taxAmount)
+  taxAmount      Int
+  discountAmount Int @default(0)
+  total          Int
+
+  // Muntu
+  muntuSavings Int @default(0)
+
+  // Produção (KDS)
+  productionStatus String    @default("pending") // pending, preparing, ready, served
+  sentToKitchenAt  DateTime?
+  readyAt          DateTime?
+  servedAt         DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+model Payment {
+  id     String  @id @default(uuid())
+  saleId String?
+  sale   Sale?   @relation(fields: [saleId], references: [id])
+
+  debtId String?
+  debt   Debt?   @relation(fields: [debtId], references: [id])
+
+  method   String // cash, card, mobile_money, debt (fiado)
+  provider String? // orange_money, teletaku, visa, mastercard
+
+  amount Int // em centavos FCFA
+
+  // Referência externa (Mobile Money)
+  referenceNumber String?
+  transactionId   String?
+
+  status String @default("completed") // pending, completed, failed, refunded
+
+  notes String?
+
+  processedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([saleId])
+  @@index([debtId])
+  @@index([method])
+  @@map("payments")
+}
+
+// ============================================
+// DÍVIDAS / FIADOS
+// ============================================
+
+model Customer {
+  id       String  @id @default(uuid())
+  code     String  @unique
+  fullName String
+  phone    String?
+  email    String?
+  address  String?
+  nif      String?
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  // Limite de crédito
+  creditLimit Int @default(0) // em centavos FCFA
+  currentDebt Int @default(0) // dívida atual total
+
+  // Bloqueio automático
+  isBlocked   Boolean @default(false)
+  blockReason String?
+
+  // Fidelidade
+  loyaltyPoints Int @default(0)
+  totalSpent    Int @default(0)
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  sales        Sale[]
+  debts        Debt[]
+  loyaltyTxns  LoyaltyTransaction[]
+  feedbacks    CustomerFeedback[]
+  feedbacksNew Feedback[]           @relation("CustomerFeedbacks")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([phone])
+  @@index([branchId])
+  @@map("customers")
+}
+
+model Debt {
+  id         String @id @default(uuid())
+  debtNumber String @unique
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  saleId String? @unique
+  sale   Sale?   @relation(fields: [saleId], references: [id])
+
+  branchId String? // filial onde a dívida foi criada
+
+  originalAmount Int // valor original da dívida
+  paidAmount     Int @default(0)
+  balance        Int // saldo devedor (renomeado de balanceAmount para compatibilidade)
+  amount         Int // alias para originalAmount (compatibilidade)
+  paid           Int @default(0) // alias para paidAmount (compatibilidade)
+
+  status String @default("open") // open, partial, paid, cancelled, overdue
+
+  dueDate DateTime?
+
+  createdBy     String
+  createdByUser User   @relation(fields: [createdBy], references: [id])
+
+  notes String?
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("debts")
+}
+
+// ============================================
+// CAIXA
+// ============================================
+
+model CashBox {
+  id        String @id @default(uuid())
+  boxNumber String @unique
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  openedBy     String
+  openedByUser User   @relation(fields: [openedBy], references: [id])
+
+  closedBy String?
+
+  status String @default("open") // open, closed
+
+  // Valores de abertura
+  openingCash Int @default(0)
+
+  // Totais calculados
+  totalSales       Int @default(0)
+  totalCash        Int @default(0)
+  totalCard        Int @default(0)
+  totalMobileMoney Int @default(0)
+  totalDebt        Int @default(0) // fiados criados
+
+  // Fechamento
+  closingCash Int?
+  difference  Int? // diferença entre esperado e real
+
+  notes String?
+
+  openedAt DateTime  @default(now())
+  closedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([status])
+  @@index([openedAt])
+  @@map("cash_boxes")
+}
+
+// ============================================
+// FORNECEDORES E COMPRAS
+// ============================================
+
+model Supplier {
+  id      String  @id @default(uuid())
+  code    String  @unique
+  name    String
+  phone   String?
+  email   String?
+  address String?
+  nif     String?
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  // Termos de pagamento
+  paymentTerms String? // à vista, 30 dias, etc
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  purchases Purchase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([branchId])
+  @@map("suppliers")
+}
+
+model Purchase {
+  id             String @id @default(uuid())
+  purchaseNumber String @unique
+
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  createdBy     String
+  createdByUser User   @relation(fields: [createdBy], references: [id])
+
+  status String @default("draft") // draft, confirmed, received, cancelled
+
+  // Totais
+  subtotal  Int @default(0)
+  taxTotal  Int @default(0)
+  total     Int @default(0)
+  totalCost Int @default(0) // custo total calculado
+
+  // Anexo (recibo/nota fiscal)
+  receiptUrl String?
+
+  notes String?
+
+  orderedAt   DateTime  @default(now())
+  receivedAt  DateTime?
+  completedAt DateTime? // quando a compra foi concluída
+
+  items PurchaseItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supplierId])
+  @@index([branchId])
+  @@index([status])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String   @id @default(uuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  qtyBoxes Int @default(0)
+  qtyUnits Int // total de unidades
+
+  unitCost Int // custo unitário
+  boxCost  Int?
+
+  subtotal  Int
+  taxAmount Int @default(0)
+  total     Int
+
+  batchNumber String?
+  expiryDate  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+// ============================================
+// PREVISÃO DE DEMANDA
+// ============================================
+
+model ForecastItem {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  forecastDate DateTime // data prevista
+
+  // Previsão de demanda (unidades)
+  predictedQty Int
+  actualQty    Int? // quantidade real vendida (para ajuste do modelo)
+
+  method     String   @default("ema") // ema (média móvel), ml, manual
+  confidence Decimal? @db.Decimal(5, 2) // nível de confiança (0-100)
+
+  // Sugestão de reordenação
+  suggestReorder Boolean @default(false)
+  suggestedQty   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, forecastDate])
+  @@index([productId])
+  @@index([forecastDate])
+  @@map("forecast_items")
+}
+
+// ============================================
+// FIDELIDADE E MARKETING
+// ============================================
+
+model LoyaltyTransaction {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  type   String // earn (ganhou), redeem (gastou), adjustment
+  points Int // positivo = ganhou, negativo = gastou
+
+  referenceType String? // sale, campaign, manual
+  referenceId   String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("loyalty_transactions")
+}
+
+model Campaign {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+
+  branchId String?
+  branch   Branch? @relation("BranchCampaigns", fields: [branchId], references: [id])
+
+  type   String // discount, loyalty_bonus, coupon
+  status String @default("draft") // draft, active, scheduled, ended
+
+  // Segmentação
+  targetSegment Json? // { minSpent: 10000, lastVisit: '30d' }
+
+  // Configuração
+  discountPercent Decimal? @db.Decimal(5, 2)
+  discountAmount  Int?
+  loyaltyPoints   Int?
+
+  couponCode String? @unique
+  maxUses    Int?
+  usedCount  Int     @default(0)
+
+  startDate DateTime
+  endDate   DateTime
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([couponCode])
+  @@index([startDate, endDate])
+  @@index([status])
+  @@map("campaigns")
+}
+
+model CustomerFeedback {
+  id         String    @id @default(uuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  rating  Int // 1-5
+  comment String?
+
+  category String? // food, service, ambiance, price
+
+  submittedAt DateTime @default(now())
+
+  @@index([rating])
+  @@index([submittedAt])
+  @@map("customer_feedbacks")
+}
+
+// Modelo Feedback (alias usado pelo código)
+model Feedback {
+  id         String    @id @default(uuid())
+  customerId String?
+  customer   Customer? @relation("CustomerFeedbacks", fields: [customerId], references: [id])
+
+  saleId   String?
+  sale     Sale?   @relation("SaleFeedbacks", fields: [saleId], references: [id])
+  branchId String?
+
+  rating  Int // 1-5
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  @@index([customerId])
+  @@index([saleId])
+  @@index([branchId])
+  @@map("feedbacks")
+}
+
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation("UserNotifications", fields: [userId], references: [id])
+
+  branchId String?
+  branch   Branch? @relation("BranchNotifications", fields: [branchId], references: [id])
+
+  type     String // info, warning, alert, success
+  priority String @default("normal") // low, normal, high, urgent
+
+  title   String
+  message String
+
+  read   Boolean   @default(false)
+  readAt DateTime?
+
+  metadata Json? // dados adicionais
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model LoyaltyReward {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+
+  pointsCost     Int // custo em pontos de fidelidade
+  pointsRequired Int // alias para pointsCost (compatibilidade)
+
+  branchId String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([isActive])
+  @@map("loyalty_rewards")
+}
+
+// ============================================
+// CONFIGURAÇÕES E DISPOSITIVOS
+// ============================================
+
+model Printer {
+  id       String @id @default(uuid())
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  name      String
+  type      String // thermal, kds, label
+  ipAddress String?
+  port      Int?
+  model     String?
+
+  // Roteamento
+  routeTypes String[] // kitchen, bar, receipt, all
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@map("printers")
+}
+
+// ============================================
+// AUDITORIA E SEGURANÇA
+// ============================================
+
+model AuditLog {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  action     String // login, create_sale, close_cash, etc
+  entity     String // entidade afetada (adicionado para compatibilidade)
+  resource   String // sale, product, cash_box, etc
+  resourceId String?
+
+  details   Json? // detalhes da ação
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// SINCRONIZAÇÃO
+// ============================================
+
+model SyncQueue {
+  id String @id @default(uuid())
+
+  deviceId String // identificador único do dispositivo (Electron/Mobile)
+  branchId String?
+
+  operation String // create, update, delete
+  entity    String // sale, payment, inventory, etc
+  entityId  String
+
+  data     Json // dados da operação
+  priority Int  @default(5) // 1 (alta) a 10 (baixa)
+
+  status     String  @default("pending") // pending, processing, completed, failed
+  retryCount Int     @default(0)
+  lastError  String?
+
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([deviceId])
+  @@index([status])
+  @@index([priority, createdAt])
+  @@map("sync_queue")
+}
+
+model SyncConflict {
+  id String @id @default(uuid())
+
+  deviceId String
+  branchId String? // filial onde ocorreu o conflito
+  entity   String
+  entityId String
+
+  localData  Json
+  remoteData Json
+
+  resolution String? // auto, manual_local, manual_remote
+  resolved   Boolean   @default(false) // conflito foi resolvido?
+  resolvedBy String?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([branchId])
+  @@index([entity, entityId])
+  @@map("sync_conflicts")
+}
+
+// ============================================
+// MÓDULO DE HIGIENE / CHECKLIST
+// ============================================
+
+model ChecklistTemplate {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+
+  category  String // hygiene, safety, maintenance
+  frequency String // daily, weekly, monthly
+
+  items Json // [ { id, description, type: boolean|text } ]
+
+  isActive Boolean @default(true)
+
+  logs ChecklistLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("checklist_templates")
+}
+
+model ChecklistLog {
+  id         String            @id @default(uuid())
+  templateId String
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id])
+
+  performedBy String
+  branchId    String?
+
+  responses Json // [ { itemId, value, notes } ]
+  notes     String?
+
+  performedAt DateTime @default(now())
+
+  @@index([templateId])
+  @@index([performedAt])
+  @@map("checklist_logs")
+}
+
+// ============================================
+// BACKUPS E ANEXOS
+// ============================================
+
+model Backup {
+  id String @id @default(uuid())
+
+  type     String // auto, manual
+  scope    String // branch, full
+  branchId String?
+
+  fileUrl     String // URL no S3
+  fileSize    Int // bytes
+  isEncrypted Boolean @default(true)
+
+  status String @default("completed") // in_progress, completed, failed
+
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([branchId])
+  @@index([createdAt])
+  @@map("backups")
+}
+
+model Attachment {
+  id String @id @default(uuid())
+
+  entityType String // purchase, sale, product
+  entityId   String
+
+  fileName String
+  fileUrl  String
+  fileSize Int
+  mimeType String
+
+  uploadedBy String?
+  uploadedAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+// ============================================
+// TABELAS ADICIONAIS DO DESKTOP (SQLite)
+// ============================================
+
+model StockMovement {
+  id        String @id @default(uuid())
+  productId String
+  branchId  String?
+
+  movementType String // sale, purchase, adjustment, waste, return
+
+  quantity       Int
+  quantityBefore Int @default(0)
+  quantityAfter  Int @default(0)
+
+  closedBoxesBefore Int @default(0)
+  closedBoxesAfter  Int @default(0)
+  openBoxBefore     Int @default(0)
+  openBoxAfter      Int @default(0)
+
+  boxOpenedAutomatically Boolean @default(false)
+
+  reason      String?
+  responsible String?
+  terminal    String?
+  saleId      String?
+  purchaseId  String?
+  notes       String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([branchId])
+  @@index([movementType])
+  @@map("stock_movements")
+}
+
+model TableSession {
+  id            String  @id @default(uuid())
+  tableId       String
+  branchId      String?
+  sessionNumber String?
+
+  status   String @default("open") // open, closed
+  openedBy String?
+  closedBy String?
+
+  openedAt DateTime  @default(now())
+  closedAt DateTime?
+
+  totalAmount Int @default(0)
+  paidAmount  Int @default(0)
+
+  notes String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers TableCustomer[]
+  orders    TableOrder[]
+  payments  TablePayment[]
+  actions   TableAction[]
+
+  @@index([tableId])
+  @@index([branchId])
+  @@index([status])
+  @@map("table_sessions")
+}
+
+model TableCustomer {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  customerName  String?
+  customerId    String?
+  orderSequence Int @default(1)
+
+  subtotal  Int @default(0)
+  discount  Int @default(0)
+  total     Int @default(0)
+  paidAmount Int @default(0)
+
+  paymentStatus String @default("pending") // pending, partial, paid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders   TableOrder[]
+  payments TablePayment[]
+
+  @@index([sessionId])
+  @@map("table_customers")
+}
+
+model TableOrder {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  tableCustomerId String?
+  tableCustomer   TableCustomer? @relation(fields: [tableCustomerId], references: [id])
+
+  productId String
+
+  qtyUnits  Int @default(1)
+  isMuntu   Boolean @default(false)
+  unitPrice Int @default(0)
+  unitCost  Int @default(0)
+  subtotal  Int @default(0)
+  discount  Int @default(0)
+  total     Int @default(0)
+
+  status String @default("pending") // pending, preparing, ready, served, cancelled
+
+  notes       String?
+  orderedBy   String?
+  orderedAt   DateTime @default(now())
+  cancelledAt DateTime?
+  cancelledBy String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([tableCustomerId])
+  @@index([productId])
+  @@map("table_orders")
+}
+
+model TablePayment {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  tableCustomerId String?
+  tableCustomer   TableCustomer? @relation(fields: [tableCustomerId], references: [id])
+
+  paymentId       String?
+  method          String // cash, card, mobile_money
+  amount          Int @default(0)
+  referenceNumber String?
+
+  status      String    @default("completed") // pending, completed, failed
+  processedBy String?
+  processedAt DateTime?
+
+  notes String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([tableCustomerId])
+  @@map("table_payments")
+}
+
+model TableAction {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  actionType  String // open, close, order, payment, split, merge, transfer
+  performedBy String?
+  description String?
+  metadata    String? // JSON string
+
+  performedAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([actionType])
+  @@map("table_actions")
+}
+
+model DebtPayment {
+  id     String @id @default(uuid())
+  debtId String
+
+  paymentId String?
+  amount    Int
+  method    String // cash, card, mobile_money
+  reference String?
+  notes     String?
+
+  receivedBy String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([debtId])
+  @@map("debt_payments")
+}
+
+model Inventory {
+  id        String @id @default(uuid())
+  productId String
+  branchId  String?
+
+  quantityUnits Int @default(0)
+  quantityBoxes Int @default(0)
+  minStockUnits Int @default(10)
+
+  lastCountDate DateTime?
+
+  synced    Boolean   @default(false)
+  lastSync  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([productId, branchId])
+  @@index([productId])
+  @@index([branchId])
+  @@map("inventory")
+}
+
+model Setting {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}

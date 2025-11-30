@@ -221,9 +221,11 @@ class SyncManager {
         const pendingItems = this.dbManager.getPendingSyncItems();
         for (const item of pendingItems) {
             try {
-                const data = JSON.parse(item.data);
+                const rawData = JSON.parse(item.data);
+                const data = this.prepareDataForSync(item.entity, rawData);
                 // Mapear operações para endpoints
                 const endpoint = this.getEndpoint(item.entity, item.operation);
+                console.log(`📤 Sync ${item.entity}/${item.operation}:`, JSON.stringify(data).substring(0, 100));
                 if (item.operation === 'create') {
                     await this.apiClient.post(endpoint, data);
                 }
@@ -235,9 +237,10 @@ class SyncManager {
                 }
                 // Marcar como concluído
                 this.dbManager.markSyncItemCompleted(item.id);
+                console.log(`✅ Sync ${item.entity} concluído`);
             }
             catch (error) {
-                const errorMsg = error?.message || 'Unknown error';
+                const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
                 console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
                 // Verificar tipo de erro
                 if (error.response?.status === 401) {
