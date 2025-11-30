@@ -1,142 +1,155 @@
-# 🎯 Como Prosseguir - BarManager Pro
+# 🎯 Status do Projeto - BarManager Pro
 
-## Status Atual
+## ✅ Status Atual (Novembro 2025)
 
-✅ Projeto estruturado completamente
-✅ Dependências instaladas (pnpm)
-✅ Documentação completa criada
-❌ Banco de dados não configurado
+### Backend (NestJS + PostgreSQL)
+- ✅ **Rodando em produção no Railway**
+- ✅ URL: `https://barmanagerbackend-production.up.railway.app`
+- ✅ PostgreSQL configurado e funcionando
+- ✅ API REST completa com 24+ endpoints
+- ✅ Autenticação JWT implementada
+- ✅ WebSocket para sync em tempo real
 
-## 🚀 PRÓXIMO PASSO RECOMENDADO
+### Desktop (Electron + React)
+- ✅ **Funcionando com SQLite local**
+- ✅ Sincronização bidirecional com Railway
+- ✅ 10+ telas implementadas (Dashboard, Vendas, Produtos, etc.)
+- ✅ Modo offline com fila de sync
 
-### Instalar PostgreSQL (5 minutos)
+### Mobile (Flutter)
+- ✅ **App reconstruído com 10 abas**
+- ✅ Dashboard, Vendas, Produtos, Fornecedores
+- ✅ Compras, Estoque, Clientes, Dívidas
+- ✅ Caixa, Histórico de Caixa
+- ✅ Modo somente leitura (visualização)
+- ✅ APK compilando sem erros
 
+---
+
+## 🚀 Próximos Passos Recomendados
+
+### 1. Testar App Mobile no Dispositivo
 ```powershell
-# Opção 1: Via winget (mais rápido)
-winget install PostgreSQL.PostgreSQL
+# Gerar APK de debug
+cd C:\BarManagerPro\apps\mobile
+flutter build apk --debug
 
-# Opção 2: Download manual
-# https://www.postgresql.org/download/windows/
+# APK gerado em: build\app\outputs\flutter-apk\app-debug.apk
+# Transferir para dispositivo Android e instalar
 ```
 
-### Configurar após instalação
-
+### 2. Testar Desktop com Sincronização
 ```powershell
-# 1. Abrir psql (pode pedir senha definida na instalação)
-psql -U postgres
-
-# 2. Dentro do psql, executar:
-CREATE DATABASE barmanager_prod;
-CREATE USER barmanager WITH PASSWORD 'SuaSenhaForte123!';
-GRANT ALL PRIVILEGES ON DATABASE barmanager_prod TO barmanager;
-\q
-
-# 3. Voltar ao PowerShell e configurar .env
-cd C:\BarManagerPro\apps\backend
-
-# 4. Editar .env - mudar DATABASE_URL para:
-# DATABASE_URL="postgresql://barmanager:SuaSenhaForte123!@localhost:5432/barmanager_prod"
-
-# 5. Restaurar schema PostgreSQL original
-cd prisma
-Copy-Item schema.prisma.postgresql.backup schema.prisma -Force
-
-# 6. Gerar Prisma Client
-cd ..
-pnpm prisma:generate
-
-# 7. Executar migrations
-pnpm prisma:migrate dev --name init
-
-# 8. Popular com dados iniciais
-pnpm prisma:seed
-
-# 9. Iniciar backend
-pnpm dev
-```
-
-### Testar
-
-```powershell
-# Em outro terminal
 cd C:\BarManagerPro\apps\desktop
 pnpm dev
 ```
 
-## 📚 Documentação Criada
+### 3. Gerar APK de Release (quando pronto)
+```powershell
+cd C:\BarManagerPro\apps\mobile
 
-1. **README.md** - Visão geral completa do projeto
-2. **QUICKSTART.md** - Guia de início rápido
-3. **DATABASE_SETUP.md** - Opções de banco de dados
-4. **docs/INSTALL.md** - Instalação e deploy detalhado
-5. **docs/ARCHITECTURE.md** - Arquitetura do sistema
-6. **docs/SCRIPTS.md** - Scripts úteis
-7. **LICENSE** - Licença MIT
+# Configurar keystore primeiro (para Play Store)
+flutter build apk --release
 
-## 🎓 O Que Foi Criado
+# Ou gerar app bundle para Play Store
+flutter build appbundle --release
+```
 
-### Backend (NestJS)
-- ✅ 24 módulos estruturados
-- ✅ Auth completo (JWT, guards, strategies)
-- ✅ Sales module com lógica Muntu
-- ✅ Prisma schema completo (30+ models)
-- ✅ Script de seed com dados iniciais
+---
 
-### Desktop (Electron)
-- ✅ SQLite manager completo
-- ✅ Sync manager com fila de prioridade
-- ✅ React UI com autenticação
-- ✅ Rotas e layout configurados
-
-### Mobile (Flutter)
-- ✅ Estrutura completa
-- ✅ Providers (Auth, Sync)
-- ✅ Screens scaffolding
-
-## 📊 Credenciais Padrão
-
-Após executar `pnpm prisma:seed`:
+## 📊 Credenciais de Acesso
 
 ```
-Email: admin@barmanager.gw
+Email: admin@barmanager.ao
 Senha: admin123
+
+URL API: https://barmanagerbackend-production.up.railway.app/api/v1
 ```
 
-## ⚡ Alternativa Rápida (SQLite)
+---
 
-Se não quiser instalar PostgreSQL agora, veja `DATABASE_SETUP.md` para usar SQLite temporariamente (não recomendado para produção).
+## 📱 Funcionalidades do App Mobile
 
-## 💡 Dicas
+| Aba | Descrição | Status |
+|-----|-----------|--------|
+| Dashboard | Resumo geral, vendas do dia, top produtos | ✅ |
+| Vendas | Lista de vendas com filtros | ✅ |
+| Produtos | Catálogo com categorias e busca | ✅ |
+| Fornecedores | Lista de fornecedores | ✅ |
+| Compras | Histórico de compras | ✅ |
+| Estoque | 4 sub-abas: Dashboard, Detalhado, Movimentações, Valorização | ✅ |
+| Clientes | Lista de clientes com filtros | ✅ |
+| Dívidas | Controle de dívidas por status | ✅ |
+| Caixa | Caixa atual aberto | ✅ |
+| Histórico Caixa | Histórico de caixas fechados | ✅ |
 
-1. **PostgreSQL é fortemente recomendado** - suporta todos os recursos
-2. **O schema está otimizado para PostgreSQL** - JSON, Decimal, arrays
-3. **SQLite é limitado** - apenas para testes iniciais
-4. **Migre para PostgreSQL antes de produção**
+---
 
-## 🆘 Suporte
+## 🛠️ Comandos Úteis
 
-Se encontrar problemas:
-1. Verifique `QUICKSTART.md`
-2. Consulte `docs/INSTALL.md`
-3. Revise `DATABASE_SETUP.md`
+### Backend
+```powershell
+# Logs do Railway
+railway logs
+
+# Deploy manual
+railway up
+```
+
+### Desktop
+```powershell
+cd C:\BarManagerPro\apps\desktop
+
+# Desenvolvimento
+pnpm dev
+
+# Build para Windows
+pnpm build
+```
+
+### Mobile
+```powershell
+cd C:\BarManagerPro\apps\mobile
+
+# Análise de erros
+flutter analyze
+
+# Rodar no emulador/dispositivo
+flutter run
+
+# Build APK debug
+flutter build apk --debug
+
+# Build APK release
+flutter build apk --release
+```
+
+---
+
+## 📁 Estrutura do Projeto
+
+```
+BarManagerPro/
+├── apps/
+│   ├── backend/      # NestJS API (Railway)
+│   ├── desktop/      # Electron + React + SQLite
+│   └── mobile/       # Flutter (Android/iOS)
+├── docs/             # Documentação
+└── *.md              # Guias e instruções
+```
 
 ---
 
 ## 🎉 Resumo
 
-Você tem um projeto **completo e pronto para desenvolvimento**!
+O projeto **BarManager Pro** está **funcional e pronto para uso**:
 
-**Falta apenas**:
-1. Instalar PostgreSQL
-2. Criar o banco
-3. Executar migrations
-4. Iniciar os serviços
+- ✅ Backend em produção no Railway
+- ✅ Desktop com sync funcionando
+- ✅ Mobile pronto para testes
 
-**Tempo estimado**: 10-15 minutos
-
-Boa sorte com o BarManager Pro! 🚀
+**Próximo passo**: Testar o app mobile em um dispositivo Android real!
 
 ---
 
-**Criado em**: 24 de novembro de 2024  
-**Equipe**: BarManager Pro - Guiné-Bissau
+**Última atualização**: 30 de novembro de 2025
