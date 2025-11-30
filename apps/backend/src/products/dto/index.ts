@@ -30,32 +30,32 @@ export class CreateProductDto {
   unitsPerBox?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   priceUnit?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   priceBox?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   costUnit?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   costBox?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   taxRate?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   minMarginPercent?: number;
 
@@ -63,6 +63,11 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   minStock?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  lowStockAlert?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -100,32 +105,32 @@ export class UpdateProductDto {
   unitsPerBox?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   priceUnit?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   priceBox?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   costUnit?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   costBox?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   taxRate?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   @Min(0)
   minMarginPercent?: number;
 
@@ -133,6 +138,11 @@ export class UpdateProductDto {
   @IsInt()
   @Min(0)
   minStock?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  lowStockAlert?: number;
 
   @IsOptional()
   @IsBoolean()

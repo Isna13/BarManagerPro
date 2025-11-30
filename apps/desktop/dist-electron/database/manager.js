@@ -881,7 +881,7 @@ class DatabaseManager {
     `).all(`%${query}%`, `%${query}%`, `%${query}%`);
     }
     createProduct(productData) {
-        const id = this.generateUUID();
+        const id = productData.id || this.generateUUID();
         const stmt = this.db.prepare(`
       INSERT INTO products (
         id, sku, barcode, name, category_id, supplier_id, price_unit, price_box, cost_unit, 
@@ -890,8 +890,11 @@ class DatabaseManager {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
     `);
-        stmt.run(id, productData.sku, productData.barcode || null, productData.name, productData.categoryId || null, productData.supplierId || null, productData.priceUnit, productData.priceBox || null, productData.costUnit, productData.costBox || null, productData.unitsPerBox || null, productData.priceBox ? 1 : 0, productData.isMuntuEligible ? 1 : 0, productData.muntuQuantity || null, productData.muntuPrice || null, productData.lowStockAlert || 10);
-        this.addToSyncQueue('create', 'product', id, productData);
+        stmt.run(id, productData.sku, productData.barcode || null, productData.name, productData.categoryId || null, productData.supplierId || null, productData.priceUnit || 0, productData.priceBox || null, productData.costUnit || 0, productData.costBox || null, productData.unitsPerBox || null, productData.priceBox ? 1 : 0, productData.isMuntuEligible ? 1 : 0, productData.muntuQuantity || null, productData.muntuPrice || null, productData.lowStockAlert || 10);
+        // Só adiciona na fila de sync se não veio do servidor (não tem synced definido)
+        if (!productData.synced) {
+            this.addToSyncQueue('create', 'product', id, productData);
+        }
         // Criar registro inicial de inventário
         const branchId = 'main-branch'; // Filial padrão
         this.db.prepare(`
@@ -4423,8 +4426,8 @@ class DatabaseManager {
     setLastSyncDate(date) {
         try {
             this.db.prepare(`
-        INSERT OR REPLACE INTO settings (key, value, created_at, updated_at)
-        VALUES ('last_sync_date', ?, datetime('now'), datetime('now'))
+        INSERT OR REPLACE INTO settings (key, value, updated_at)
+        VALUES ('last_sync_date', ?, datetime('now'))
       `).run(date.toISOString());
         }
         catch (error) {
