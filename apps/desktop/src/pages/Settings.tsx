@@ -3,14 +3,18 @@ import {
   Database, CheckCircle, AlertCircle, Settings as SettingsIcon, 
   ShoppingCart, Table, Package, Printer, Shield, HardDrive, 
   Activity, Building, DollarSign, Globe, Calendar, Image,
-  Clock, FileText, Lock, History, Trash2, ChevronDown, ChevronUp
+  Clock, FileText, Lock, History, Trash2, ChevronDown, ChevronUp,
+  Cloud, RefreshCw, Upload, Wifi, WifiOff
 } from 'lucide-react';
 
 export default function SettingsPage() {
   const [migrationStatus, setMigrationStatus] = useState<any>(null);
+  const [syncStatus, setSyncStatus] = useState<any>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     database: true,
+    sync: true,
     general: false,
     pdv: false,
     tables: false,
@@ -42,6 +46,53 @@ export default function SettingsPage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFullSync = async () => {
+    try {
+      setSyncLoading(true);
+      setSyncStatus({ status: 'running', message: 'Iniciando sincronização completa...' });
+      
+      // @ts-ignore
+      const result = await window.electronAPI?.sync?.pushFullInitialSync?.();
+      
+      if (result?.success) {
+        setSyncStatus({
+          status: 'success',
+          message: 'Sincronização concluída com sucesso!',
+          summary: result.summary
+        });
+      } else {
+        setSyncStatus({
+          status: 'error',
+          message: 'Erro durante a sincronização',
+          summary: result?.summary
+        });
+      }
+    } catch (error: any) {
+      setSyncStatus({
+        status: 'error',
+        message: error.message || 'Erro ao sincronizar dados'
+      });
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleCheckConnection = async () => {
+    try {
+      // @ts-ignore
+      const isConnected = await window.electronAPI?.sync?.checkConnection?.();
+      setSyncStatus({
+        status: isConnected ? 'connected' : 'disconnected',
+        message: isConnected ? 'Conectado ao servidor Railway' : 'Sem conexão com o servidor'
+      });
+    } catch (error) {
+      setSyncStatus({
+        status: 'disconnected',
+        message: 'Não foi possível verificar conexão'
+      });
     }
   };
 
@@ -188,7 +239,104 @@ export default function SettingsPage() {
             </div>
           </ConfigCard>
 
-          {/* 2. Configurações Gerais */}
+          {/* 2. Sincronização com Railway (Cloud) */}
+          <ConfigCard title="Sincronização com Nuvem (Railway)" icon={Cloud} sectionKey="sync">
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2">Sincronização Inicial Completa</h3>
+                <p className="text-sm text-blue-800 mb-3">
+                  Esta operação envia <strong>TODOS</strong> os dados do banco local (categorias, produtos, clientes, fornecedores) 
+                  para o servidor Railway. Use quando o banco na nuvem estiver vazio ou para recriar os dados.
+                </p>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleFullSync}
+                    disabled={syncLoading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                  >
+                    {syncLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Sincronizando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Enviar Todos os Dados
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleCheckConnection}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2 transition-colors"
+                  >
+                    <Wifi className="w-4 h-4" />
+                    Verificar Conexão
+                  </button>
+                </div>
+              </div>
+
+              {/* Status da Sincronização */}
+              {syncStatus && (
+                <div className={`p-4 rounded-lg ${
+                  syncStatus.status === 'success' || syncStatus.status === 'connected' 
+                    ? 'bg-green-50 border border-green-200' 
+                    : syncStatus.status === 'error' || syncStatus.status === 'disconnected'
+                    ? 'bg-red-50 border border-red-200'
+                    : 'bg-blue-50 border border-blue-200'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    {syncStatus.status === 'success' || syncStatus.status === 'connected' ? (
+                      <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    ) : syncStatus.status === 'running' ? (
+                      <RefreshCw className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5 animate-spin" />
+                    ) : syncStatus.status === 'disconnected' ? (
+                      <WifiOff className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    )}
+                    
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${
+                        syncStatus.status === 'success' || syncStatus.status === 'connected'
+                          ? 'text-green-800' 
+                          : syncStatus.status === 'running'
+                          ? 'text-blue-800'
+                          : 'text-red-800'
+                      }`}>
+                        {syncStatus.message}
+                      </h4>
+                      
+                      {syncStatus.summary && (
+                        <div className="mt-2 text-sm space-y-1">
+                          {Object.entries(syncStatus.summary).map(([entity, stats]: [string, any]) => (
+                            <p key={entity} className="text-gray-700">
+                              • <strong>{entity}</strong>: {stats.sent} enviados, {stats.errors} erros
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-800">
+                    <p className="font-semibold mb-1">⚠️ Importante</p>
+                    <p>A sincronização automática já ocorre a cada 30 segundos para novos dados.</p>
+                    <p className="mt-1">Use "Enviar Todos os Dados" apenas para <strong>sincronização inicial</strong> ou para restaurar dados.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ConfigCard>
+
+          {/* 3. Configurações Gerais */}
           <ConfigCard title="Configurações Gerais do Sistema" icon={SettingsIcon} sectionKey="general">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
