@@ -36,6 +36,7 @@ import { BackupModule } from './backup/backup.module';
 import { AuditModule } from './audit/audit.module';
 import { WebSocketModule } from './websocket/websocket.module';
 import { HealthModule } from './health/health.module';
+import { ImportModule } from './import/import.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { HealthModule } from './health/health.module';
     AuditModule,
     WebSocketModule,
     HealthModule,
+    ImportModule,
   ],
 })
 export class AppModule implements NestModule {
