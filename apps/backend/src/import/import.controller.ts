@@ -51,13 +51,15 @@ export class ImportController {
           where: { id: p.id },
           create: {
             id: p.id,
-            sku: p.sku,
+            sku: p.sku || `SKU-${Date.now()}`,
             name: p.name,
             nameKriol: p.name_kriol,
             nameFr: p.name_fr,
             categoryId: p.category_id,
-            unitPrice: parseInt(p.unit_price) || 0,
-            boxPrice: parseInt(p.box_price) || 0,
+            priceUnit: parseInt(p.unit_price) || parseInt(p.price_unit) || 0,
+            priceBox: parseInt(p.box_price) || parseInt(p.price_box) || 0,
+            costUnit: parseInt(p.cost_unit) || 0,
+            costBox: parseInt(p.cost_box) || 0,
             unitsPerBox: p.units_per_box || 1,
             minMarginPercent: parseFloat(p.min_margin_percent) || 0,
             maxDiscountMuntu: parseFloat(p.max_discount_muntu) || 0,
@@ -88,16 +90,16 @@ export class ImportController {
 
       // Importar Estoque
       for (const i of data.inventory_items || []) {
+        if (!i.branch_id) continue; // branchId é obrigatório
         await this.prisma.inventoryItem.upsert({
           where: { id: i.id },
           create: {
             id: i.id,
             productId: i.product_id,
-            branchId: i.branch_id || null,
+            branchId: i.branch_id,
             qtyBoxes: i.qty_boxes || 0,
             qtyUnits: i.qty_units || 0,
             minStock: i.min_stock || 0,
-            maxStock: i.max_stock || 0,
           },
           update: {
             qtyBoxes: i.qty_boxes || 0,
@@ -108,18 +110,18 @@ export class ImportController {
 
       // Importar Vendas
       for (const s of data.sales || []) {
+        if (!s.branch_id) continue; // branchId é obrigatório
         await this.prisma.sale.upsert({
           where: { id: s.id },
           create: {
             id: s.id,
-            saleNumber: s.sale_number,
-            customerId: s.customer_id,
-            userId: s.user_id,
+            saleNumber: s.sale_number || `SALE-${Date.now()}`,
+            customerId: s.customer_id || null,
+            cashierId: s.user_id || s.cashier_id,
             branchId: s.branch_id,
-            status: s.status,
-            totalAmount: parseInt(s.total_amount) || 0,
-            paidAmount: parseInt(s.paid_amount) || 0,
-            isMuntu: s.is_muntu === 1,
+            status: s.status || 'closed',
+            total: parseInt(s.total_amount) || parseInt(s.total) || 0,
+            subtotal: parseInt(s.subtotal) || parseInt(s.total_amount) || 0,
           },
           update: {},
         });
@@ -127,16 +129,23 @@ export class ImportController {
 
       // Importar Itens de Venda
       for (const item of data.sale_items || []) {
+        const unitPrice = parseInt(item.unit_price) || 0;
+        const qtyUnits = item.quantity || item.qty_units || 0;
+        const subtotal = parseInt(item.subtotal) || (unitPrice * qtyUnits);
         await this.prisma.saleItem.upsert({
           where: { id: item.id },
           create: {
             id: item.id,
             saleId: item.sale_id,
             productId: item.product_id,
-            quantity: item.quantity || 0,
-            unitPrice: parseInt(item.unit_price) || 0,
-            subtotal: parseInt(item.subtotal) || 0,
-            muntuDiscount: parseInt(item.muntu_discount) || 0,
+            qtyUnits: qtyUnits,
+            unitPrice: unitPrice,
+            unitCost: parseInt(item.unit_cost) || 0,
+            subtotal: subtotal,
+            tax: parseInt(item.tax) || 0,
+            taxAmount: parseInt(item.tax_amount) || parseInt(item.tax) || 0,
+            total: parseInt(item.total) || subtotal,
+            muntuSavings: parseInt(item.muntu_discount) || parseInt(item.muntu_savings) || 0,
           },
           update: {},
         });
