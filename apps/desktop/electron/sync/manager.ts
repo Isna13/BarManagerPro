@@ -252,15 +252,50 @@ export class SyncManager {
     }
   }
 
+  // Converte snake_case para camelCase
+  private snakeToCamel(str: string): string {
+    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  // Prepara dados para envio ao backend (converte formato SQLite para API)
+  private prepareDataForSync(entity: string, data: any): any {
+    const result: any = {};
+    
+    for (const [key, value] of Object.entries(data)) {
+      // Ignorar campos internos que não devem ser sincronizados
+      if (['synced', 'last_sync', 'created_at', 'updated_at'].includes(key)) {
+        continue;
+      }
+      
+      // Converter snake_case para camelCase
+      const camelKey = this.snakeToCamel(key);
+      
+      // Converter valores
+      if (typeof value === 'number' && (key.includes('is_') || key.includes('_active') || key === 'synced')) {
+        // Converter 0/1 para boolean para campos booleanos
+        result[camelKey] = value === 1;
+      } else if (value === null || value === 'null') {
+        result[camelKey] = null;
+      } else {
+        result[camelKey] = value;
+      }
+    }
+    
+    return result;
+  }
+
   private async pushLocalChanges() {
     const pendingItems = this.dbManager.getPendingSyncItems() as SyncItem[];
     
     for (const item of pendingItems) {
       try {
-        const data = JSON.parse(item.data);
+        const rawData = JSON.parse(item.data);
+        const data = this.prepareDataForSync(item.entity, rawData);
         
         // Mapear operações para endpoints
         const endpoint = this.getEndpoint(item.entity, item.operation);
+        
+        console.log(`📤 Sync ${item.entity}/${item.operation}:`, JSON.stringify(data).substring(0, 100));
         
         if (item.operation === 'create') {
           await this.apiClient.post(endpoint, data);
@@ -272,9 +307,10 @@ export class SyncManager {
         
         // Marcar como concluído
         this.dbManager.markSyncItemCompleted(item.id);
+        console.log(`✅ Sync ${item.entity} concluído`);
         
       } catch (error: any) {
-        const errorMsg = error?.message || 'Unknown error';
+        const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
         console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
         
         // Verificar tipo de erro
