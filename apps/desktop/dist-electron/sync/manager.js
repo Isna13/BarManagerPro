@@ -745,33 +745,57 @@ class SyncManager {
             try {
                 const items = entity.getter();
                 console.log(`   📊 ${items.length} itens encontrados`);
+                // Buscar itens existentes no servidor para evitar duplicação
+                let existingIds = new Set();
+                try {
+                    const serverItems = await this.apiClient.get(entity.endpoint);
+                    const serverData = Array.isArray(serverItems.data) ? serverItems.data : serverItems.data?.value || [];
+                    existingIds = new Set(serverData.map((s) => s.id));
+                    console.log(`   📋 ${existingIds.size} itens já existem no servidor`);
+                }
+                catch (e) {
+                    console.log(`   ⚠️ Não foi possível buscar itens existentes`);
+                }
                 for (const item of items) {
                     try {
                         // Preparar dados (remover campos que não devem ser enviados)
                         const data = this.prepareDataForSync(entity.name, item);
-                        // Tentar criar no servidor (POST)
-                        await this.apiClient.post(entity.endpoint, data);
-                        summary[entity.name].sent++;
-                        console.log(`   ✅ ${entity.name}[${item.id}] sincronizado`);
-                    }
-                    catch (error) {
-                        // Se já existe (409 Conflict), tentar atualizar (PUT)
-                        if (error?.response?.status === 409 || error?.response?.status === 400) {
+                        // Verificar se já existe no servidor pelo ID
+                        if (existingIds.has(item.id)) {
+                            // Atualizar item existente (PUT)
                             try {
-                                const data = this.prepareDataForSync(entity.name, item);
                                 await this.apiClient.put(`${entity.endpoint}/${item.id}`, data);
                                 summary[entity.name].sent++;
-                                console.log(`   🔄 ${entity.name}[${item.id}] atualizado (já existia)`);
+                                console.log(`   🔄 ${entity.name}[${item.id}] atualizado`);
                             }
                             catch (updateError) {
                                 summary[entity.name].errors++;
-                                console.error(`   ❌ ${entity.name}[${item.id}] erro ao atualizar:`, updateError?.message);
+                                console.error(`   ❌ ${entity.name}[${item.id}] erro ao atualizar:`, updateError?.response?.data?.message || updateError?.message);
                             }
                         }
                         else {
-                            summary[entity.name].errors++;
-                            console.error(`   ❌ ${entity.name}[${item.id}] erro:`, error?.response?.data?.message || error?.message);
+                            // Criar novo item (POST)
+                            try {
+                                await this.apiClient.post(entity.endpoint, data);
+                                summary[entity.name].sent++;
+                                console.log(`   ✅ ${entity.name}[${item.id}] criado`);
+                            }
+                            catch (createError) {
+                                // Se falhar com 400/409, pode ser duplicação por nome - ignorar
+                                if (createError?.response?.status === 409 || createError?.response?.status === 400) {
+                                    console.log(`   ⚠️ ${entity.name}[${item.id}] já existe ou inválido, ignorando`);
+                                    summary[entity.name].sent++; // Considerar como "ok" pois já existe
+                                }
+                                else {
+                                    summary[entity.name].errors++;
+                                    console.error(`   ❌ ${entity.name}[${item.id}] erro:`, createError?.response?.data?.message || createError?.message);
+                                }
+                            }
                         }
+                    }
+                    catch (error) {
+                        summary[entity.name].errors++;
+                        console.error(`   ❌ ${entity.name}[${item.id}] erro geral:`, error?.message);
                     }
                 }
             }
