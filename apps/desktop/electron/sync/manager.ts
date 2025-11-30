@@ -462,15 +462,15 @@ export class SyncManager {
                 sku: item.sku,
                 barcode: item.barcode,
                 description: item.description,
-                category_id: item.categoryId,
-                box_price: item.boxPrice,
-                unit_price: item.unitPrice,
-                unit_cost: item.unitCost,
-                units_per_box: item.unitsPerBox,
-                min_stock: item.minStock,
-                is_active: item.isActive !== false ? 1 : 0,
+                categoryId: item.categoryId,
+                priceBox: item.priceBox,
+                priceUnit: item.priceUnit || 0,
+                costUnit: item.costUnit || 0,
+                unitsPerBox: item.unitsPerBox,
+                lowStockAlert: item.lowStockAlert,
+                isActive: item.isActive !== false ? 1 : 0,
                 synced: 1,
-                last_sync: new Date().toISOString(),
+                lastSync: new Date().toISOString(),
               });
             } else {
               this.dbManager.createProduct({
@@ -479,15 +479,15 @@ export class SyncManager {
                 sku: item.sku,
                 barcode: item.barcode,
                 description: item.description,
-                category_id: item.categoryId,
-                box_price: item.boxPrice || 0,
-                unit_price: item.unitPrice || 0,
-                unit_cost: item.unitCost || 0,
-                units_per_box: item.unitsPerBox || 1,
-                min_stock: item.minStock || 0,
-                is_active: item.isActive !== false ? 1 : 0,
+                categoryId: item.categoryId,
+                priceBox: item.priceBox || 0,
+                priceUnit: item.priceUnit || 0,
+                costUnit: item.costUnit || 0,
+                unitsPerBox: item.unitsPerBox || 1,
+                lowStockAlert: item.lowStockAlert || 10,
+                isActive: item.isActive !== false ? 1 : 0,
                 synced: 1,
-                last_sync: new Date().toISOString(),
+                lastSync: new Date().toISOString(),
               });
             }
           } catch (e: any) {
@@ -578,12 +578,22 @@ export class SyncManager {
   private getEndpoint(entity: string, operation: string): string {
     const endpoints: Record<string, string> = {
       product: '/products',
+      products: '/products',
       customer: '/customers',
+      customers: '/customers',
       sale: '/sales',
+      sales: '/sales',
       user: '/users',
+      users: '/users',
+      category: '/categories',
+      categories: '/categories',
+      supplier: '/suppliers',
+      suppliers: '/suppliers',
+      branch: '/branches',
+      branches: '/branches',
     };
     
-    return endpoints[entity] || `/${entity}s`;
+    return endpoints[entity] || `/${entity}`;
   }
 
   async forcePush() {
