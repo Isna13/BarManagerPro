@@ -32,4 +32,6 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/main.js"]
+# IMPORTANTE: --force-reset vai APAGAR TODOS OS DADOS e recriar o banco do zero
+# Remover --force-reset após a primeira execução bem-sucedida
+CMD ["sh", "-c", "npx prisma db push --force-reset --accept-data-loss && node dist/main.js"]
