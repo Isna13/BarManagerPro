@@ -1097,3 +1097,229 @@ model Attachment {
   @@index([entityType, entityId])
   @@map("attachments")
 }
+
+// ============================================
+// TABELAS ADICIONAIS DO DESKTOP (SQLite)
+// ============================================
+
+model StockMovement {
+  id        String @id @default(uuid())
+  productId String
+  branchId  String?
+
+  movementType String // sale, purchase, adjustment, waste, return
+
+  quantity       Int
+  quantityBefore Int @default(0)
+  quantityAfter  Int @default(0)
+
+  closedBoxesBefore Int @default(0)
+  closedBoxesAfter  Int @default(0)
+  openBoxBefore     Int @default(0)
+  openBoxAfter      Int @default(0)
+
+  boxOpenedAutomatically Boolean @default(false)
+
+  reason      String?
+  responsible String?
+  terminal    String?
+  saleId      String?
+  purchaseId  String?
+  notes       String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([branchId])
+  @@index([movementType])
+  @@map("stock_movements")
+}
+
+model TableSession {
+  id            String  @id @default(uuid())
+  tableId       String
+  branchId      String?
+  sessionNumber String?
+
+  status   String @default("open") // open, closed
+  openedBy String?
+  closedBy String?
+
+  openedAt DateTime  @default(now())
+  closedAt DateTime?
+
+  totalAmount Int @default(0)
+  paidAmount  Int @default(0)
+
+  notes String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers TableCustomer[]
+  orders    TableOrder[]
+  payments  TablePayment[]
+  actions   TableAction[]
+
+  @@index([tableId])
+  @@index([branchId])
+  @@index([status])
+  @@map("table_sessions")
+}
+
+model TableCustomer {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  customerName  String?
+  customerId    String?
+  orderSequence Int @default(1)
+
+  subtotal  Int @default(0)
+  discount  Int @default(0)
+  total     Int @default(0)
+  paidAmount Int @default(0)
+
+  paymentStatus String @default("pending") // pending, partial, paid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders   TableOrder[]
+  payments TablePayment[]
+
+  @@index([sessionId])
+  @@map("table_customers")
+}
+
+model TableOrder {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  tableCustomerId String?
+  tableCustomer   TableCustomer? @relation(fields: [tableCustomerId], references: [id])
+
+  productId String
+
+  qtyUnits  Int @default(1)
+  isMuntu   Boolean @default(false)
+  unitPrice Int @default(0)
+  unitCost  Int @default(0)
+  subtotal  Int @default(0)
+  discount  Int @default(0)
+  total     Int @default(0)
+
+  status String @default("pending") // pending, preparing, ready, served, cancelled
+
+  notes       String?
+  orderedBy   String?
+  orderedAt   DateTime @default(now())
+  cancelledAt DateTime?
+  cancelledBy String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([tableCustomerId])
+  @@index([productId])
+  @@map("table_orders")
+}
+
+model TablePayment {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  tableCustomerId String?
+  tableCustomer   TableCustomer? @relation(fields: [tableCustomerId], references: [id])
+
+  paymentId       String?
+  method          String // cash, card, mobile_money
+  amount          Int @default(0)
+  referenceNumber String?
+
+  status      String    @default("completed") // pending, completed, failed
+  processedBy String?
+  processedAt DateTime?
+
+  notes String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([tableCustomerId])
+  @@map("table_payments")
+}
+
+model TableAction {
+  id        String @id @default(uuid())
+  sessionId String
+  session   TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  actionType  String // open, close, order, payment, split, merge, transfer
+  performedBy String?
+  description String?
+  metadata    String? // JSON string
+
+  performedAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([actionType])
+  @@map("table_actions")
+}
+
+model DebtPayment {
+  id     String @id @default(uuid())
+  debtId String
+
+  paymentId String?
+  amount    Int
+  method    String // cash, card, mobile_money
+  reference String?
+  notes     String?
+
+  receivedBy String?
+
+  synced    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([debtId])
+  @@map("debt_payments")
+}
+
+model Inventory {
+  id        String @id @default(uuid())
+  productId String
+  branchId  String?
+
+  quantityUnits Int @default(0)
+  quantityBoxes Int @default(0)
+  minStockUnits Int @default(10)
+
+  lastCountDate DateTime?
+
+  synced    Boolean   @default(false)
+  lastSync  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([productId, branchId])
+  @@index([productId])
+  @@index([branchId])
+  @@map("inventory")
+}
+
+model Setting {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
