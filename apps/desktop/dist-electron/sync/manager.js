@@ -396,7 +396,7 @@ class SyncManager {
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                         else {
                             this.dbManager.createCategory({
@@ -408,7 +408,7 @@ class SyncManager {
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                     }
                     catch (e) {
@@ -435,7 +435,7 @@ class SyncManager {
                                 isActive: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 lastSync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                         else {
                             this.dbManager.createProduct({
@@ -453,7 +453,7 @@ class SyncManager {
                                 isActive: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 lastSync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                     }
                     catch (e) {
@@ -476,7 +476,7 @@ class SyncManager {
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                         else {
                             this.dbManager.createCustomer({
@@ -490,7 +490,7 @@ class SyncManager {
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                     }
                     catch (e) {
@@ -512,7 +512,7 @@ class SyncManager {
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                         else {
                             this.dbManager.createSupplier({
@@ -525,7 +525,7 @@ class SyncManager {
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
-                            });
+                            }, true); // skipSyncQueue = true para evitar loop
                         }
                     }
                     catch (e) {

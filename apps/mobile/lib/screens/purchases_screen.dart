@@ -6,19 +6,17 @@ import '../providers/data_provider.dart';
 import '../models/models.dart';
 import '../widgets/common_widgets.dart';
 
-class SalesScreen extends StatefulWidget {
-  const SalesScreen({super.key});
+class PurchasesScreen extends StatefulWidget {
+  const PurchasesScreen({super.key});
 
   @override
-  State<SalesScreen> createState() => _SalesScreenState();
+  State<PurchasesScreen> createState() => _PurchasesScreenState();
 }
 
-class _SalesScreenState extends State<SalesScreen> {
+class _PurchasesScreenState extends State<PurchasesScreen> {
   final currencyFormat = NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz ');
-  final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-
-  String _selectedFilter = 'today';
-  final TextEditingController _searchController = TextEditingController();
+  final dateFormat = DateFormat('dd/MM/yyyy');
+  String _selectedFilter = 'all';
 
   @override
   void initState() {
@@ -28,32 +26,21 @@ class _SalesScreenState extends State<SalesScreen> {
 
   Future<void> _loadData() async {
     final provider = context.read<DataProvider>();
-    DateTime startDate;
-    DateTime endDate = DateTime.now();
+    String? status;
 
-    switch (_selectedFilter) {
-      case 'today':
-        startDate = DateTime(endDate.year, endDate.month, endDate.day);
-        break;
-      case 'week':
-        startDate = endDate.subtract(const Duration(days: 7));
-        break;
-      case 'month':
-        startDate = DateTime(endDate.year, endDate.month, 1);
-        break;
-      default:
-        startDate = DateTime(endDate.year, endDate.month, endDate.day);
+    if (_selectedFilter != 'all') {
+      status = _selectedFilter;
     }
 
-    await provider.loadSales(startDate: startDate, endDate: endDate);
+    await provider.loadPurchases(status: status);
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<DataProvider>(
       builder: (context, provider, _) {
-        final sales = provider.sales;
-        final totalSales = sales.fold(0.0, (sum, s) => sum + s.total);
+        final purchases = provider.purchases;
+        final totalPurchases = purchases.fold(0.0, (sum, p) => sum + p.total);
 
         return Column(
           children: [
@@ -62,7 +49,9 @@ class _SalesScreenState extends State<SalesScreen> {
               margin: const EdgeInsets.all(AppTheme.spacingMD),
               padding: const EdgeInsets.all(AppTheme.spacingMD),
               decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+                ),
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
                 boxShadow: AppTheme.elevatedShadow,
               ),
@@ -73,7 +62,7 @@ class _SalesScreenState extends State<SalesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Total em Vendas',
+                          'Total em Compras',
                           style:
                               Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: Colors.white70,
@@ -81,7 +70,7 @@ class _SalesScreenState extends State<SalesScreen> {
                         ),
                         const SizedBox(height: AppTheme.spacingSM),
                         Text(
-                          currencyFormat.format(totalSales),
+                          currencyFormat.format(totalPurchases),
                           style: Theme.of(context)
                               .textTheme
                               .headlineSmall
@@ -97,7 +86,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${sales.length}',
+                        '${purchases.length}',
                         style: Theme.of(context)
                             .textTheme
                             .headlineMedium
@@ -107,7 +96,7 @@ class _SalesScreenState extends State<SalesScreen> {
                             ),
                       ),
                       Text(
-                        'vendas',
+                        'pedidos',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Colors.white70,
                             ),
@@ -126,48 +115,52 @@ class _SalesScreenState extends State<SalesScreen> {
               child: Row(
                 children: [
                   _FilterChip(
-                    label: 'Hoje',
-                    isSelected: _selectedFilter == 'today',
-                    onTap: () => _onFilterChanged('today'),
+                    label: 'Todos',
+                    isSelected: _selectedFilter == 'all',
+                    onTap: () => _onFilterChanged('all'),
                   ),
                   _FilterChip(
-                    label: 'Semana',
-                    isSelected: _selectedFilter == 'week',
-                    onTap: () => _onFilterChanged('week'),
+                    label: 'Pendentes',
+                    isSelected: _selectedFilter == 'pending',
+                    onTap: () => _onFilterChanged('pending'),
                   ),
                   _FilterChip(
-                    label: 'Mês',
-                    isSelected: _selectedFilter == 'month',
-                    onTap: () => _onFilterChanged('month'),
+                    label: 'Recebidos',
+                    isSelected: _selectedFilter == 'received',
+                    onTap: () => _onFilterChanged('received'),
+                  ),
+                  _FilterChip(
+                    label: 'Cancelados',
+                    isSelected: _selectedFilter == 'cancelled',
+                    onTap: () => _onFilterChanged('cancelled'),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: AppTheme.spacingMD),
 
-            // Sales List
+            // Purchases List
             Expanded(
               child: provider.isLoading
                   ? const LoadingIndicator()
-                  : sales.isEmpty
+                  : purchases.isEmpty
                       ? const EmptyState(
-                          icon: Icons.receipt_long,
-                          title: 'Nenhuma venda encontrada',
-                          subtitle: 'Não há vendas para o período selecionado',
+                          icon: Icons.shopping_cart,
+                          title: 'Nenhuma compra encontrada',
                         )
                       : RefreshIndicator(
                           onRefresh: _loadData,
                           child: ListView.builder(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: AppTheme.spacingMD),
-                            itemCount: sales.length,
+                            itemCount: purchases.length,
                             itemBuilder: (context, index) {
-                              final sale = sales[index];
-                              return _SaleCard(
-                                sale: sale,
+                              final purchase = purchases[index];
+                              return _PurchaseCard(
+                                purchase: purchase,
                                 currencyFormat: currencyFormat,
                                 dateFormat: dateFormat,
-                                onTap: () => _showSaleDetails(sale),
+                                onTap: () => _showPurchaseDetails(purchase),
                               );
                             },
                           ),
@@ -186,23 +179,17 @@ class _SalesScreenState extends State<SalesScreen> {
     _loadData();
   }
 
-  void _showSaleDetails(Sale sale) {
+  void _showPurchaseDetails(Purchase purchase) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _SaleDetailsSheet(
-        sale: sale,
+      builder: (context) => _PurchaseDetailsSheet(
+        purchase: purchase,
         currencyFormat: currencyFormat,
         dateFormat: dateFormat,
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 }
 
@@ -227,23 +214,19 @@ class _FilterChip extends StatelessWidget {
         onSelected: (_) => onTap(),
         selectedColor: AppTheme.primaryColor.withOpacity(0.2),
         checkmarkColor: AppTheme.primaryColor,
-        labelStyle: TextStyle(
-          color: isSelected ? AppTheme.primaryColor : AppTheme.textSecondary,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-        ),
       ),
     );
   }
 }
 
-class _SaleCard extends StatelessWidget {
-  final Sale sale;
+class _PurchaseCard extends StatelessWidget {
+  final Purchase purchase;
   final NumberFormat currencyFormat;
   final DateFormat dateFormat;
   final VoidCallback onTap;
 
-  const _SaleCard({
-    required this.sale,
+  const _PurchaseCard({
+    required this.purchase,
     required this.currencyFormat,
     required this.dateFormat,
     required this.onTap,
@@ -275,7 +258,7 @@ class _SaleCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
                     ),
                     child: Icon(
-                      _getPaymentIcon(),
+                      Icons.local_shipping,
                       size: 20,
                       color: _getStatusColor(),
                     ),
@@ -286,12 +269,12 @@ class _SaleCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          sale.customerName ?? 'Cliente avulso',
+                          purchase.supplierName ?? 'Fornecedor',
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                         const SizedBox(height: AppTheme.spacingXS),
                         Text(
-                          dateFormat.format(sale.createdAt),
+                          dateFormat.format(purchase.purchaseDate),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -301,11 +284,10 @@ class _SaleCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        currencyFormat.format(sale.total),
+                        currencyFormat.format(purchase.total),
                         style:
                             Theme.of(context).textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: AppTheme.accentColor,
                                 ),
                       ),
                       const SizedBox(height: AppTheme.spacingXS),
@@ -317,12 +299,10 @@ class _SaleCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (sale.items.isNotEmpty) ...[
-                const SizedBox(height: AppTheme.spacingMD),
-                const Divider(height: 1),
+              if (purchase.invoiceNumber != null) ...[
                 const SizedBox(height: AppTheme.spacingSM),
                 Text(
-                  '${sale.items.length} item(ns) • ${_getPaymentMethodLabel()}',
+                  'Fatura: ${purchase.invoiceNumber}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -334,15 +314,15 @@ class _SaleCard extends StatelessWidget {
   }
 
   Color _getStatusColor() {
-    switch (sale.status.toLowerCase()) {
-      case 'completed':
-      case 'concluida':
+    switch (purchase.status.toLowerCase()) {
+      case 'received':
+      case 'recebido':
         return AppTheme.accentColor;
       case 'pending':
       case 'pendente':
         return AppTheme.warningColor;
       case 'cancelled':
-      case 'cancelada':
+      case 'cancelado':
         return AppTheme.dangerColor;
       default:
         return AppTheme.textMuted;
@@ -350,15 +330,15 @@ class _SaleCard extends StatelessWidget {
   }
 
   StatusType _getStatusType() {
-    switch (sale.status.toLowerCase()) {
-      case 'completed':
-      case 'concluida':
+    switch (purchase.status.toLowerCase()) {
+      case 'received':
+      case 'recebido':
         return StatusType.success;
       case 'pending':
       case 'pendente':
         return StatusType.warning;
       case 'cancelled':
-      case 'cancelada':
+      case 'cancelado':
         return StatusType.danger;
       default:
         return StatusType.neutral;
@@ -366,60 +346,26 @@ class _SaleCard extends StatelessWidget {
   }
 
   String _getStatusLabel() {
-    switch (sale.status.toLowerCase()) {
-      case 'completed':
-        return 'Concluída';
+    switch (purchase.status.toLowerCase()) {
+      case 'received':
+        return 'Recebido';
       case 'pending':
         return 'Pendente';
       case 'cancelled':
-        return 'Cancelada';
+        return 'Cancelado';
       default:
-        return sale.status;
-    }
-  }
-
-  IconData _getPaymentIcon() {
-    switch (sale.paymentMethod.toLowerCase()) {
-      case 'cash':
-      case 'dinheiro':
-        return Icons.payments;
-      case 'card':
-      case 'cartao':
-        return Icons.credit_card;
-      case 'transfer':
-      case 'transferencia':
-        return Icons.swap_horiz;
-      case 'credit':
-      case 'credito':
-        return Icons.account_balance_wallet;
-      default:
-        return Icons.receipt;
-    }
-  }
-
-  String _getPaymentMethodLabel() {
-    switch (sale.paymentMethod.toLowerCase()) {
-      case 'cash':
-        return 'Dinheiro';
-      case 'card':
-        return 'Cartão';
-      case 'transfer':
-        return 'Transferência';
-      case 'credit':
-        return 'Crédito';
-      default:
-        return sale.paymentMethod;
+        return purchase.status;
     }
   }
 }
 
-class _SaleDetailsSheet extends StatelessWidget {
-  final Sale sale;
+class _PurchaseDetailsSheet extends StatelessWidget {
+  final Purchase purchase;
   final NumberFormat currencyFormat;
   final DateFormat dateFormat;
 
-  const _SaleDetailsSheet({
-    required this.sale,
+  const _PurchaseDetailsSheet({
+    required this.purchase,
     required this.currencyFormat,
     required this.dateFormat,
   });
@@ -453,7 +399,7 @@ class _SaleDetailsSheet extends StatelessWidget {
             child: Row(
               children: [
                 Text(
-                  'Detalhes da Venda',
+                  'Detalhes da Compra',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const Spacer(),
@@ -471,49 +417,56 @@ class _SaleDetailsSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Info
                   _InfoRow(
-                      label: 'Cliente',
-                      value: sale.customerName ?? 'Cliente avulso'),
+                      label: 'Fornecedor', value: purchase.supplierName ?? '-'),
                   _InfoRow(
-                      label: 'Data', value: dateFormat.format(sale.createdAt)),
-                  _InfoRow(label: 'Caixa', value: sale.cashierName ?? '-'),
-                  _InfoRow(label: 'Pagamento', value: sale.paymentMethod),
-                  _InfoRow(label: 'Status', value: sale.status),
+                      label: 'Data',
+                      value: dateFormat.format(purchase.purchaseDate)),
+                  _InfoRow(
+                      label: 'Fatura', value: purchase.invoiceNumber ?? '-'),
+                  _InfoRow(label: 'Status', value: purchase.status),
+                  if (purchase.receivedAt != null)
+                    _InfoRow(
+                        label: 'Recebido em',
+                        value: dateFormat.format(purchase.receivedAt!)),
                   const SizedBox(height: AppTheme.spacingMD),
-
-                  // Items
-                  if (sale.items.isNotEmpty) ...[
-                    Text(
-                      'Itens',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                  if (purchase.items.isNotEmpty) ...[
+                    Text('Itens',
+                        style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: AppTheme.spacingSM),
-                    ...sale.items.map((item) => _ItemRow(
+                    ...purchase.items.map((item) => _ItemRow(
                           item: item,
                           currencyFormat: currencyFormat,
                         )),
                   ],
-
                   const SizedBox(height: AppTheme.spacingMD),
                   const Divider(),
-
-                  // Totals
                   _TotalRow(
                       label: 'Subtotal',
-                      value: currencyFormat.format(sale.subtotal)),
-                  if (sale.discount > 0)
+                      value: currencyFormat.format(purchase.subtotal)),
+                  if (purchase.tax > 0)
+                    _TotalRow(
+                        label: 'Imposto',
+                        value: currencyFormat.format(purchase.tax)),
+                  if (purchase.discount > 0)
                     _TotalRow(
                       label: 'Desconto',
-                      value: '- ${currencyFormat.format(sale.discount)}',
+                      value: '- ${currencyFormat.format(purchase.discount)}',
                       valueColor: AppTheme.dangerColor,
                     ),
                   _TotalRow(
                     label: 'Total',
-                    value: currencyFormat.format(sale.total),
+                    value: currencyFormat.format(purchase.total),
                     isBold: true,
-                    valueColor: AppTheme.accentColor,
                   ),
+                  if (purchase.notes != null && purchase.notes!.isNotEmpty) ...[
+                    const SizedBox(height: AppTheme.spacingMD),
+                    Text('Observações',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: AppTheme.spacingSM),
+                    Text(purchase.notes!,
+                        style: Theme.of(context).textTheme.bodyMedium),
+                  ],
                 ],
               ),
             ),
@@ -546,7 +499,7 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _ItemRow extends StatelessWidget {
-  final SaleItem item;
+  final PurchaseItem item;
   final NumberFormat currencyFormat;
 
   const _ItemRow({required this.item, required this.currencyFormat});
@@ -571,7 +524,7 @@ class _ItemRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 Text(
-                  '${item.quantity}x ${currencyFormat.format(item.unitPrice)}',
+                  '${item.quantity}x ${currencyFormat.format(item.unitCost)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

@@ -1,45 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'config/app_theme.dart';
 import 'providers/auth_provider.dart';
-import 'providers/sync_provider.dart';
-import 'services/notification_service.dart';
-import 'screens/splash_screen.dart';
+import 'providers/data_provider.dart';
 import 'screens/login_screen.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/pos_screen.dart';
-import 'screens/sales_screen.dart';
-import 'screens/inventory_screen.dart';
-import 'screens/reports_screen.dart';
-import 'screens/debts_screen.dart';
-
-// Background message handler (must be top-level)
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  print('📨 Background message: ${message.notification?.title}');
-}
+import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    // Initialize Firebase
-    await Firebase.initializeApp();
-    print('✅ Firebase initialized');
+  // Initialize date formatting for pt_BR
+  await initializeDateFormatting('pt_BR', null);
 
-    // Set background message handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // Set preferred orientations
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
-    // Initialize Notification Service
-    final notificationService = NotificationService();
-    await notificationService.initialize();
-    print('✅ Notification Service initialized');
-  } catch (e) {
-    print('⚠️ Firebase not configured: $e');
-    print('App will work without push notifications');
-  }
+  // Set system UI overlay style
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
 
   runApp(const BarManagerApp());
 }
@@ -52,21 +39,25 @@ class BarManagerApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => SyncProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, DataProvider>(
+          create: (_) => DataProvider(),
+          update: (_, auth, data) {
+            if (auth.isAuthenticated) {
+              data?.setApiService(auth.apiService);
+            }
+            return data ?? DataProvider();
+          },
+        ),
       ],
-      child: MaterialApp(
-        title: 'BarManager Pro',
-        theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-        initialRoute: '/splash',
-        routes: {
-          '/splash': (context) => const SplashScreen(),
-          '/login': (context) => const LoginScreen(),
-          '/dashboard': (context) => const DashboardScreen(),
-          '/pos': (context) => const POSScreen(),
-          '/sales': (context) => const SalesScreen(),
-          '/inventory': (context) => const InventoryScreen(),
-          '/reports': (context) => const ReportsScreen(),
-          '/debts': (context) => const DebtsScreen(),
+      child: Consumer<AuthProvider>(
+        builder: (context, auth, _) {
+          return MaterialApp(
+            title: 'BarManager Pro',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            home:
+                auth.isAuthenticated ? const HomeScreen() : const LoginScreen(),
+          );
         },
       ),
     );

@@ -880,7 +880,7 @@ class DatabaseManager {
       LIMIT 50
     `).all(`%${query}%`, `%${query}%`, `%${query}%`);
     }
-    createProduct(productData) {
+    createProduct(productData, skipSyncQueue = false) {
         const id = productData.id || this.generateUUID();
         const stmt = this.db.prepare(`
       INSERT INTO products (
@@ -891,8 +891,8 @@ class DatabaseManager {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
     `);
         stmt.run(id, productData.sku, productData.barcode || null, productData.name, productData.categoryId || null, productData.supplierId || null, productData.priceUnit || 0, productData.priceBox || null, productData.costUnit || 0, productData.costBox || null, productData.unitsPerBox || null, productData.priceBox ? 1 : 0, productData.isMuntuEligible ? 1 : 0, productData.muntuQuantity || null, productData.muntuPrice || null, productData.lowStockAlert || 10);
-        // Só adiciona na fila de sync se não veio do servidor (não tem synced definido)
-        if (!productData.synced) {
+        // Só adiciona na fila de sync se skipSyncQueue for false
+        if (!skipSyncQueue) {
             this.addToSyncQueue('create', 'product', id, productData);
         }
         // Criar registro inicial de inventário
@@ -906,7 +906,7 @@ class DatabaseManager {
     `).run(this.generateUUID(), id, branchId, productData.lowStockAlert || 10);
         return { id, ...productData };
     }
-    updateProduct(id, productData) {
+    updateProduct(id, productData, skipSyncQueue = false) {
         const fields = [];
         const values = [];
         if (productData.sku !== undefined) {
@@ -980,7 +980,9 @@ class DatabaseManager {
       WHERE id = ?
     `);
         stmt.run(...values);
-        this.addToSyncQueue('update', 'product', id, productData);
+        if (!skipSyncQueue) {
+            this.addToSyncQueue('update', 'product', id, productData);
+        }
         return { id, ...productData };
     }
     getProductById(id) {
@@ -1004,17 +1006,20 @@ class DatabaseManager {
         query += ' ORDER BY sort_order, name';
         return this.db.prepare(query).all(...params);
     }
-    createCategory(categoryData) {
-        const id = this.generateUUID();
+    createCategory(categoryData, skipSyncQueue = false) {
+        const id = categoryData.id || this.generateUUID();
         const stmt = this.db.prepare(`
-      INSERT INTO categories (id, name, description, parent_id, sort_order, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+      INSERT INTO categories (id, name, description, parent_id, sort_order, is_active, synced, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))
     `);
-        stmt.run(id, categoryData.name, categoryData.description || null, categoryData.parentId || null, categoryData.sortOrder || 0);
-        this.addToSyncQueue('create', 'category', id, categoryData);
+        stmt.run(id, categoryData.name, categoryData.description || null, categoryData.parent_id || categoryData.parentId || null, categoryData.sort_order || categoryData.sortOrder || 0, categoryData.synced || 0);
+        // Só adiciona à fila se não vier do servidor
+        if (!skipSyncQueue && categoryData.synced !== 1) {
+            this.addToSyncQueue('create', 'category', id, categoryData);
+        }
         return { id, ...categoryData };
     }
-    updateCategory(id, categoryData) {
+    updateCategory(id, categoryData, skipSyncQueue = false) {
         const fields = [];
         const values = [];
         if (categoryData.name !== undefined) {
@@ -1033,8 +1038,14 @@ class DatabaseManager {
             fields.push('sort_order = ?');
             values.push(categoryData.sortOrder);
         }
+        if (categoryData.synced !== undefined) {
+            fields.push('synced = ?');
+            values.push(categoryData.synced);
+        }
+        else if (!skipSyncQueue) {
+            fields.push('synced = 0');
+        }
         fields.push('updated_at = datetime(\'now\')');
-        fields.push('synced = 0');
         values.push(id);
         const stmt = this.db.prepare(`
       UPDATE categories 
@@ -1042,7 +1053,10 @@ class DatabaseManager {
       WHERE id = ?
     `);
         stmt.run(...values);
-        this.addToSyncQueue('update', 'category', id, categoryData);
+        // Só adiciona à fila se não vier do servidor
+        if (!skipSyncQueue && categoryData.synced !== 1) {
+            this.addToSyncQueue('update', 'category', id, categoryData);
+        }
         return { id, ...categoryData };
     }
     deleteCategory(id) {
@@ -1061,8 +1075,8 @@ class DatabaseManager {
     getSuppliers() {
         return this.db.prepare('SELECT * FROM suppliers WHERE is_active = 1 ORDER BY name').all();
     }
-    createSupplier(supplierData) {
-        const id = this.generateUUID();
+    createSupplier(supplierData, skipSyncQueue = false) {
+        const id = supplierData.id || this.generateUUID();
         const stmt = this.db.prepare(`
       INSERT INTO suppliers (
         id, code, name, contact_person, phone, email, address, 
@@ -1071,10 +1085,12 @@ class DatabaseManager {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
     `);
         stmt.run(id, supplierData.code, supplierData.name, supplierData.contactPerson || null, supplierData.phone || null, supplierData.email || null, supplierData.address || null, supplierData.taxId || null, supplierData.paymentTerms || null, supplierData.notes || null);
-        this.addToSyncQueue('create', 'supplier', id, supplierData);
+        if (!skipSyncQueue) {
+            this.addToSyncQueue('create', 'supplier', id, supplierData);
+        }
         return { id, ...supplierData };
     }
-    updateSupplier(id, supplierData) {
+    updateSupplier(id, supplierData, skipSyncQueue = false) {
         const fields = [];
         const values = [];
         if (supplierData.code !== undefined) {
@@ -1126,7 +1142,9 @@ class DatabaseManager {
       WHERE id = ?
     `);
         stmt.run(...values);
-        this.addToSyncQueue('update', 'supplier', id, supplierData);
+        if (!skipSyncQueue) {
+            this.addToSyncQueue('update', 'supplier', id, supplierData);
+        }
         return this.db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id);
     }
     deleteSupplier(id) {
@@ -1982,8 +2000,8 @@ class DatabaseManager {
       FROM customers WHERE id = ?
     `).get(id);
     }
-    createCustomer(data) {
-        const id = this.generateUUID();
+    createCustomer(data, skipSyncQueue = false) {
+        const id = data.id || this.generateUUID();
         // Gerar código único se não fornecido
         const code = data.code || `CUST-${Date.now().toString().slice(-6)}`;
         const stmt = this.db.prepare(`
@@ -1991,17 +2009,21 @@ class DatabaseManager {
       VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)
     `);
         stmt.run(id, code, data.name, data.phone, data.email, data.creditLimit || 0);
-        this.addToSyncQueue('create', 'customer', id, data, 2);
+        if (!skipSyncQueue) {
+            this.addToSyncQueue('create', 'customer', id, data, 2);
+        }
         return this.getCustomerById(id);
     }
-    updateCustomer(id, data) {
+    updateCustomer(id, data, skipSyncQueue = false) {
         const stmt = this.db.prepare(`
       UPDATE customers 
       SET full_name = ?, phone = ?, email = ?, credit_limit = ?, updated_at = datetime('now'), synced = 0
       WHERE id = ?
     `);
         stmt.run(data.name, data.phone, data.email, data.creditLimit || 0, id);
-        this.addToSyncQueue('update', 'customer', id, data, 2);
+        if (!skipSyncQueue) {
+            this.addToSyncQueue('update', 'customer', id, data, 2);
+        }
         return this.getCustomerById(id);
     }
     deleteCustomer(id) {

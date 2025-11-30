@@ -50,18 +50,18 @@ export declare class DatabaseManager {
     } | null;
     getProducts(filters?: any): unknown[];
     searchProducts(query: string): unknown[];
-    createProduct(productData: any): any;
-    updateProduct(id: string, productData: any): any;
+    createProduct(productData: any, skipSyncQueue?: boolean): any;
+    updateProduct(id: string, productData: any, skipSyncQueue?: boolean): any;
     getProductById(id: string): unknown;
     getCategories(filters?: any): unknown[];
-    createCategory(categoryData: any): any;
-    updateCategory(id: string, categoryData: any): any;
+    createCategory(categoryData: any, skipSyncQueue?: boolean): any;
+    updateCategory(id: string, categoryData: any, skipSyncQueue?: boolean): any;
     deleteCategory(id: string): {
         success: boolean;
     };
     getSuppliers(): unknown[];
-    createSupplier(supplierData: any): any;
-    updateSupplier(id: string, supplierData: any): unknown;
+    createSupplier(supplierData: any, skipSyncQueue?: boolean): any;
+    updateSupplier(id: string, supplierData: any, skipSyncQueue?: boolean): unknown;
     deleteSupplier(id: string): {
         success: boolean;
     };
@@ -160,8 +160,8 @@ export declare class DatabaseManager {
     private updateSaleTotals;
     getCustomers(filters?: any): unknown[];
     getCustomerById(id: string): unknown;
-    createCustomer(data: any): unknown;
-    updateCustomer(id: string, data: any): unknown;
+    createCustomer(data: any, skipSyncQueue?: boolean): unknown;
+    updateCustomer(id: string, data: any, skipSyncQueue?: boolean): unknown;
     deleteCustomer(id: string): {
         success: boolean;
     };

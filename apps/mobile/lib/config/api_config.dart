@@ -1,5 +1,3 @@
-import 'dart:io';
-
 class ApiConfig {
   // URL do Backend no Railway (produção)
   static const String _productionUrl =

@@ -173,17 +173,8 @@ class NotificationService {
     required String body,
     Map<String, dynamic>? payload,
   }) async {
-    String channelId = 'sales_channel';
-
-    // Determine channel based on notification type
-    if (payload != null) {
-      final type = payload['type'];
-      if (type == 'cash')
-        channelId = 'cash_channel';
-      else if (type == 'stock')
-        channelId = 'stock_channel';
-      else if (type == 'debt') channelId = 'debts_channel';
-    }
+    // TODO: Implementar canais dinâmicos baseados no tipo de notificação
+    // Por enquanto, usa canal padrão de vendas
 
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(

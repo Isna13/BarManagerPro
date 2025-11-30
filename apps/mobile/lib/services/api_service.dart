@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import '../models/models.dart';
 
 class ApiService {
   late Dio _dio;
@@ -22,15 +23,22 @@ class ApiService {
           if (_token != null) {
             options.headers['Authorization'] = 'Bearer $_token';
           }
+          print('🌐 API Request: ${options.method} ${options.path}');
           return handler.next(options);
         },
+        onResponse: (response, handler) {
+          print('✅ API Response: ${response.statusCode}');
+          return handler.next(response);
+        },
         onError: (error, handler) {
-          print('API Error: ${error.message}');
+          print('❌ API Error: ${error.message}');
           return handler.next(error);
         },
       ),
     );
   }
+
+  // ==================== AUTH ====================
 
   Future<void> loadToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -49,7 +57,8 @@ class ApiService {
     await prefs.remove('auth_token');
   }
 
-  // Auth
+  bool get isAuthenticated => _token != null;
+
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await _dio.post(
@@ -71,99 +80,340 @@ class ApiService {
     }
   }
 
-  // Products
-  Future<List<dynamic>> getProducts({
-    String? categoryId,
-    String? search,
-  }) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (categoryId != null) queryParams['categoryId'] = categoryId;
-      if (search != null) queryParams['search'] = search;
+  // ==================== DASHBOARD ====================
 
-      final response = await _dio.get(
-        '/products',
-        queryParameters: queryParams,
-      );
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  // Sales
-  Future<Map<String, dynamic>> createSale(Map<String, dynamic> saleData) async {
-    try {
-      final response = await _dio.post('/sales', data: saleData);
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<Map<String, dynamic>> addSaleItem(
-    String saleId,
-    Map<String, dynamic> item,
-  ) async {
-    try {
-      final response = await _dio.post('/sales/$saleId/items', data: item);
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<Map<String, dynamic>> processPayment(
-    String saleId,
-    Map<String, dynamic> payment,
-  ) async {
-    try {
-      final response = await _dio.post('/sales/$saleId/payment', data: payment);
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<List<dynamic>> getSales({String? status}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (status != null) queryParams['status'] = status;
-
-      final response = await _dio.get('/sales', queryParameters: queryParams);
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  // QR Menu
-  Future<Map<String, dynamic>> getQRMenu(String menuId) async {
-    try {
-      final response = await _dio.get('/qr-menu/$menuId');
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  // Dashboard Stats
-  Future<Map<String, dynamic>> getDashboardStats({String? branchId}) async {
+  Future<DashboardStats> getDashboardStats({String? branchId}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (branchId != null) queryParams['branchId'] = branchId;
 
-      final response = await _dio.get(
-        '/reports/dashboard',
-        queryParameters: queryParams,
-      );
+      final response =
+          await _dio.get('/reports/dashboard', queryParameters: queryParams);
+      return DashboardStats.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== PRODUCTS ====================
+
+  Future<List<Product>> getProducts(
+      {String? categoryId, String? search, bool? active}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (categoryId != null) queryParams['categoryId'] = categoryId;
+      if (search != null) queryParams['search'] = search;
+      if (active != null) queryParams['active'] = active;
+
+      final response =
+          await _dio.get('/products', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Product.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Product?> getProductById(String id) async {
+    try {
+      final response = await _dio.get('/products/$id');
+      return Product.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<List<Category>> getCategories() async {
+    try {
+      final response = await _dio.get('/products/categories');
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Category.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== SUPPLIERS ====================
+
+  Future<List<Supplier>> getSuppliers({String? search, bool? active}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (search != null) queryParams['search'] = search;
+      if (active != null) queryParams['active'] = active;
+
+      final response =
+          await _dio.get('/suppliers', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Supplier.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Supplier?> getSupplierById(String id) async {
+    try {
+      final response = await _dio.get('/suppliers/$id');
+      return Supplier.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== SALES ====================
+
+  Future<List<Sale>> getSales({
+    String? status,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? customerId,
+    int? limit,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (status != null) queryParams['status'] = status;
+      if (startDate != null)
+        queryParams['startDate'] = startDate.toIso8601String();
+      if (endDate != null) queryParams['endDate'] = endDate.toIso8601String();
+      if (customerId != null) queryParams['customerId'] = customerId;
+      if (limit != null) queryParams['limit'] = limit;
+
+      final response = await _dio.get('/sales', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Sale.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Sale?> getSaleById(String id) async {
+    try {
+      final response = await _dio.get('/sales/$id');
+      return Sale.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== PURCHASES ====================
+
+  Future<List<Purchase>> getPurchases({
+    String? status,
+    String? supplierId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (status != null) queryParams['status'] = status;
+      if (supplierId != null) queryParams['supplierId'] = supplierId;
+      if (startDate != null)
+        queryParams['startDate'] = startDate.toIso8601String();
+      if (endDate != null) queryParams['endDate'] = endDate.toIso8601String();
+
+      final response =
+          await _dio.get('/purchases', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Purchase.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Purchase?> getPurchaseById(String id) async {
+    try {
+      final response = await _dio.get('/purchases/$id');
+      return Purchase.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== INVENTORY ====================
+
+  Future<List<Inventory>> getInventory({
+    String? branchId,
+    bool? lowStock,
+    String? search,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (branchId != null) queryParams['branchId'] = branchId;
+      if (lowStock != null) queryParams['lowStock'] = lowStock;
+      if (search != null) queryParams['search'] = search;
+
+      final response =
+          await _dio.get('/inventory', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Inventory.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<List<InventoryMovement>> getInventoryMovements({
+    String? productId,
+    String? branchId,
+    String? movementType,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (productId != null) queryParams['productId'] = productId;
+      if (branchId != null) queryParams['branchId'] = branchId;
+      if (movementType != null) queryParams['movementType'] = movementType;
+      if (startDate != null)
+        queryParams['startDate'] = startDate.toIso8601String();
+      if (endDate != null) queryParams['endDate'] = endDate.toIso8601String();
+      if (limit != null) queryParams['limit'] = limit;
+
+      final response =
+          await _dio.get('/inventory/movements', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => InventoryMovement.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> getInventoryValuation({String? branchId}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (branchId != null) queryParams['branchId'] = branchId;
+
+      final response =
+          await _dio.get('/inventory/valuation', queryParameters: queryParams);
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // Reports
+  // ==================== CUSTOMERS ====================
+
+  Future<List<Customer>> getCustomers({String? search, bool? active}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (search != null) queryParams['search'] = search;
+      if (active != null) queryParams['active'] = active;
+
+      final response =
+          await _dio.get('/customers', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Customer.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Customer?> getCustomerById(String id) async {
+    try {
+      final response = await _dio.get('/customers/$id');
+      return Customer.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== DEBTS ====================
+
+  Future<List<Debt>> getDebts({String? status, String? customerId}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (status != null) queryParams['status'] = status;
+      if (customerId != null) queryParams['customerId'] = customerId;
+
+      final response = await _dio.get('/debts', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => Debt.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> getDebtsSummary() async {
+    try {
+      final response = await _dio.get('/debts/summary');
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== CASH BOX ====================
+
+  Future<List<CashBox>> getCashBoxHistory({
+    String? branchId,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (branchId != null) queryParams['branchId'] = branchId;
+      if (startDate != null)
+        queryParams['startDate'] = startDate.toIso8601String();
+      if (endDate != null) queryParams['endDate'] = endDate.toIso8601String();
+      if (limit != null) queryParams['limit'] = limit;
+
+      final response =
+          await _dio.get('/cash-box/history', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => CashBox.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<CashBox?> getCurrentCashBox({String? branchId}) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (branchId != null) queryParams['branchId'] = branchId;
+
+      final response =
+          await _dio.get('/cash-box/current', queryParameters: queryParams);
+      if (response.data == null) return null;
+      return CashBox.fromJson(response.data);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw _handleError(e);
+    }
+  }
+
+  Future<List<CashMovement>> getCashMovements({
+    String? cashBoxId,
+    String? movementType,
+    int? limit,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (cashBoxId != null) queryParams['cashBoxId'] = cashBoxId;
+      if (movementType != null) queryParams['movementType'] = movementType;
+      if (limit != null) queryParams['limit'] = limit;
+
+      final response =
+          await _dio.get('/cash-box/movements', queryParameters: queryParams);
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => CashMovement.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // ==================== REPORTS ====================
+
   Future<Map<String, dynamic>> getSalesReport({
     required DateTime startDate,
     required DateTime endDate,
@@ -179,6 +429,18 @@ class ApiService {
         },
       );
       return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<List<TopProduct>> getTopProducts({int limit = 10}) async {
+    try {
+      final response = await _dio
+          .get('/reports/top-products', queryParameters: {'limit': limit});
+      final List<dynamic> data =
+          response.data is List ? response.data : response.data['data'] ?? [];
+      return data.map((json) => TopProduct.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -200,75 +462,61 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
+      // Se o endpoint não existir, retorna dados padrão
+      if (e.response?.statusCode == 404) {
+        return {
+          'totalIn': 0.0,
+          'totalOut': 0.0,
+          'balance': 0.0,
+          'transactions': [],
+        };
+      }
       throw _handleError(e);
     }
   }
 
-  Future<List<dynamic>> getTopProducts({int limit = 10}) async {
+  // ==================== SYNC ====================
+
+  Future<Map<String, dynamic>> syncData({
+    required String entity,
+    DateTime? lastSync,
+  }) async {
     try {
-      final response = await _dio.get(
-        '/reports/top-products',
-        queryParameters: {'limit': limit},
-      );
+      final queryParams = <String, dynamic>{'entity': entity};
+      if (lastSync != null)
+        queryParams['lastSync'] = lastSync.toIso8601String();
+
+      final response = await _dio.get('/sync', queryParameters: queryParams);
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // Debts
-  Future<List<dynamic>> getDebts({String? status}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (status != null) queryParams['status'] = status;
-
-      final response = await _dio.get('/debts', queryParameters: queryParams);
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<Map<String, dynamic>> getDebtsSummary() async {
-    try {
-      final response = await _dio.get('/debts/summary');
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<void> registerDebtPayment(String debtId, double amount) async {
-    try {
-      await _dio.post('/debts/$debtId/pay', data: {'amount': amount});
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  // Inventory
-  Future<List<dynamic>> getInventory({String? branchId, bool? lowStock}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (branchId != null) queryParams['branchId'] = branchId;
-      if (lowStock != null) queryParams['lowStock'] = lowStock;
-
-      final response =
-          await _dio.get('/inventory', queryParameters: queryParams);
-      return response.data;
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
+  // ==================== ERROR HANDLING ====================
 
   String _handleError(DioException error) {
     if (error.response != null) {
+      final statusCode = error.response!.statusCode;
       final data = error.response!.data;
+
+      if (statusCode == 401) {
+        return 'Sessão expirada. Faça login novamente.';
+      } else if (statusCode == 403) {
+        return 'Acesso negado.';
+      } else if (statusCode == 404) {
+        return 'Recurso não encontrado.';
+      } else if (statusCode == 500) {
+        return 'Erro interno do servidor.';
+      }
+
       return data['message'] ?? 'Erro desconhecido';
     } else if (error.type == DioExceptionType.connectionTimeout) {
       return 'Tempo de conexão esgotado';
     } else if (error.type == DioExceptionType.receiveTimeout) {
       return 'Tempo de resposta esgotado';
+    } else if (error.type == DioExceptionType.connectionError) {
+      return 'Sem conexão com o servidor';
     } else {
       return 'Erro de conexão com servidor';
     }
