@@ -1,10 +1,45 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Delete, Body, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('import')
 export class ImportController {
   constructor(private prisma: PrismaService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('reset-database')
+  async resetDatabase() {
+    console.log('🗑️  Limpando banco Railway...');
+    
+    try {
+      // Ordem de deleção respeitando foreign keys
+      await this.prisma.payment.deleteMany({});
+      await this.prisma.saleItem.deleteMany({});
+      await this.prisma.debt.deleteMany({});
+      await this.prisma.sale.deleteMany({});
+      await this.prisma.cashBox.deleteMany({});
+      await this.prisma.inventoryMovement.deleteMany({});
+      await this.prisma.inventoryItem.deleteMany({});
+      await this.prisma.purchaseItem.deleteMany({});
+      await this.prisma.purchase.deleteMany({});
+      await this.prisma.productPriceHistory.deleteMany({});
+      await this.prisma.product.deleteMany({});
+      await this.prisma.category.deleteMany({});
+      await this.prisma.customer.deleteMany({});
+      await this.prisma.supplier.deleteMany({});
+      await this.prisma.table.deleteMany({});
+      await this.prisma.session.deleteMany({});
+      await this.prisma.auditLog.deleteMany({});
+      await this.prisma.notification.deleteMany({});
+      // NÃO deletar users e branches para manter acesso admin
+      
+      console.log('✅ Banco limpo com sucesso!');
+      return { success: true, message: 'Banco de dados limpo com sucesso' };
+    } catch (error: any) {
+      console.error('❌ Erro ao limpar banco:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('sqlite-data')
