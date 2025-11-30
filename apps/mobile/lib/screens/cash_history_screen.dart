@@ -14,7 +14,8 @@ class CashHistoryScreen extends StatefulWidget {
 }
 
 class _CashHistoryScreenState extends State<CashHistoryScreen> {
-  final currencyFormat = NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz ');
+  final currencyFormat =
+      NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final dateFormat = DateFormat('dd/MM/yyyy');
   final timeFormat = DateFormat('HH:mm');
   DateTime? _selectedDate;

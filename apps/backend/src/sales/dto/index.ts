@@ -1,7 +1,7 @@
 import { IsUUID, IsOptional, IsString, IsInt, Min, IsBoolean } from 'class-validator';
 
 export class CreateSaleDto {
-  @IsUUID()
+  @IsString()
   branchId: string;
 
   @IsString()

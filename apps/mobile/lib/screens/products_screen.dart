@@ -14,7 +14,8 @@ class ProductsScreen extends StatefulWidget {
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
-  final currencyFormat = NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz ');
+  final currencyFormat =
+      NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final TextEditingController _searchController = TextEditingController();
   String? _selectedCategory;
 

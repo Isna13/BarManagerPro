@@ -28,7 +28,7 @@ class StatCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(AppTheme.spacingMD),
+        padding: const EdgeInsets.all(AppTheme.spacingSM),
         decoration: BoxDecoration(
           color: AppTheme.cardColor,
           borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
@@ -36,11 +36,12 @@ class StatCard extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(AppTheme.spacingSM),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     gradient: gradient ?? AppTheme.primaryGradient,
                     borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
@@ -48,38 +49,50 @@ class StatCard extends StatelessWidget {
                   child: Icon(
                     icon,
                     color: iconColor ?? Colors.white,
-                    size: 20,
+                    size: 18,
                   ),
                 ),
                 const Spacer(),
                 if (onTap != null)
                   const Icon(
                     Icons.arrow_forward_ios,
-                    size: 14,
+                    size: 12,
                     color: AppTheme.textMuted,
                   ),
               ],
             ),
-            const SizedBox(height: AppTheme.spacingMD),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+            const SizedBox(height: AppTheme.spacingSM),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                maxLines: 1,
+              ),
             ),
-            const SizedBox(height: AppTheme.spacingXS),
+            const SizedBox(height: 2),
             Text(
               title,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 11,
+                  ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             if (subtitle != null) ...[
-              const SizedBox(height: AppTheme.spacingXS),
+              const SizedBox(height: 2),
               Text(
                 subtitle!,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppTheme.accentColor,
+                      fontSize: 10,
                       fontWeight: FontWeight.w500,
                     ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ],

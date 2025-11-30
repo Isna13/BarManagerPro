@@ -13,7 +13,8 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final currencyFormat = NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz ');
+  final currencyFormat =
+      NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final numberFormat = NumberFormat('#,##0', 'pt_AO');
 
   @override

@@ -260,22 +260,17 @@ export class SyncManager {
         const rawData = JSON.parse(item.data);
         const data = this.prepareDataForSync(item.entity, rawData);
         
-        // Mapear operações para endpoints
-        const endpoint = this.getEndpoint(item.entity, item.operation);
+        // Tratar casos especiais de entidades aninhadas
+        const syncResult = await this.syncEntityItem(item, data);
         
-        console.log(`📤 Sync ${item.entity}/${item.operation}:`, JSON.stringify(data).substring(0, 100));
-        
-        if (item.operation === 'create') {
-          await this.apiClient.post(endpoint, data);
-        } else if (item.operation === 'update') {
-          await this.apiClient.put(`${endpoint}/${item.entity_id || ''}`, data);
-        } else if (item.operation === 'delete') {
-          await this.apiClient.delete(`${endpoint}/${item.entity_id || ''}`);
+        if (syncResult.success) {
+          this.dbManager.markSyncItemCompleted(item.id);
+          console.log(`✅ Sync ${item.entity} concluído`);
+        } else if (syncResult.skip) {
+          // Marcar como completado para pular (entidade não suportada)
+          this.dbManager.markSyncItemCompleted(item.id);
+          console.log(`⏭️ Sync ${item.entity} ignorado: ${syncResult.reason}`);
         }
-        
-        // Marcar como concluído
-        this.dbManager.markSyncItemCompleted(item.id);
-        console.log(`✅ Sync ${item.entity} concluído`);
         
       } catch (error: any) {
         const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
@@ -576,6 +571,72 @@ export class SyncManager {
       strategy(items);
     } else {
       console.warn(`⚠️ Sem estratégia de merge para: ${entityName}`);
+    }
+  }
+
+  /**
+   * Sincroniza um item individual, tratando casos especiais de entidades aninhadas
+   */
+  private async syncEntityItem(item: SyncItem, data: any): Promise<{ success: boolean; skip?: boolean; reason?: string }> {
+    const { entity, operation, entity_id } = item;
+    
+    console.log(`📤 Sync ${entity}/${operation}:`, JSON.stringify(data).substring(0, 100));
+    
+    // Casos especiais - entidades que são sub-recursos de outras
+    switch (entity) {
+      case 'sale_item':
+        // Itens de venda devem ser adicionados via POST /sales/:saleId/items
+        if (operation === 'create' && data.saleId) {
+          await this.apiClient.post(`/sales/${data.saleId}/items`, {
+            productId: data.productId,
+            qtyUnits: data.qtyUnits || data.qty_units || 1,
+            isMuntu: data.isMuntu || false,
+            notes: data.notes,
+          });
+          return { success: true };
+        }
+        // Se não tem saleId, pular
+        return { skip: true, success: false, reason: 'Item de venda sem saleId' };
+        
+      case 'payment':
+        // Pagamentos devem ser processados via POST /sales/:saleId/payments
+        if (operation === 'create' && data.saleId) {
+          await this.apiClient.post(`/sales/${data.saleId}/payments`, {
+            method: data.method || 'cash',
+            amount: data.amount,
+            provider: data.provider,
+            referenceNumber: data.referenceNumber || data.reference_number,
+            transactionId: data.transactionId || data.transaction_id,
+          });
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Pagamento sem saleId' };
+        
+      case 'cash_box':
+        // Caixa - verificar se endpoint existe, senão pular
+        return { skip: true, success: false, reason: 'Endpoint cash_box não implementado no backend' };
+        
+      case 'customer_loyalty':
+        // Fidelidade - não existe endpoint separado
+        return { skip: true, success: false, reason: 'Lealdade gerenciada via customer' };
+        
+      case 'purchase_item':
+        // Similar a sale_item
+        return { skip: true, success: false, reason: 'Itens de compra são incluídos na compra' };
+        
+      default:
+        // Entidades normais - usar endpoint padrão
+        const endpoint = this.getEndpoint(entity, operation);
+        
+        if (operation === 'create') {
+          await this.apiClient.post(endpoint, data);
+        } else if (operation === 'update') {
+          await this.apiClient.put(`${endpoint}/${entity_id || ''}`, data);
+        } else if (operation === 'delete') {
+          await this.apiClient.delete(`${endpoint}/${entity_id || ''}`);
+        }
+        
+        return { success: true };
     }
   }
 

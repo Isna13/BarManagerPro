@@ -14,7 +14,8 @@ class CashRegisterScreen extends StatefulWidget {
 }
 
 class _CashRegisterScreenState extends State<CashRegisterScreen> {
-  final currencyFormat = NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz ');
+  final currencyFormat =
+      NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
   final timeFormat = DateFormat('HH:mm');
 

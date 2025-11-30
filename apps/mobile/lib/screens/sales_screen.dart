@@ -14,7 +14,8 @@ class SalesScreen extends StatefulWidget {
 }
 
 class _SalesScreenState extends State<SalesScreen> {
-  final currencyFormat = NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz ');
+  final currencyFormat =
+      NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
   String _selectedFilter = 'today';

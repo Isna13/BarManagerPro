@@ -891,8 +891,8 @@ export class DatabaseManager {
       itemData.cashierId || 'system'
     );
     
-    // Adicionar à fila
-    this.addToSyncQueue('create', 'sale_item', id, itemData, 1);
+    // Adicionar à fila - incluir saleId nos dados
+    this.addToSyncQueue('create', 'sale_item', id, { ...itemData, saleId }, 1);
     
     return { id, ...itemData };
   }
@@ -926,8 +926,8 @@ export class DatabaseManager {
       WHERE id = ?
     `).run(saleId);
     
-    // Adicionar à fila
-    this.addToSyncQueue('create', 'payment', id, paymentData, 1);
+    // Adicionar à fila - incluir saleId nos dados
+    this.addToSyncQueue('create', 'payment', id, { ...paymentData, saleId }, 1);
     
     return { id, ...paymentData };
   }

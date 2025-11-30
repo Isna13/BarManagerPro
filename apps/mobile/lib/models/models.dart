@@ -47,15 +47,21 @@ class Product {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    // O backend pode retornar category e supplier como objetos aninhados
+    final category = json['category'] as Map<String, dynamic>?;
+    final supplier = json['supplier'] as Map<String, dynamic>?;
+
     return Product(
       id: json['id'] ?? '',
       sku: json['sku'],
       barcode: json['barcode'],
       name: json['name'] ?? '',
       categoryId: json['category_id'] ?? json['categoryId'],
-      categoryName: json['category_name'] ?? json['categoryName'],
+      categoryName:
+          category?['name'] ?? json['category_name'] ?? json['categoryName'],
       supplierId: json['supplier_id'] ?? json['supplierId'],
-      supplierName: json['supplier_name'] ?? json['supplierName'],
+      supplierName:
+          supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
       priceUnit: (json['price_unit'] ?? json['priceUnit'] ?? 0).toDouble(),
       priceBox: json['price_box'] != null || json['priceBox'] != null
           ? (json['price_box'] ?? json['priceBox']).toDouble()
@@ -76,10 +82,14 @@ class Product {
       isActive: json['is_active'] == 1 || json['isActive'] == true,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
-          : null,
+          : (json['createdAt'] != null
+              ? DateTime.tryParse(json['createdAt'])
+              : null),
       updatedAt: json['updated_at'] != null
           ? DateTime.tryParse(json['updated_at'])
-          : null,
+          : (json['updatedAt'] != null
+              ? DateTime.tryParse(json['updatedAt'])
+              : null),
     );
   }
 
@@ -205,15 +215,22 @@ class Sale {
   });
 
   factory Sale.fromJson(Map<String, dynamic> json) {
+    // O backend pode retornar customer e cashier como objetos aninhados
+    final customer = json['customer'] as Map<String, dynamic>?;
+    final cashier = json['cashier'] as Map<String, dynamic>?;
+
     return Sale(
       id: json['id'] ?? '',
       customerId: json['customer_id'] ?? json['customerId'],
-      customerName: json['customer_name'] ?? json['customerName'],
+      customerName: customer?['fullName'] ??
+          json['customer_name'] ??
+          json['customerName'],
       cashierId: json['cashier_id'] ?? json['cashierId'],
-      cashierName: json['cashier_name'] ?? json['cashierName'],
+      cashierName:
+          cashier?['fullName'] ?? json['cashier_name'] ?? json['cashierName'],
       branchId: json['branch_id'] ?? json['branchId'],
       subtotal: (json['subtotal'] ?? 0).toDouble(),
-      discount: (json['discount'] ?? 0).toDouble(),
+      discount: (json['discountTotal'] ?? json['discount'] ?? 0).toDouble(),
       total: (json['total'] ?? 0).toDouble(),
       paymentMethod: json['payment_method'] ?? json['paymentMethod'] ?? 'cash',
       status: json['status'] ?? 'completed',
@@ -252,13 +269,17 @@ class SaleItem {
   });
 
   factory SaleItem.fromJson(Map<String, dynamic> json) {
+    // O backend retorna o produto como objeto aninhado
+    final product = json['product'] as Map<String, dynamic>?;
+
     return SaleItem(
       id: json['id'] ?? '',
       saleId: json['sale_id'] ?? json['saleId'] ?? '',
       productId: json['product_id'] ?? json['productId'] ?? '',
-      productName: json['product_name'] ?? json['productName'],
-      quantity: json['quantity'] ?? 1,
-      unitPrice: (json['unit_price'] ?? json['unitPrice'] ?? 0).toDouble(),
+      productName:
+          product?['name'] ?? json['product_name'] ?? json['productName'],
+      quantity: json['qtyUnits'] ?? json['quantity'] ?? 1,
+      unitPrice: (json['unitPrice'] ?? json['unit_price'] ?? 0).toDouble(),
       subtotal: (json['subtotal'] ?? 0).toDouble(),
       saleType: json['sale_type'] ?? json['saleType'] ?? 'unit',
     );
@@ -431,22 +452,45 @@ class Inventory {
   });
 
   factory Inventory.fromJson(Map<String, dynamic> json) {
+    // O backend retorna o produto como objeto aninhado
+    final product = json['product'] as Map<String, dynamic>?;
+
     return Inventory(
       id: json['id'] ?? '',
       productId: json['product_id'] ?? json['productId'] ?? '',
-      productName: json['product_name'] ?? json['productName'],
-      productSku: json['product_sku'] ?? json['productSku'],
+      productName:
+          product?['name'] ?? json['product_name'] ?? json['productName'],
+      productSku: product?['sku'] ?? json['product_sku'] ?? json['productSku'],
       branchId: json['branch_id'] ?? json['branchId'] ?? '',
-      quantityUnits: json['quantity_units'] ?? json['quantityUnits'] ?? 0,
-      quantityBoxes: json['quantity_boxes'] ?? json['quantityBoxes'] ?? 0,
-      minStockUnits: json['min_stock_units'] ?? json['minStockUnits'] ?? 10,
-      costUnit:
-          json['cost_unit'] != null ? (json['cost_unit']).toDouble() : null,
-      priceUnit:
-          json['price_unit'] != null ? (json['price_unit']).toDouble() : null,
-      updatedAt: json['updated_at'] != null
-          ? DateTime.tryParse(json['updated_at'])
-          : null,
+      quantityUnits: json['qtyUnits'] ??
+          json['quantity_units'] ??
+          json['quantityUnits'] ??
+          0,
+      quantityBoxes: json['qtyBoxes'] ??
+          json['quantity_boxes'] ??
+          json['quantityBoxes'] ??
+          0,
+      minStockUnits: json['minStock'] ??
+          json['min_stock_units'] ??
+          json['minStockUnits'] ??
+          10,
+      costUnit: product?['costUnit'] != null
+          ? (product!['costUnit'] is int
+              ? product['costUnit'].toDouble()
+              : product['costUnit'])
+          : (json['cost_unit'] != null ? (json['cost_unit']).toDouble() : null),
+      priceUnit: product?['priceUnit'] != null
+          ? (product!['priceUnit'] is int
+              ? product['priceUnit'].toDouble()
+              : product['priceUnit'])
+          : (json['price_unit'] != null
+              ? (json['price_unit']).toDouble()
+              : null),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'])
+          : (json['updated_at'] != null
+              ? DateTime.tryParse(json['updated_at'])
+              : null),
     );
   }
 
