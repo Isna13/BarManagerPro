@@ -15,16 +15,25 @@ export class SalesService {
 
     const saleNumber = this.generateSaleNumber(lastSale?.saleNumber);
 
+    // Construir data object apenas com campos válidos
+    const saleData: any = {
+      saleNumber,
+      branchId: createSaleDto.branchId,
+      type: createSaleDto.type || 'counter',
+      cashierId: userId,
+      status: 'open',
+    };
+
+    // Adicionar campos opcionais apenas se existirem
+    if (createSaleDto.tableId) {
+      saleData.tableId = createSaleDto.tableId;
+    }
+    if (createSaleDto.customerId) {
+      saleData.customerId = createSaleDto.customerId;
+    }
+
     return this.prisma.sale.create({
-      data: {
-        saleNumber,
-        branchId: createSaleDto.branchId,
-        type: createSaleDto.type || 'counter',
-        tableId: createSaleDto.tableId,
-        customerId: createSaleDto.customerId,
-        cashierId: userId,
-        status: 'open',
-      },
+      data: saleData,
       include: {
         items: {
           include: {
@@ -319,12 +328,29 @@ export class SalesService {
 
   private generateSaleNumber(lastNumber?: string): string {
     if (!lastNumber) {
-      return `VND-${new Date().getFullYear()}-00001`;
+      return `SALE-${String(Date.now()).slice(-6)}`;
     }
     
-    const parts = lastNumber.split('-');
-    const num = parseInt(parts[2]) + 1;
-    return `VND-${new Date().getFullYear()}-${num.toString().padStart(5, '0')}`;
+    // Suportar formatos: SALE-XXXXXX, SALE-000001, VND-YYYY-XXXXX
+    try {
+      if (lastNumber.startsWith('VND-')) {
+        const parts = lastNumber.split('-');
+        const num = parseInt(parts[2]) + 1;
+        return `VND-${new Date().getFullYear()}-${num.toString().padStart(5, '0')}`;
+      } else if (lastNumber.startsWith('SALE-')) {
+        // Extrair número do final
+        const numMatch = lastNumber.match(/\d+$/);
+        if (numMatch) {
+          const num = parseInt(numMatch[0]) + 1;
+          return `SALE-${num.toString().padStart(6, '0')}`;
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao gerar número de venda:', e);
+    }
+    
+    // Fallback
+    return `SALE-${String(Date.now()).slice(-6)}`;
   }
 
 
