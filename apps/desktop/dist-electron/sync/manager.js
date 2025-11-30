@@ -852,13 +852,13 @@ class SyncManager {
                 data.id = item.id;
         }
         else if (entityName === 'customers') {
-            data.name = item.name || item.full_name;
+            data.name = item.full_name || item.name || 'Cliente';
             data.fullName = item.full_name || item.name;
             data.phone = item.phone;
             data.email = item.email;
+            data.code = item.code;
             data.creditLimit = item.credit_limit || 0;
             data.notes = item.notes;
-            data.branchId = item.branch_id || 'main-branch'; // Default branch ID
             if (item.id)
                 data.id = item.id;
         }
