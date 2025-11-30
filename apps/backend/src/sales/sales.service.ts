@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto, AddSaleItemDto, ProcessPaymentDto } from './dto';
 
@@ -7,44 +7,61 @@ export class SalesService {
   constructor(private prisma: PrismaService) {}
 
   async create(createSaleDto: CreateSaleDto, userId: string) {
-    // Gerar número sequencial da venda
-    const lastSale = await this.prisma.sale.findFirst({
-      where: { branchId: createSaleDto.branchId },
-      orderBy: { createdAt: 'desc' },
-    });
+    try {
+      console.log('📝 Criando venda:', JSON.stringify(createSaleDto));
+      console.log('   userId:', userId);
+      
+      // Gerar número sequencial da venda
+      const lastSale = await this.prisma.sale.findFirst({
+        where: { branchId: createSaleDto.branchId },
+        orderBy: { createdAt: 'desc' },
+      });
 
-    const saleNumber = this.generateSaleNumber(lastSale?.saleNumber);
+      const saleNumber = this.generateSaleNumber(lastSale?.saleNumber);
+      console.log('   saleNumber gerado:', saleNumber);
 
-    // Construir data object apenas com campos válidos
-    const saleData: any = {
-      saleNumber,
-      branchId: createSaleDto.branchId,
-      type: createSaleDto.type || 'counter',
-      cashierId: userId,
-      status: 'open',
-    };
+      // Construir data object apenas com campos válidos
+      const saleData: any = {
+        saleNumber,
+        branchId: createSaleDto.branchId,
+        type: createSaleDto.type || 'counter',
+        cashierId: userId,
+        status: 'open',
+      };
 
-    // Adicionar campos opcionais apenas se existirem
-    if (createSaleDto.tableId) {
-      saleData.tableId = createSaleDto.tableId;
-    }
-    if (createSaleDto.customerId) {
-      saleData.customerId = createSaleDto.customerId;
-    }
+      // Adicionar campos opcionais apenas se existirem
+      if (createSaleDto.tableId) {
+        saleData.tableId = createSaleDto.tableId;
+      }
+      if (createSaleDto.customerId) {
+        saleData.customerId = createSaleDto.customerId;
+      }
 
-    return this.prisma.sale.create({
-      data: saleData,
-      include: {
-        items: {
-          include: {
-            product: true,
+      console.log('   saleData:', JSON.stringify(saleData));
+
+      const result = await this.prisma.sale.create({
+        data: saleData,
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
           },
+          table: true,
+          customer: true,
+          cashier: true,
         },
-        table: true,
-        customer: true,
-        cashier: true,
-      },
-    });
+      });
+      
+      console.log('✅ Venda criada:', result.id);
+      return result;
+    } catch (error: any) {
+      console.error('❌ Erro ao criar venda:', error.message);
+      console.error('   Stack:', error.stack);
+      console.error('   Code:', error.code);
+      console.error('   Meta:', error.meta);
+      throw new InternalServerErrorException(`Erro ao criar venda: ${error.message}`);
+    }
   }
 
   async addItem(saleId: string, addItemDto: AddSaleItemDto) {
