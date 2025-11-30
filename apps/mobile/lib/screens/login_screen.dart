@@ -30,13 +30,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.login(
+      final success = await authProvider.login(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      
+      if (success) {
+        print('Login successful, navigating to dashboard');
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.error ?? 'Erro ao fazer login'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

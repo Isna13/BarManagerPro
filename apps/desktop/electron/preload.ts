@@ -185,6 +185,7 @@ const api = {
     stop: () => ipcRenderer.invoke('sync:stop'),
     status: () => ipcRenderer.invoke('sync:status'),
     forcePush: () => ipcRenderer.invoke('sync:forcePush'),
+    pushFullInitialSync: () => ipcRenderer.invoke('sync:pushFullInitialSync'),
     checkConnection: () => ipcRenderer.invoke('sync:checkConnection'),
     tryReauthenticate: () => ipcRenderer.invoke('sync:tryReauthenticate'),
     

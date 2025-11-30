@@ -521,6 +521,11 @@ ipcMain.handle('sync:forcePush', async () => {
   return { success: true };
 });
 
+// Push inicial completo - envia TODOS os dados existentes para o servidor
+ipcMain.handle('sync:pushFullInitialSync', async () => {
+  return await syncManager.pushFullInitialSync();
+});
+
 // Settings
 ipcMain.handle('settings:get', async (_, key) => {
   return store.get(key);

@@ -24,15 +24,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDashboardStats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDashboardStats();
+    });
   }
 
   Future<void> _loadDashboardStats() async {
+    setState(() => _isLoadingStats = true);
+    
     try {
-      final apiService = ApiService();
-      await apiService.loadToken();
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final apiService = authProvider.apiService;
+      
+      // Debug: verificar se token existe
+      print('Token exists: ${authProvider.token != null}');
 
       final data = await apiService.getDashboardStats();
+      
+      print('Dashboard data received: $data');
 
       if (mounted) {
         setState(() {
@@ -41,6 +50,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
       }
     } catch (e) {
+      print('Dashboard error: $e');
       if (mounted) {
         setState(() {
           _isLoadingStats = false;

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
+import '../providers/auth_provider.dart';
 
 class DebtsScreen extends StatefulWidget {
   const DebtsScreen({super.key});
@@ -10,7 +12,7 @@ class DebtsScreen extends StatefulWidget {
 }
 
 class _DebtsScreenState extends State<DebtsScreen> {
-  final ApiService _apiService = ApiService();
+  late ApiService _apiService;
   final _currencyFormat =
       NumberFormat.currency(symbol: 'XOF ', decimalDigits: 0);
   final _dateFormat = DateFormat('dd/MM/yyyy');
@@ -24,8 +26,10 @@ class _DebtsScreenState extends State<DebtsScreen> {
   @override
   void initState() {
     super.initState();
-    _apiService.loadToken();
-    _loadDebts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _apiService = Provider.of<AuthProvider>(context, listen: false).apiService;
+      _loadDebts();
+    });
   }
 
   Future<void> _loadDebts() async {

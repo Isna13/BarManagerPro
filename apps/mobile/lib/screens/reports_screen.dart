@@ -14,7 +14,7 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final ApiService _apiService = ApiService();
+  late ApiService _apiService;
   final _currencyFormat =
       NumberFormat.currency(symbol: 'XOF ', decimalDigits: 0);
 
@@ -30,8 +30,10 @@ class _ReportsScreenState extends State<ReportsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _apiService.loadToken();
-    _loadReports();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _apiService = Provider.of<AuthProvider>(context, listen: false).apiService;
+      _loadReports();
+    });
   }
 
   @override

@@ -12,6 +12,7 @@ import { BranchesModule } from './branches/branches.module';
 
 // Business modules
 import { ProductsModule } from './products/products.module';
+import { CategoriesModule } from './categories/categories.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
 import { CashBoxModule } from './cash-box/cash-box.module';
@@ -59,6 +60,7 @@ import { HealthModule } from './health/health.module';
     
     // Business
     ProductsModule,
+    CategoriesModule,
     InventoryModule,
     SalesModule,
     CashBoxModule,
