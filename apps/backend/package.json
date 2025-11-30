@@ -22,6 +22,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "import:sqlite": "ts-node src/cli-import.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
