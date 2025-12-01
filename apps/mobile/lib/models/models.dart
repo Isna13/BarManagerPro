@@ -504,53 +504,50 @@ class Inventory {
 // Inventory Movement Model
 class InventoryMovement {
   final String id;
-  final String productId;
+  final String inventoryItemId;
+  final String? productId;
   final String? productName;
-  final String branchId;
+  final String? productSku;
+  final String? branchId;
+  final String? branchName;
   final String movementType;
   final int quantity;
-  final String? referenceType;
-  final String? referenceId;
-  final String? notes;
-  final String? userId;
-  final String? userName;
+  final String? reason;
   final DateTime createdAt;
 
   InventoryMovement({
     required this.id,
-    required this.productId,
+    required this.inventoryItemId,
+    this.productId,
     this.productName,
-    required this.branchId,
+    this.productSku,
+    this.branchId,
+    this.branchName,
     required this.movementType,
     required this.quantity,
-    this.referenceType,
-    this.referenceId,
-    this.notes,
-    this.userId,
-    this.userName,
+    this.reason,
     required this.createdAt,
   });
 
   factory InventoryMovement.fromJson(Map<String, dynamic> json) {
-    // O backend pode retornar product e user como objetos aninhados
-    final product = json['product'] as Map<String, dynamic>?;
-    final user = json['user'] as Map<String, dynamic>?;
+    // O backend retorna inventoryItem com product e branch aninhados
+    final inventoryItem = json['inventoryItem'] as Map<String, dynamic>?;
+    final product = inventoryItem?['product'] as Map<String, dynamic>?;
+    final branch = inventoryItem?['branch'] as Map<String, dynamic>?;
 
     return InventoryMovement(
       id: json['id'] ?? '',
-      productId: json['product_id'] ?? json['productId'] ?? '',
-      productName:
-          product?['name'] ?? json['product_name'] ?? json['productName'],
-      branchId: json['branch_id'] ?? json['branchId'] ?? '',
-      movementType: json['movement_type'] ?? json['movementType'] ?? '',
-      quantity: json['quantity'] ?? 0,
-      referenceType: json['reference_type'] ?? json['referenceType'],
-      referenceId: json['reference_id'] ?? json['referenceId'],
-      notes: json['notes'],
-      userId: user?['id'] ?? json['user_id'] ?? json['userId'],
-      userName: user?['fullName'] ?? json['user_name'] ?? json['userName'],
+      inventoryItemId: json['inventoryItemId'] ?? '',
+      productId: product?['id'] ?? json['productId'],
+      productName: product?['name'] ?? json['productName'],
+      productSku: product?['sku'] ?? json['productSku'],
+      branchId: branch?['id'] ?? json['branchId'],
+      branchName: branch?['name'] ?? json['branchName'],
+      movementType: json['type'] ?? json['movementType'] ?? '',
+      quantity: json['qtyUnits'] ?? json['quantity'] ?? 0,
+      reason: json['reason'] ?? json['notes'],
       createdAt:
-          DateTime.tryParse(json['created_at'] ?? json['createdAt'] ?? '') ??
+          DateTime.tryParse(json['createdAt'] ?? json['created_at'] ?? '') ??
               DateTime.now(),
     );
   }

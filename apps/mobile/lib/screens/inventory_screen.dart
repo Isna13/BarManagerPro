@@ -402,9 +402,9 @@ class _InventoryMovementsState extends State<_InventoryMovements> {
                         style: const TextStyle(
                             fontSize: 11, color: AppTheme.textMuted),
                       ),
-                      if (mov.notes != null && mov.notes!.isNotEmpty)
+                      if (mov.reason != null && mov.reason!.isNotEmpty)
                         Text(
-                          mov.notes!,
+                          mov.reason!,
                           style: const TextStyle(
                               fontSize: 11, color: AppTheme.textMuted),
                           maxLines: 1,
