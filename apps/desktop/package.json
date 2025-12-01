@@ -17,7 +17,7 @@
     "@types/bcryptjs": "^3.0.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.4.6",
+    "better-sqlite3": "^12.5.0",
     "date-fns": "^3.0.6",
     "electron-store": "^8.1.0",
     "jspdf": "^3.0.4",
@@ -28,6 +28,7 @@
     "react-router-dom": "^6.20.1",
     "recharts": "^2.10.3",
     "socket.io-client": "^4.6.1",
+    "sql.js": "^1.13.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {

@@ -375,12 +375,15 @@ export class ReportsService {
 
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Vendas de hoje
+    // Vendas de hoje - usar closedAt OU createdAt para vendas sem closedAt
     const todaySales = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
-        status: 'closed',
-        closedAt: { gte: today, lt: tomorrow },
+        status: { in: ['closed', 'paid'] },
+        OR: [
+          { closedAt: { gte: today, lt: tomorrow } },
+          { closedAt: null, createdAt: { gte: today, lt: tomorrow } },
+        ],
       },
       _sum: { total: true, subtotal: true },
       _count: true,
@@ -402,22 +405,28 @@ export class ReportsService {
     const todayProfit = todaySalesTotal - todayCostsTotal;
     const todayMargin = todaySalesTotal > 0 ? (todayProfit / todaySalesTotal) * 100 : 0;
 
-    // Faturamento semanal
+    // Faturamento semanal - usar closedAt OU createdAt
     const weekRevenue = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
-        status: 'closed',
-        closedAt: { gte: weekStart },
+        status: { in: ['closed', 'paid'] },
+        OR: [
+          { closedAt: { gte: weekStart } },
+          { closedAt: null, createdAt: { gte: weekStart } },
+        ],
       },
       _sum: { total: true },
     });
 
-    // Faturamento mensal
+    // Faturamento mensal - usar closedAt OU createdAt
     const monthRevenue = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
-        status: 'closed',
-        closedAt: { gte: monthStart },
+        status: { in: ['closed', 'paid'] },
+        OR: [
+          { closedAt: { gte: monthStart } },
+          { closedAt: null, createdAt: { gte: monthStart } },
+        ],
       },
       _sum: { total: true },
     });

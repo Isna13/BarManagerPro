@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'config/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/data_provider.dart';
@@ -55,6 +56,16 @@ class BarManagerApp extends StatelessWidget {
             title: 'BarManager Pro',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
+            locale: const Locale('pt', 'BR'),
+            supportedLocales: const [
+              Locale('pt', 'BR'),
+              Locale('en', 'US'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
             home:
                 auth.isAuthenticated ? const HomeScreen() : const LoginScreen(),
           );

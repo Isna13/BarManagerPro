@@ -368,19 +368,31 @@ class Debt {
   });
 
   factory Debt.fromJson(Map<String, dynamic> json) {
+    // Buscar nome do cliente: pode vir direto ou dentro de objeto 'customer'
+    String? customerName = json['customer_name'] ?? json['customerName'];
+    if (customerName == null && json['customer'] != null) {
+      customerName = json['customer']['fullName'] ?? json['customer']['full_name'] ?? json['customer']['name'];
+    }
+    
+    // remainingAmount pode vir como 'balance' ou 'remainingAmount'
+    final originalAmount = (json['original_amount'] ?? json['originalAmount'] ?? json['amount'] ?? 0).toDouble();
+    final paidAmount = (json['paid_amount'] ?? json['paidAmount'] ?? json['paid'] ?? 0).toDouble();
+    final balance = (json['remaining_amount'] ?? json['remainingAmount'] ?? json['balance'] ?? 0).toDouble();
+    
     return Debt(
       id: json['id'] ?? '',
       customerId: json['customer_id'] ?? json['customerId'] ?? '',
-      customerName: json['customer_name'] ?? json['customerName'],
+      customerName: customerName,
       saleId: json['sale_id'] ?? json['saleId'],
-      originalAmount:
-          (json['original_amount'] ?? json['originalAmount'] ?? 0) / 100,
-      paidAmount: (json['paid_amount'] ?? json['paidAmount'] ?? 0) / 100,
-      remainingAmount:
-          (json['remaining_amount'] ?? json['remainingAmount'] ?? 0) / 100,
+      originalAmount: originalAmount / 100,
+      paidAmount: paidAmount / 100,
+      remainingAmount: balance / 100,
       status: json['status'] ?? 'pending',
-      dueDate:
-          json['due_date'] != null ? DateTime.tryParse(json['due_date']) : null,
+      dueDate: json['due_date'] != null 
+          ? DateTime.tryParse(json['due_date']) 
+          : json['dueDate'] != null 
+              ? DateTime.tryParse(json['dueDate']) 
+              : null,
       createdAt:
           DateTime.tryParse(json['created_at'] ?? json['createdAt'] ?? '') ??
               DateTime.now(),
@@ -677,32 +689,33 @@ class CashBox {
   });
 
   factory CashBox.fromJson(Map<String, dynamic> json) {
+    // Mapear campos: API usa openingCash/closingCash, modelo espera openingBalance/closingBalance
+    final openingBalance = (json['opening_balance'] ?? json['openingBalance'] ?? json['openingCash'] ?? 0).toDouble();
+    final closingBalance = json['closing_balance'] ?? json['closingBalance'] ?? json['closingCash'];
+    final totalSales = json['total_sales'] ?? json['totalSales'];
+    final totalCashIn = json['total_cash_in'] ?? json['totalCashIn'] ?? json['totalCash'];
+    final totalCashOut = json['total_cash_out'] ?? json['totalCashOut'];
+    
     return CashBox(
       id: json['id'] ?? '',
       branchId: json['branch_id'] ?? json['branchId'] ?? '',
-      userId: json['user_id'] ?? json['userId'],
-      userName: json['user_name'] ?? json['userName'],
-      openingBalance:
-          (json['opening_balance'] ?? json['openingBalance'] ?? 0) / 100,
-      closingBalance: json['closing_balance'] != null
-          ? (json['closing_balance']) / 100
-          : json['closingBalance'] != null
-              ? (json['closingBalance']) / 100
-              : null,
-      totalSales:
-          json['total_sales'] != null ? (json['total_sales']) / 100 : null,
-      totalCashIn:
-          json['total_cash_in'] != null ? (json['total_cash_in']) / 100 : null,
-      totalCashOut: json['total_cash_out'] != null
-          ? (json['total_cash_out']) / 100
-          : null,
+      userId: json['user_id'] ?? json['userId'] ?? json['openedBy'],
+      userName: json['user_name'] ?? json['userName'] ?? 
+          (json['openedByUser'] != null ? json['openedByUser']['fullName'] : null),
+      openingBalance: openingBalance / 100,
+      closingBalance: closingBalance != null ? closingBalance.toDouble() / 100 : null,
+      totalSales: totalSales != null ? totalSales.toDouble() / 100 : null,
+      totalCashIn: totalCashIn != null ? totalCashIn.toDouble() / 100 : null,
+      totalCashOut: totalCashOut != null ? totalCashOut.toDouble() / 100 : null,
       status: json['status'] ?? 'open',
       openedAt:
           DateTime.tryParse(json['opened_at'] ?? json['openedAt'] ?? '') ??
               DateTime.now(),
       closedAt: json['closed_at'] != null
           ? DateTime.tryParse(json['closed_at'])
-          : null,
+          : json['closedAt'] != null
+              ? DateTime.tryParse(json['closedAt'])
+              : null,
       notes: json['notes'],
     );
   }

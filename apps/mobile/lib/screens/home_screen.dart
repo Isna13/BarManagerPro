@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../config/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/data_provider.dart';
-import '../widgets/bottom_nav_bar.dart';
+import '../widgets/modern_nav_bar.dart';
 import 'dashboard_screen.dart';
 import 'sales_screen.dart';
 import 'inventory_screen.dart';
@@ -67,7 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => MoreOptionsSheet(
+      isScrollControlled: true,
+      builder: (context) => ModernMoreOptionsSheet(
         selectedIndex: _currentIndex,
         onSelect: (index) {
           setState(() {
@@ -161,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: _getCurrentScreen(),
-      bottomNavigationBar: BottomNavBar(
+      bottomNavigationBar: ModernNavBar(
         currentIndex: _currentIndex < 5 ? _currentIndex : 4,
         onTap: _onNavTap,
       ),
