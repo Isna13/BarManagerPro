@@ -375,15 +375,13 @@ export class ReportsService {
 
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Vendas de hoje - usar closedAt OU createdAt para vendas sem closedAt
+    // Vendas de hoje - usar apenas closedAt para precisão
+    // (vendas importadas não têm closedAt e não devem contar como "hoje")
     const todaySales = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
         status: { in: ['closed', 'paid'] },
-        OR: [
-          { closedAt: { gte: today, lt: tomorrow } },
-          { closedAt: null, createdAt: { gte: today, lt: tomorrow } },
-        ],
+        closedAt: { gte: today, lt: tomorrow },
       },
       _sum: { total: true, subtotal: true },
       _count: true,
@@ -405,28 +403,22 @@ export class ReportsService {
     const todayProfit = todaySalesTotal - todayCostsTotal;
     const todayMargin = todaySalesTotal > 0 ? (todayProfit / todaySalesTotal) * 100 : 0;
 
-    // Faturamento semanal - usar closedAt OU createdAt
+    // Faturamento semanal - usar apenas closedAt para precisão
     const weekRevenue = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
         status: { in: ['closed', 'paid'] },
-        OR: [
-          { closedAt: { gte: weekStart } },
-          { closedAt: null, createdAt: { gte: weekStart } },
-        ],
+        closedAt: { gte: weekStart },
       },
       _sum: { total: true },
     });
 
-    // Faturamento mensal - usar closedAt OU createdAt
+    // Faturamento mensal - usar apenas closedAt para precisão
     const monthRevenue = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
         status: { in: ['closed', 'paid'] },
-        OR: [
-          { closedAt: { gte: monthStart } },
-          { closedAt: null, createdAt: { gte: monthStart } },
-        ],
+        closedAt: { gte: monthStart },
       },
       _sum: { total: true },
     });
@@ -468,6 +460,16 @@ export class ReportsService {
       where: branchId ? { branchId } : undefined,
     });
 
+    // Total histórico de vendas (todas as vendas, incluindo importadas)
+    const totalHistoricSales = await this.prisma.sale.aggregate({
+      where: {
+        ...(branchId && { branchId }),
+        status: { in: ['closed', 'paid'] },
+      },
+      _sum: { total: true },
+      _count: true,
+    });
+
     return {
       todaySales: todaySalesTotal,
       todayProfit,
@@ -475,6 +477,8 @@ export class ReportsService {
       todaySalesCount: todaySales._count,
       weekRevenue: weekRevenue._sum.total || 0,
       monthRevenue: monthRevenue._sum.total || 0,
+      totalHistoricSales: totalHistoricSales._sum.total || 0,
+      totalHistoricSalesCount: totalHistoricSales._count,
       pendingDebts: debts._sum.balance || 0,
       pendingDebtsCount: debts._count,
       overdueDebts,
