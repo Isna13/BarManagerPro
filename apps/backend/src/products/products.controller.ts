@@ -24,6 +24,11 @@ export class ProductsController {
     return this.productsService.findAll(categoryId, search, activeFilter);
   }
 
+  @Get('categories')
+  getCategories() {
+    return this.productsService.getCategories();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);

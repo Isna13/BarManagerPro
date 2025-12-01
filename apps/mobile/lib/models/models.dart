@@ -63,7 +63,8 @@ class Product {
       supplierId: json['supplier_id'] ?? json['supplierId'],
       supplierName:
           supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
-      priceUnit: (json['price_unit'] ?? json['priceUnit'] ?? 0).toDouble() / 100,
+      priceUnit:
+          (json['price_unit'] ?? json['priceUnit'] ?? 0).toDouble() / 100,
       priceBox: json['price_box'] != null || json['priceBox'] != null
           ? (json['price_box'] ?? json['priceBox']).toDouble() / 100
           : null,
@@ -328,10 +329,8 @@ class Customer {
       loyaltyPoints: json['loyalty_points'] ?? json['loyaltyPoints'] ?? 0,
       totalPurchases:
           (json['total_purchases'] ?? json['totalPurchases'] ?? 0) / 100,
-      creditLimit:
-          (json['credit_limit'] ?? json['creditLimit'] ?? 0) / 100,
-      currentDebt:
-          (json['current_debt'] ?? json['currentDebt'] ?? 0) / 100,
+      creditLimit: (json['credit_limit'] ?? json['creditLimit'] ?? 0) / 100,
+      currentDebt: (json['current_debt'] ?? json['currentDebt'] ?? 0) / 100,
       isActive: json['is_active'] == 1 || json['isActive'] == true,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
@@ -480,7 +479,9 @@ class Inventory {
           ? (product!['costUnit'] is int
               ? product['costUnit'].toDouble() / 100
               : product['costUnit'] / 100)
-          : (json['cost_unit'] != null ? (json['cost_unit']).toDouble() / 100 : null),
+          : (json['cost_unit'] != null
+              ? (json['cost_unit']).toDouble() / 100
+              : null),
       priceUnit: product?['priceUnit'] != null
           ? (product!['priceUnit'] is int
               ? product['priceUnit'].toDouble() / 100
@@ -538,7 +539,8 @@ class InventoryMovement {
     return InventoryMovement(
       id: json['id'] ?? '',
       productId: json['product_id'] ?? json['productId'] ?? '',
-      productName: product?['name'] ?? json['product_name'] ?? json['productName'],
+      productName:
+          product?['name'] ?? json['product_name'] ?? json['productName'],
       branchId: json['branch_id'] ?? json['branchId'] ?? '',
       movementType: json['movement_type'] ?? json['movementType'] ?? '',
       quantity: json['quantity'] ?? 0,
@@ -692,9 +694,8 @@ class CashBox {
               : null,
       totalSales:
           json['total_sales'] != null ? (json['total_sales']) / 100 : null,
-      totalCashIn: json['total_cash_in'] != null
-          ? (json['total_cash_in']) / 100
-          : null,
+      totalCashIn:
+          json['total_cash_in'] != null ? (json['total_cash_in']) / 100 : null,
       totalCashOut: json['total_cash_out'] != null
           ? (json['total_cash_out']) / 100
           : null,
@@ -791,15 +792,29 @@ class DashboardStats {
   factory DashboardStats.fromJson(Map<String, dynamic> json) {
     // Backend retorna valores em centavos (Int), converter para reais dividindo por 100
     return DashboardStats(
-      todaySales: (json['todaySales'] ?? json['today_sales'] ?? 0).toDouble() / 100,
-      todayTransactions:
-          json['todayTransactions'] ?? json['todaySalesCount'] ?? json['today_transactions'] ?? 0,
-      weekSales: (json['weekSales'] ?? json['weekRevenue'] ?? json['week_sales'] ?? 0).toDouble() / 100,
-      monthSales: (json['monthSales'] ?? json['monthRevenue'] ?? json['month_sales'] ?? 0).toDouble() / 100,
+      todaySales:
+          (json['todaySales'] ?? json['today_sales'] ?? 0).toDouble() / 100,
+      todayTransactions: json['todayTransactions'] ??
+          json['todaySalesCount'] ??
+          json['today_transactions'] ??
+          0,
+      weekSales:
+          (json['weekSales'] ?? json['weekRevenue'] ?? json['week_sales'] ?? 0)
+                  .toDouble() /
+              100,
+      monthSales: (json['monthSales'] ??
+                  json['monthRevenue'] ??
+                  json['month_sales'] ??
+                  0)
+              .toDouble() /
+          100,
       lowStockCount: json['lowStockCount'] ?? json['low_stock_count'] ?? 0,
       pendingDebts:
           (json['pendingDebts'] ?? json['pending_debts'] ?? 0).toDouble() / 100,
-      activeCustomers: json['activeCustomers'] ?? json['customersCount'] ?? json['active_customers'] ?? 0,
+      activeCustomers: json['activeCustomers'] ??
+          json['customersCount'] ??
+          json['active_customers'] ??
+          0,
       topProducts: (json['topProducts'] as List<dynamic>?)
               ?.map((p) => TopProduct.fromJson(p))
               .toList() ??
@@ -827,8 +842,7 @@ class TopProduct {
       productId: json['product_id'] ?? json['productId'] ?? '',
       productName: json['product_name'] ?? json['productName'] ?? '',
       quantitySold: json['quantity_sold'] ?? json['quantitySold'] ?? 0,
-      totalRevenue:
-          (json['total_revenue'] ?? json['totalRevenue'] ?? 0) / 100,
+      totalRevenue: (json['total_revenue'] ?? json['totalRevenue'] ?? 0) / 100,
     );
   }
 }

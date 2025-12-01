@@ -237,27 +237,33 @@ export class InventoryService {
     const where: Record<string, unknown> = {};
 
     if (options?.productId) {
-      where.productId = options.productId;
+      where.inventoryItem = {
+        productId: options.productId,
+      };
     }
 
     if (options?.movementType) {
-      where.movementType = options.movementType;
+      where.type = options.movementType;
     }
 
     return this.prisma.inventoryMovement.findMany({
       where,
       include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            fullName: true,
+        inventoryItem: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+              },
+            },
+            branch: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
       },

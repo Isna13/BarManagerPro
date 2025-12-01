@@ -6,6 +6,12 @@ import { CreateProductDto, UpdateProductDto } from './dto';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
+  async getCategories() {
+    return this.prisma.category.findMany({
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async create(createDto: CreateProductDto) {
     // Verificar se categoria existe (se fornecida)
     if (createDto.categoryId) {

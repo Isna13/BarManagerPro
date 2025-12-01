@@ -11,7 +11,7 @@ export class CashBoxController {
 
   @Post('open')
   openCashBox(@Body() openDto: OpenCashBoxDto, @User() user: any) {
-    return this.cashBoxService.openCashBox(openDto, user.id);
+    return this.cashBoxService.openCashBox(openDto, user.userId);
   }
 
   @Post(':id/close')
@@ -30,9 +30,21 @@ export class CashBoxController {
     return this.cashBoxService.addTransaction(id, transactionDto);
   }
 
+  // Endpoint sem branchId (retorna o primeiro caixa aberto)
+  @Get('current')
+  getCurrentCashBoxAny(@User() user: any) {
+    return this.cashBoxService.getCurrentCashBoxForUser(user.userId);
+  }
+
   @Get('current/:branchId')
   getCurrentCashBox(@Param('branchId') branchId: string) {
     return this.cashBoxService.getCurrentCashBox(branchId);
+  }
+
+  // Endpoint de histórico sem branchId
+  @Get('history')
+  getHistoryAll(@Query('limit') limit?: string) {
+    return this.cashBoxService.getHistoryAll(limit ? parseInt(limit) : 30);
   }
 
   @Get('history/:branchId')

@@ -197,6 +197,63 @@ export class CashBoxService {
 
     return cashBox;
   }
+
+  async getCurrentCashBoxForUser(userId: string) {
+    const cashBox = await this.prisma.cashBox.findFirst({
+      where: {
+        openedBy: userId,
+        status: 'open',
+      },
+      include: {
+        openedByUser: true,
+        branch: true,
+      },
+    });
+
+    if (!cashBox) {
+      return null;
+    }
+
+    // Buscar vendas do período
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        branchId: cashBox.branchId,
+        openedAt: { gte: cashBox.openedAt },
+      },
+      include: {
+        payments: true,
+      },
+    });
+
+    const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+    const cashPayments = sales.reduce((sum, sale) => {
+      const cashAmount = sale.payments
+        .filter(p => p.method === 'cash')
+        .reduce((s, p) => s + p.amount, 0);
+      return sum + cashAmount;
+    }, 0);
+
+    return {
+      ...cashBox,
+      stats: {
+        totalSales,
+        cashPayments,
+        currentAmount: cashBox.openingCash + cashPayments,
+        salesCount: sales.length,
+      },
+    };
+  }
+
+  async getHistoryAll(limit = 30) {
+    return this.prisma.cashBox.findMany({
+      include: {
+        openedByUser: true,
+        branch: true,
+      },
+      orderBy: { openedAt: 'desc' },
+      take: limit,
+    });
+  }
 }
 
 

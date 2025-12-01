@@ -366,16 +366,18 @@ class _InventoryMovementsState extends State<_InventoryMovements> {
             itemCount: movements.length,
             itemBuilder: (context, index) {
               final mov = movements[index];
-              final isEntry = mov.movementType.toLowerCase().contains('entry') ||
-                  mov.movementType.toLowerCase().contains('entrada') ||
-                  mov.movementType.toLowerCase().contains('purchase') ||
-                  mov.movementType.toLowerCase().contains('compra');
+              final isEntry =
+                  mov.movementType.toLowerCase().contains('entry') ||
+                      mov.movementType.toLowerCase().contains('entrada') ||
+                      mov.movementType.toLowerCase().contains('purchase') ||
+                      mov.movementType.toLowerCase().contains('compra');
 
               return Card(
                 margin: const EdgeInsets.only(bottom: AppTheme.spacingSM),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: _getMovementColor(mov.movementType).withOpacity(0.1),
+                    backgroundColor:
+                        _getMovementColor(mov.movementType).withOpacity(0.1),
                     child: Icon(
                       _getMovementIcon(mov.movementType),
                       color: _getMovementColor(mov.movementType),
@@ -397,12 +399,14 @@ class _InventoryMovementsState extends State<_InventoryMovements> {
                       ),
                       Text(
                         dateFormat.format(mov.createdAt),
-                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                        style: const TextStyle(
+                            fontSize: 11, color: AppTheme.textMuted),
                       ),
                       if (mov.notes != null && mov.notes!.isNotEmpty)
                         Text(
                           mov.notes!,
-                          style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                          style: const TextStyle(
+                              fontSize: 11, color: AppTheme.textMuted),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
