@@ -541,6 +541,17 @@ ipcMain.handle('sync:getConnectionStatus', async () => {
   return syncManager.getStatus();
 });
 
+// Obter estatísticas detalhadas do sync (para monitoramento Railway Free)
+ipcMain.handle('sync:getStats', async () => {
+  return syncManager.getSyncStats();
+});
+
+// Forçar sincronização imediata
+ipcMain.handle('sync:now', async () => {
+  await syncManager.syncNow();
+  return { success: true };
+});
+
 // Connection Monitor - iniciar monitoramento de conexão
 ipcMain.handle('sync:startConnectionMonitor', async () => {
   syncManager.startConnectionMonitor();

@@ -796,8 +796,14 @@ class SyncManager {
             suppliers: '/suppliers',
             branch: '/branches',
             branches: '/branches',
+            debt: '/debts',
+            debts: '/debts',
+            cash_box: '/cash-box',
+            cashBox: '/cash-box',
+            inventory_item: '/inventory',
+            inventory: '/inventory',
         };
-        return endpoints[entity] || `/${entity}`;
+        return endpoints[entity] || `/${entity}s`;
     }
     async forcePush() {
         await this.pushLocalChanges();

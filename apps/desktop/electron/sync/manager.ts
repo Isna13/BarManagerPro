@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import { DatabaseManager } from '../database/manager';
 import { BrowserWindow } from 'electron';
 
@@ -9,6 +9,38 @@ interface SyncItem {
   entity_id?: string;
   data: string;
 }
+
+/**
+ * Configurações otimizadas para Railway Free Plan
+ * 
+ * Limitações do plano gratuito:
+ * - $1/mês de crédito (após trial de 30 dias com $5)
+ * - 0.5 GB RAM máximo
+ * - 1 vCPU máximo
+ * - Cold start pode levar 5-15 segundos
+ * - Sem sleep automático, mas pode reiniciar por falta de recursos
+ */
+const RAILWAY_FREE_CONFIG = {
+  // Intervalo de sync (60s para economizar recursos)
+  SYNC_INTERVAL_MS: 60000,
+  
+  // Timeout para requisições normais (15s)
+  REQUEST_TIMEOUT_MS: 15000,
+  
+  // Timeout para cold start (pode demorar mais)
+  COLD_START_TIMEOUT_MS: 45000,
+  
+  // Intervalo de verificação de conexão (30s)
+  CONNECTION_CHECK_INTERVAL_MS: 30000,
+  
+  // Retry config
+  MAX_RETRIES: 3,
+  INITIAL_RETRY_DELAY_MS: 2000,
+  MAX_RETRY_DELAY_MS: 30000,
+  
+  // Backoff multiplier
+  BACKOFF_MULTIPLIER: 2,
+};
 
 export class SyncManager {
   private apiClient: AxiosInstance;
@@ -21,6 +53,9 @@ export class SyncManager {
   private lastCredentials: { email: string; password: string } | null = null;
   private _isOnline: boolean = false;
   private _connectionCheckInProgress: boolean = false;
+  private _coldStartDetected: boolean = false;
+  private _consecutiveFailures: number = 0;
+  private _lastSuccessfulRequest: Date | null = null;
 
   constructor(
     private dbManager: DatabaseManager,
@@ -28,7 +63,7 @@ export class SyncManager {
   ) {
     this.apiClient = axios.create({
       baseURL: apiUrl,
-      timeout: 30000,
+      timeout: RAILWAY_FREE_CONFIG.REQUEST_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
       },
@@ -58,6 +93,119 @@ export class SyncManager {
     } else {
       console.warn(`⚠️ Cannot emit ${event}: mainWindow not available`);
     }
+  }
+
+  /**
+   * Executa requisição com retry e backoff exponencial
+   * Otimizado para lidar com cold starts do Railway Free Plan
+   */
+  private async requestWithRetry<T>(
+    requestFn: () => Promise<T>,
+    options: {
+      maxRetries?: number;
+      operation?: string;
+      useColdStartTimeout?: boolean;
+    } = {}
+  ): Promise<T> {
+    const maxRetries = options.maxRetries ?? RAILWAY_FREE_CONFIG.MAX_RETRIES;
+    const operation = options.operation ?? 'request';
+    let lastError: Error | null = null;
+    let delay = RAILWAY_FREE_CONFIG.INITIAL_RETRY_DELAY_MS;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Se detectou cold start, usar timeout maior na primeira tentativa
+        if (this._coldStartDetected && options.useColdStartTimeout) {
+          this.apiClient.defaults.timeout = RAILWAY_FREE_CONFIG.COLD_START_TIMEOUT_MS;
+          console.log(`🥶 Cold start detectado - usando timeout de ${RAILWAY_FREE_CONFIG.COLD_START_TIMEOUT_MS / 1000}s`);
+        }
+
+        const result = await requestFn();
+        
+        // Sucesso - resetar contadores
+        this._consecutiveFailures = 0;
+        this._coldStartDetected = false;
+        this._lastSuccessfulRequest = new Date();
+        this.apiClient.defaults.timeout = RAILWAY_FREE_CONFIG.REQUEST_TIMEOUT_MS;
+        
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        this._consecutiveFailures++;
+
+        // Detectar cold start (timeout ou conexão recusada)
+        const isColdStart = this.isColdStartError(error);
+        if (isColdStart) {
+          this._coldStartDetected = true;
+          console.log(`🥶 Possível cold start do Railway detectado (tentativa ${attempt}/${maxRetries})`);
+        }
+
+        // Log do erro
+        const errorCode = error?.code || error?.response?.status || 'UNKNOWN';
+        console.log(`⚠️ [${operation}] Tentativa ${attempt}/${maxRetries} falhou: ${errorCode}`);
+
+        // Não fazer retry para erros de autenticação ou validação
+        if (error?.response?.status === 401 || error?.response?.status === 400) {
+          throw error;
+        }
+
+        // Se ainda tem tentativas, aguardar com backoff
+        if (attempt < maxRetries) {
+          console.log(`⏳ Aguardando ${delay / 1000}s antes da próxima tentativa...`);
+          await this.sleep(delay);
+          delay = Math.min(delay * RAILWAY_FREE_CONFIG.BACKOFF_MULTIPLIER, RAILWAY_FREE_CONFIG.MAX_RETRY_DELAY_MS);
+        }
+      }
+    }
+
+    // Todas as tentativas falharam
+    console.error(`❌ [${operation}] Todas as ${maxRetries} tentativas falharam`);
+    throw lastError;
+  }
+
+  /**
+   * Verifica se o erro indica um possível cold start do Railway
+   */
+  private isColdStartError(error: any): boolean {
+    const coldStartIndicators = [
+      'ETIMEDOUT',
+      'ECONNREFUSED', 
+      'ECONNRESET',
+      'ENOTFOUND',
+      'timeout',
+      'Network Error',
+      'socket hang up',
+    ];
+
+    const errorMessage = error?.message?.toLowerCase() || '';
+    const errorCode = error?.code || '';
+
+    return coldStartIndicators.some(indicator => 
+      errorCode === indicator || errorMessage.includes(indicator.toLowerCase())
+    );
+  }
+
+  /**
+   * Utilitário para aguardar um tempo
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Retorna estatísticas do sync para monitoramento
+   */
+  getSyncStats() {
+    return {
+      isOnline: this._isOnline,
+      isRunning: this.isRunning,
+      consecutiveFailures: this._consecutiveFailures,
+      coldStartDetected: this._coldStartDetected,
+      lastSuccessfulRequest: this._lastSuccessfulRequest,
+      lastSync: this.lastSync,
+      syncIntervalMs: RAILWAY_FREE_CONFIG.SYNC_INTERVAL_MS,
+      pendingItems: this.dbManager.getPendingSyncItems()?.length || 0,
+    };
   }
 
   /**
@@ -323,19 +471,20 @@ export class SyncManager {
     if (this.isRunning) return;
     
     this.isRunning = true;
+    const intervalSecs = RAILWAY_FREE_CONFIG.SYNC_INTERVAL_MS / 1000;
     console.log('🔄 Sincronização iniciada');
     console.log('📊 Status do token:', this.token === 'offline-token' ? '❌ OFFLINE-TOKEN (tentará reconectar)' : '✅ TOKEN VÁLIDO');
-    console.log('⏰ Intervalo de sincronização: 30 segundos');
+    console.log(`⏰ Intervalo de sincronização: ${intervalSecs} segundos (otimizado para Railway Free)`);
+    console.log('💡 Dica: Railway Free tem 0.5GB RAM e 1 vCPU - sync menos frequente economiza recursos');
     this.emit('sync:started');
     
     // Sincronização inicial
     await this.syncNow();
     
-    // Sincronização periódica (a cada 30 segundos)
-    // Isso inclui verificação de reconexão quando em modo offline
+    // Sincronização periódica otimizada para Railway Free
     this.syncInterval = setInterval(() => {
       this.syncNow();
-    }, 30000);
+    }, RAILWAY_FREE_CONFIG.SYNC_INTERVAL_MS);
   }
 
   async stop() {
