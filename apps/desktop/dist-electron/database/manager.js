@@ -803,8 +803,8 @@ class DatabaseManager {
         // Deduzir estoque usando o sistema avançado com abertura automática de caixas
         // Se falhar, a exceção será propagada e a venda será cancelada
         this.deductInventoryAdvanced(itemData.productId, itemData.branchId, itemData.qtyUnits, itemData.isMuntu || false, saleId, itemData.cashierId || 'system');
-        // Adicionar à fila
-        this.addToSyncQueue('create', 'sale_item', id, itemData, 1);
+        // Adicionar à fila - incluir saleId nos dados
+        this.addToSyncQueue('create', 'sale_item', id, { ...itemData, saleId }, 1);
         return { id, ...itemData };
     }
     addSalePayment(saleId, paymentData) {
@@ -823,8 +823,8 @@ class DatabaseManager {
           synced = 0
       WHERE id = ?
     `).run(saleId);
-        // Adicionar à fila
-        this.addToSyncQueue('create', 'payment', id, paymentData, 1);
+        // Adicionar à fila - incluir saleId nos dados
+        this.addToSyncQueue('create', 'payment', id, { ...paymentData, saleId }, 1);
         return { id, ...paymentData };
     }
     getSales(filters = {}) {

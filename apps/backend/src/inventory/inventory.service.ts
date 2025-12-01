@@ -229,6 +229,43 @@ export class InventoryService {
     });
   }
 
+  async getAllMovements(options?: {
+    productId?: string;
+    movementType?: string;
+    limit?: number;
+  }) {
+    const where: Record<string, unknown> = {};
+
+    if (options?.productId) {
+      where.productId = options.productId;
+    }
+
+    if (options?.movementType) {
+      where.movementType = options.movementType;
+    }
+
+    return this.prisma.inventoryMovement.findMany({
+      where,
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: options?.limit || 50,
+    });
+  }
+
   async getLowStock(branchId: string) {
     const items = await this.prisma.inventoryItem.findMany({
       where: {

@@ -48,6 +48,7 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> json) {
     // O backend pode retornar category e supplier como objetos aninhados
+    // Valores monetários vêm em centavos (Int), dividir por 100
     final category = json['category'] as Map<String, dynamic>?;
     final supplier = json['supplier'] as Map<String, dynamic>?;
 
@@ -62,13 +63,13 @@ class Product {
       supplierId: json['supplier_id'] ?? json['supplierId'],
       supplierName:
           supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
-      priceUnit: (json['price_unit'] ?? json['priceUnit'] ?? 0).toDouble(),
+      priceUnit: (json['price_unit'] ?? json['priceUnit'] ?? 0).toDouble() / 100,
       priceBox: json['price_box'] != null || json['priceBox'] != null
-          ? (json['price_box'] ?? json['priceBox']).toDouble()
+          ? (json['price_box'] ?? json['priceBox']).toDouble() / 100
           : null,
-      costUnit: (json['cost_unit'] ?? json['costUnit'] ?? 0).toDouble(),
+      costUnit: (json['cost_unit'] ?? json['costUnit'] ?? 0).toDouble() / 100,
       costBox: json['cost_box'] != null || json['costBox'] != null
-          ? (json['cost_box'] ?? json['costBox']).toDouble()
+          ? (json['cost_box'] ?? json['costBox']).toDouble() / 100
           : null,
       unitsPerBox: json['units_per_box'] ?? json['unitsPerBox'],
       boxEnabled: json['box_enabled'] == 1 || json['boxEnabled'] == true,
@@ -76,7 +77,7 @@ class Product {
           json['is_muntu_eligible'] == 1 || json['isMuntuEligible'] == true,
       muntuQuantity: json['muntu_quantity'] ?? json['muntuQuantity'],
       muntuPrice: json['muntu_price'] != null || json['muntuPrice'] != null
-          ? (json['muntu_price'] ?? json['muntuPrice']).toDouble()
+          ? (json['muntu_price'] ?? json['muntuPrice']).toDouble() / 100
           : null,
       lowStockAlert: json['low_stock_alert'] ?? json['lowStockAlert'] ?? 10,
       isActive: json['is_active'] == 1 || json['isActive'] == true,
@@ -229,9 +230,9 @@ class Sale {
       cashierName:
           cashier?['fullName'] ?? json['cashier_name'] ?? json['cashierName'],
       branchId: json['branch_id'] ?? json['branchId'],
-      subtotal: (json['subtotal'] ?? 0).toDouble(),
-      discount: (json['discountTotal'] ?? json['discount'] ?? 0).toDouble(),
-      total: (json['total'] ?? 0).toDouble(),
+      subtotal: (json['subtotal'] ?? 0) / 100,
+      discount: (json['discountTotal'] ?? json['discount'] ?? 0) / 100,
+      total: (json['total'] ?? 0) / 100,
       paymentMethod: json['payment_method'] ?? json['paymentMethod'] ?? 'cash',
       status: json['status'] ?? 'completed',
       notes: json['notes'],
@@ -279,8 +280,8 @@ class SaleItem {
       productName:
           product?['name'] ?? json['product_name'] ?? json['productName'],
       quantity: json['qtyUnits'] ?? json['quantity'] ?? 1,
-      unitPrice: (json['unitPrice'] ?? json['unit_price'] ?? 0).toDouble(),
-      subtotal: (json['subtotal'] ?? 0).toDouble(),
+      unitPrice: (json['unitPrice'] ?? json['unit_price'] ?? 0) / 100,
+      subtotal: (json['subtotal'] ?? 0) / 100,
       saleType: json['sale_type'] ?? json['saleType'] ?? 'unit',
     );
   }
@@ -326,11 +327,11 @@ class Customer {
       address: json['address'],
       loyaltyPoints: json['loyalty_points'] ?? json['loyaltyPoints'] ?? 0,
       totalPurchases:
-          (json['total_purchases'] ?? json['totalPurchases'] ?? 0).toDouble(),
+          (json['total_purchases'] ?? json['totalPurchases'] ?? 0) / 100,
       creditLimit:
-          (json['credit_limit'] ?? json['creditLimit'] ?? 0).toDouble(),
+          (json['credit_limit'] ?? json['creditLimit'] ?? 0) / 100,
       currentDebt:
-          (json['current_debt'] ?? json['currentDebt'] ?? 0).toDouble(),
+          (json['current_debt'] ?? json['currentDebt'] ?? 0) / 100,
       isActive: json['is_active'] == 1 || json['isActive'] == true,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
@@ -374,10 +375,10 @@ class Debt {
       customerName: json['customer_name'] ?? json['customerName'],
       saleId: json['sale_id'] ?? json['saleId'],
       originalAmount:
-          (json['original_amount'] ?? json['originalAmount'] ?? 0).toDouble(),
-      paidAmount: (json['paid_amount'] ?? json['paidAmount'] ?? 0).toDouble(),
+          (json['original_amount'] ?? json['originalAmount'] ?? 0) / 100,
+      paidAmount: (json['paid_amount'] ?? json['paidAmount'] ?? 0) / 100,
       remainingAmount:
-          (json['remaining_amount'] ?? json['remainingAmount'] ?? 0).toDouble(),
+          (json['remaining_amount'] ?? json['remainingAmount'] ?? 0) / 100,
       status: json['status'] ?? 'pending',
       dueDate:
           json['due_date'] != null ? DateTime.tryParse(json['due_date']) : null,
@@ -414,7 +415,7 @@ class DebtPayment {
     return DebtPayment(
       id: json['id'] ?? '',
       debtId: json['debt_id'] ?? json['debtId'] ?? '',
-      amount: (json['amount'] ?? 0).toDouble(),
+      amount: (json['amount'] ?? 0) / 100,
       paymentMethod: json['payment_method'] ?? json['paymentMethod'],
       notes: json['notes'],
       paidAt: DateTime.tryParse(json['paid_at'] ?? json['paidAt'] ?? '') ??
@@ -453,6 +454,7 @@ class Inventory {
 
   factory Inventory.fromJson(Map<String, dynamic> json) {
     // O backend retorna o produto como objeto aninhado
+    // Valores monetários vêm em centavos, dividir por 100
     final product = json['product'] as Map<String, dynamic>?;
 
     return Inventory(
@@ -476,15 +478,15 @@ class Inventory {
           10,
       costUnit: product?['costUnit'] != null
           ? (product!['costUnit'] is int
-              ? product['costUnit'].toDouble()
-              : product['costUnit'])
-          : (json['cost_unit'] != null ? (json['cost_unit']).toDouble() : null),
+              ? product['costUnit'].toDouble() / 100
+              : product['costUnit'] / 100)
+          : (json['cost_unit'] != null ? (json['cost_unit']).toDouble() / 100 : null),
       priceUnit: product?['priceUnit'] != null
           ? (product!['priceUnit'] is int
-              ? product['priceUnit'].toDouble()
-              : product['priceUnit'])
+              ? product['priceUnit'].toDouble() / 100
+              : product['priceUnit'] / 100)
           : (json['price_unit'] != null
-              ? (json['price_unit']).toDouble()
+              ? (json['price_unit']).toDouble() / 100
               : null),
       updatedAt: json['updatedAt'] != null
           ? DateTime.tryParse(json['updatedAt'])
@@ -529,18 +531,22 @@ class InventoryMovement {
   });
 
   factory InventoryMovement.fromJson(Map<String, dynamic> json) {
+    // O backend pode retornar product e user como objetos aninhados
+    final product = json['product'] as Map<String, dynamic>?;
+    final user = json['user'] as Map<String, dynamic>?;
+
     return InventoryMovement(
       id: json['id'] ?? '',
       productId: json['product_id'] ?? json['productId'] ?? '',
-      productName: json['product_name'] ?? json['productName'],
+      productName: product?['name'] ?? json['product_name'] ?? json['productName'],
       branchId: json['branch_id'] ?? json['branchId'] ?? '',
       movementType: json['movement_type'] ?? json['movementType'] ?? '',
       quantity: json['quantity'] ?? 0,
       referenceType: json['reference_type'] ?? json['referenceType'],
       referenceId: json['reference_id'] ?? json['referenceId'],
       notes: json['notes'],
-      userId: json['user_id'] ?? json['userId'],
-      userName: json['user_name'] ?? json['userName'],
+      userId: user?['id'] ?? json['user_id'] ?? json['userId'],
+      userName: user?['fullName'] ?? json['user_name'] ?? json['userName'],
       createdAt:
           DateTime.tryParse(json['created_at'] ?? json['createdAt'] ?? '') ??
               DateTime.now(),
@@ -586,10 +592,10 @@ class Purchase {
       supplierId: json['supplier_id'] ?? json['supplierId'] ?? '',
       supplierName: json['supplier_name'] ?? json['supplierName'],
       invoiceNumber: json['invoice_number'] ?? json['invoiceNumber'],
-      subtotal: (json['subtotal'] ?? 0).toDouble(),
-      tax: (json['tax'] ?? 0).toDouble(),
-      discount: (json['discount'] ?? 0).toDouble(),
-      total: (json['total'] ?? 0).toDouble(),
+      subtotal: (json['subtotal'] ?? 0) / 100,
+      tax: (json['tax'] ?? 0) / 100,
+      discount: (json['discount'] ?? 0) / 100,
+      total: (json['total'] ?? 0) / 100,
       status: json['status'] ?? 'pending',
       notes: json['notes'],
       purchaseDate: DateTime.tryParse(
@@ -633,8 +639,8 @@ class PurchaseItem {
       productId: json['product_id'] ?? json['productId'] ?? '',
       productName: json['product_name'] ?? json['productName'],
       quantity: json['quantity'] ?? 1,
-      unitCost: (json['unit_cost'] ?? json['unitCost'] ?? 0).toDouble(),
-      subtotal: (json['subtotal'] ?? 0).toDouble(),
+      unitCost: (json['unit_cost'] ?? json['unitCost'] ?? 0) / 100,
+      subtotal: (json['subtotal'] ?? 0) / 100,
     );
   }
 }
@@ -678,19 +684,19 @@ class CashBox {
       userId: json['user_id'] ?? json['userId'],
       userName: json['user_name'] ?? json['userName'],
       openingBalance:
-          (json['opening_balance'] ?? json['openingBalance'] ?? 0).toDouble(),
+          (json['opening_balance'] ?? json['openingBalance'] ?? 0) / 100,
       closingBalance: json['closing_balance'] != null
-          ? (json['closing_balance']).toDouble()
+          ? (json['closing_balance']) / 100
           : json['closingBalance'] != null
-              ? (json['closingBalance']).toDouble()
+              ? (json['closingBalance']) / 100
               : null,
       totalSales:
-          json['total_sales'] != null ? (json['total_sales']).toDouble() : null,
+          json['total_sales'] != null ? (json['total_sales']) / 100 : null,
       totalCashIn: json['total_cash_in'] != null
-          ? (json['total_cash_in']).toDouble()
+          ? (json['total_cash_in']) / 100
           : null,
       totalCashOut: json['total_cash_out'] != null
-          ? (json['total_cash_out']).toDouble()
+          ? (json['total_cash_out']) / 100
           : null,
       status: json['status'] ?? 'open',
       openedAt:
@@ -747,7 +753,7 @@ class CashMovement {
       id: json['id'] ?? '',
       cashBoxId: json['cash_box_id'] ?? json['cashBoxId'] ?? '',
       movementType: json['movement_type'] ?? json['movementType'] ?? '',
-      amount: (json['amount'] ?? 0).toDouble(),
+      amount: (json['amount'] ?? 0) / 100,
       description: json['description'],
       referenceType: json['reference_type'] ?? json['referenceType'],
       referenceId: json['reference_id'] ?? json['referenceId'],
@@ -783,16 +789,17 @@ class DashboardStats {
   });
 
   factory DashboardStats.fromJson(Map<String, dynamic> json) {
+    // Backend retorna valores em centavos (Int), converter para reais dividindo por 100
     return DashboardStats(
-      todaySales: (json['todaySales'] ?? json['today_sales'] ?? 0).toDouble(),
+      todaySales: (json['todaySales'] ?? json['today_sales'] ?? 0).toDouble() / 100,
       todayTransactions:
-          json['todayTransactions'] ?? json['today_transactions'] ?? 0,
-      weekSales: (json['weekSales'] ?? json['week_sales'] ?? 0).toDouble(),
-      monthSales: (json['monthSales'] ?? json['month_sales'] ?? 0).toDouble(),
+          json['todayTransactions'] ?? json['todaySalesCount'] ?? json['today_transactions'] ?? 0,
+      weekSales: (json['weekSales'] ?? json['weekRevenue'] ?? json['week_sales'] ?? 0).toDouble() / 100,
+      monthSales: (json['monthSales'] ?? json['monthRevenue'] ?? json['month_sales'] ?? 0).toDouble() / 100,
       lowStockCount: json['lowStockCount'] ?? json['low_stock_count'] ?? 0,
       pendingDebts:
-          (json['pendingDebts'] ?? json['pending_debts'] ?? 0).toDouble(),
-      activeCustomers: json['activeCustomers'] ?? json['active_customers'] ?? 0,
+          (json['pendingDebts'] ?? json['pending_debts'] ?? 0).toDouble() / 100,
+      activeCustomers: json['activeCustomers'] ?? json['customersCount'] ?? json['active_customers'] ?? 0,
       topProducts: (json['topProducts'] as List<dynamic>?)
               ?.map((p) => TopProduct.fromJson(p))
               .toList() ??
@@ -821,7 +828,7 @@ class TopProduct {
       productName: json['product_name'] ?? json['productName'] ?? '',
       quantitySold: json['quantity_sold'] ?? json['quantitySold'] ?? 0,
       totalRevenue:
-          (json['total_revenue'] ?? json['totalRevenue'] ?? 0).toDouble(),
+          (json['total_revenue'] ?? json['totalRevenue'] ?? 0) / 100,
     );
   }
 }

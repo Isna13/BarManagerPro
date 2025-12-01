@@ -28,6 +28,10 @@ export declare class SyncManager {
      * Estratégia: servidor tem prioridade, mas não apaga dados locais não sincronizados
      */
     private mergeEntityData;
+    /**
+     * Sincroniza um item individual, tratando casos especiais de entidades aninhadas
+     */
+    private syncEntityItem;
     private getEndpoint;
     forcePush(): Promise<void>;
     getStatus(): {

@@ -184,11 +184,34 @@ class DataProvider extends ChangeNotifier {
 
   // ==================== INVENTORY ====================
 
+  List<models.InventoryMovement> _inventoryMovements = [];
+  List<models.InventoryMovement> get inventoryMovements => _inventoryMovements;
+
   Future<void> loadInventory({String? search}) async {
     if (_apiService == null) return;
     _setLoading(true);
     try {
       _inventory = await _apiService!.getInventory(search: search);
+      _error = null;
+    } catch (e) {
+      _error = e.toString();
+    }
+    _setLoading(false);
+  }
+
+  Future<void> loadInventoryMovements({
+    String? productId,
+    String? movementType,
+    int? limit,
+  }) async {
+    if (_apiService == null) return;
+    _setLoading(true);
+    try {
+      _inventoryMovements = await _apiService!.getInventoryMovements(
+        productId: productId,
+        movementType: movementType,
+        limit: limit,
+      );
       _error = null;
     } catch (e) {
       _error = e.toString();

@@ -239,17 +239,190 @@ class _InventoryDetailedState extends State<_InventoryDetailed> {
   }
 }
 
-class _InventoryMovements extends StatelessWidget {
+class _InventoryMovements extends StatefulWidget {
   const _InventoryMovements();
 
   @override
+  State<_InventoryMovements> createState() => _InventoryMovementsState();
+}
+
+class _InventoryMovementsState extends State<_InventoryMovements> {
+  @override
+  void initState() {
+    super.initState();
+    _loadMovements();
+  }
+
+  Future<void> _loadMovements() async {
+    final provider = context.read<DataProvider>();
+    await provider.loadInventoryMovements(limit: 50);
+  }
+
+  String _getMovementTypeLabel(String type) {
+    switch (type.toLowerCase()) {
+      case 'entry':
+      case 'entrada':
+        return 'Entrada';
+      case 'exit':
+      case 'saida':
+        return 'Saída';
+      case 'sale':
+      case 'venda':
+        return 'Venda';
+      case 'purchase':
+      case 'compra':
+        return 'Compra';
+      case 'adjustment':
+      case 'ajuste':
+        return 'Ajuste';
+      case 'transfer':
+      case 'transferencia':
+        return 'Transferência';
+      default:
+        return type;
+    }
+  }
+
+  Color _getMovementColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'entry':
+      case 'entrada':
+      case 'purchase':
+      case 'compra':
+        return Colors.green;
+      case 'exit':
+      case 'saida':
+      case 'sale':
+      case 'venda':
+        return Colors.red;
+      case 'adjustment':
+      case 'ajuste':
+        return Colors.orange;
+      case 'transfer':
+      case 'transferencia':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getMovementIcon(String type) {
+    switch (type.toLowerCase()) {
+      case 'entry':
+      case 'entrada':
+      case 'purchase':
+      case 'compra':
+        return Icons.add_circle;
+      case 'exit':
+      case 'saida':
+      case 'sale':
+      case 'venda':
+        return Icons.remove_circle;
+      case 'adjustment':
+      case 'ajuste':
+        return Icons.tune;
+      case 'transfer':
+      case 'transferencia':
+        return Icons.swap_horiz;
+      default:
+        return Icons.help;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: EmptyState(
-        icon: Icons.swap_horiz,
-        title: 'Movimentações',
-        subtitle: 'As movimentações serão carregadas do servidor',
-      ),
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+    return Consumer<DataProvider>(
+      builder: (context, provider, _) {
+        if (provider.isLoading) return const LoadingIndicator();
+
+        final movements = provider.inventoryMovements;
+
+        if (movements.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: _loadMovements,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: const Center(
+                  child: EmptyState(
+                    icon: Icons.swap_horiz,
+                    title: 'Sem Movimentações',
+                    subtitle: 'Nenhuma movimentação de estoque encontrada',
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: _loadMovements,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(AppTheme.spacingSM),
+            itemCount: movements.length,
+            itemBuilder: (context, index) {
+              final mov = movements[index];
+              final isEntry = mov.movementType.toLowerCase().contains('entry') ||
+                  mov.movementType.toLowerCase().contains('entrada') ||
+                  mov.movementType.toLowerCase().contains('purchase') ||
+                  mov.movementType.toLowerCase().contains('compra');
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: AppTheme.spacingSM),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: _getMovementColor(mov.movementType).withOpacity(0.1),
+                    child: Icon(
+                      _getMovementIcon(mov.movementType),
+                      color: _getMovementColor(mov.movementType),
+                    ),
+                  ),
+                  title: Text(
+                    mov.productName ?? 'Produto',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getMovementTypeLabel(mov.movementType),
+                        style: TextStyle(
+                          color: _getMovementColor(mov.movementType),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        dateFormat.format(mov.createdAt),
+                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                      if (mov.notes != null && mov.notes!.isNotEmpty)
+                        Text(
+                          mov.notes!,
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                  trailing: Text(
+                    '${isEntry ? '+' : '-'}${mov.quantity}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: isEntry ? Colors.green : Colors.red,
+                    ),
+                  ),
+                  isThreeLine: true,
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

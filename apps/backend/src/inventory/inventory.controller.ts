@@ -13,6 +13,19 @@ export class InventoryController {
     return this.inventoryService.findAll(branchId);
   }
 
+  @Get('movements')
+  getAllMovements(
+    @Query('productId') productId?: string,
+    @Query('movementType') movementType?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.inventoryService.getAllMovements({
+      productId,
+      movementType,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.inventoryService.findOne(id);
