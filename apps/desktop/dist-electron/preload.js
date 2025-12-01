@@ -177,6 +177,16 @@ const api = {
             electron_1.ipcRenderer.on('sync:reauthenticated', (_, data) => callback(data));
             return () => electron_1.ipcRenderer.removeListener('sync:reauthenticated', callback);
         },
+        // Smart Sync - Connection monitoring
+        getConnectionStatus: () => electron_1.ipcRenderer.invoke('sync:getConnectionStatus'),
+        fullPullFromServer: () => electron_1.ipcRenderer.invoke('sync:fullPullFromServer'),
+        startConnectionMonitor: () => electron_1.ipcRenderer.invoke('sync:startConnectionMonitor'),
+        stopConnectionMonitor: () => electron_1.ipcRenderer.invoke('sync:stopConnectionMonitor'),
+        onConnectionChange: (callback) => {
+            const handler = (_, data) => callback(data);
+            electron_1.ipcRenderer.on('sync:connectionChange', handler);
+            return () => electron_1.ipcRenderer.removeListener('sync:connectionChange', handler);
+        },
     },
     // Settings
     settings: {

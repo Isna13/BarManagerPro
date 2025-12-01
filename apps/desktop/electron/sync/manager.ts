@@ -13,11 +13,14 @@ interface SyncItem {
 export class SyncManager {
   private apiClient: AxiosInstance;
   private syncInterval: NodeJS.Timeout | null = null;
+  private connectionCheckInterval: NodeJS.Timeout | null = null;
   private isRunning = false;
   private token: string | null = null;
   private lastSync: Date | null = null;
   private mainWindow: BrowserWindow | null = null;
   private lastCredentials: { email: string; password: string } | null = null;
+  private _isOnline: boolean = false;
+  private _connectionCheckInProgress: boolean = false;
 
   constructor(
     private dbManager: DatabaseManager,
@@ -57,6 +60,164 @@ export class SyncManager {
     }
   }
 
+  /**
+   * Verifica se o banco local está vazio ou precisa de sincronização inicial
+   */
+  isLocalDatabaseEmpty(): boolean {
+    try {
+      const products = this.dbManager.getProducts() as any[];
+      const customers = this.dbManager.getCustomers() as any[];
+      const sales = this.dbManager.getSales({}) as any[];
+      
+      const isEmpty = products.length === 0 && customers.length === 0 && sales.length === 0;
+      console.log(`📊 Verificação do banco local: ${isEmpty ? 'VAZIO' : 'COM DADOS'}`);
+      console.log(`   - Produtos: ${products.length}`);
+      console.log(`   - Clientes: ${customers.length}`);
+      console.log(`   - Vendas: ${sales.length}`);
+      
+      return isEmpty;
+    } catch (error) {
+      console.error('Erro ao verificar banco local:', error);
+      return true; // Assume vazio em caso de erro
+    }
+  }
+
+  /**
+   * Faz download completo de todos os dados do Railway para o banco local
+   * Usado quando: novo dispositivo, banco local vazio, ou sync inicial
+   */
+  async fullPullFromServer(): Promise<{ success: boolean; stats: Record<string, number> }> {
+    console.log('📥 Iniciando DOWNLOAD COMPLETO do Railway...');
+    this.emit('sync:fullPullStarted', { message: 'Baixando dados do servidor...' });
+    
+    if (!this.token || this.token === 'offline-token') {
+      console.error('❌ Token inválido para download completo');
+      return { success: false, stats: {} };
+    }
+
+    const stats: Record<string, number> = {};
+    
+    // Entidades a baixar na ordem correta (respeitando dependências)
+    const entities = [
+      { name: 'branches', endpoint: '/branches' },
+      { name: 'categories', endpoint: '/categories' },
+      { name: 'suppliers', endpoint: '/suppliers' },
+      { name: 'products', endpoint: '/products' },
+      { name: 'customers', endpoint: '/customers' },
+      { name: 'users', endpoint: '/users' },
+    ];
+
+    let totalProgress = 0;
+    const progressStep = 100 / entities.length;
+
+    for (const entity of entities) {
+      try {
+        console.log(`📥 Baixando ${entity.name}...`);
+        this.emit('sync:progress', { 
+          progress: totalProgress, 
+          message: `Baixando ${entity.name}...` 
+        });
+        
+        const response = await this.apiClient.get(entity.endpoint, { timeout: 30000 });
+        const items = Array.isArray(response.data) ? response.data : response.data?.data || [];
+        
+        console.log(`   ✅ ${entity.name}: ${items.length} itens recebidos`);
+        stats[entity.name] = items.length;
+        
+        if (items.length > 0) {
+          await this.mergeEntityData(entity.name, items);
+        }
+        
+        totalProgress += progressStep;
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          console.log(`   ⚠️ ${entity.name}: endpoint não disponível`);
+          stats[entity.name] = 0;
+        } else if (error?.response?.status === 403) {
+          console.log(`   ⚠️ ${entity.name}: sem permissão`);
+          stats[entity.name] = 0;
+        } else {
+          console.error(`   ❌ Erro ao baixar ${entity.name}:`, error?.message);
+          stats[entity.name] = -1; // Indica erro
+        }
+        totalProgress += progressStep;
+      }
+    }
+
+    // Atualizar data da última sincronização
+    this.dbManager.setLastSyncDate(new Date());
+    
+    console.log('📊 RESUMO DO DOWNLOAD COMPLETO:');
+    for (const [entityName, count] of Object.entries(stats)) {
+      console.log(`   ${entityName}: ${count === -1 ? 'ERRO' : count + ' itens'}`);
+    }
+
+    this.emit('sync:fullPullCompleted', { success: true, stats });
+    return { success: true, stats };
+  }
+
+  /**
+   * Inicia verificação periódica de conexão
+   */
+  startConnectionMonitor() {
+    if (this.connectionCheckInterval) return;
+    
+    console.log('🔌 Iniciando monitor de conexão (a cada 15 segundos)');
+    
+    // Verificar imediatamente
+    this.updateConnectionStatus();
+    
+    // Verificar periodicamente
+    this.connectionCheckInterval = setInterval(() => {
+      this.updateConnectionStatus();
+    }, 15000); // 15 segundos
+  }
+
+  stopConnectionMonitor() {
+    if (this.connectionCheckInterval) {
+      clearInterval(this.connectionCheckInterval);
+      this.connectionCheckInterval = null;
+    }
+  }
+
+  private async updateConnectionStatus() {
+    if (this._connectionCheckInProgress) return;
+    this._connectionCheckInProgress = true;
+    
+    try {
+      const wasOnline = this._isOnline;
+      this._isOnline = await this.checkConnection();
+      
+      // Se mudou de offline para online
+      if (!wasOnline && this._isOnline) {
+        console.log('🟢 Conexão restaurada!');
+        this.emit('sync:connectionChange', { isOnline: true, status: 'restored' });
+        
+        // Se tem token offline, tentar reautenticar
+        if (this.token === 'offline-token' && this.lastCredentials) {
+          console.log('🔄 Tentando reautenticação automática...');
+          await this.tryReauthenticate(1);
+        }
+      } 
+      // Se mudou de online para offline
+      else if (wasOnline && !this._isOnline) {
+        console.log('🔴 Conexão perdida!');
+        this.emit('sync:connectionChange', { isOnline: false, status: 'lost' });
+      }
+      
+      // Emitir status atual
+      this.emit('sync:connectionChange', { isOnline: this._isOnline, status: 'check' });
+    } catch (error) {
+      this._isOnline = false;
+    } finally {
+      this._connectionCheckInProgress = false;
+    }
+  }
+
+  get isOnline(): boolean {
+    return this._isOnline;
+  }
+
   async login(credentials: { email: string; password: string }) {
     // Salvar credenciais para possível reautenticação
     this.lastCredentials = credentials;
@@ -64,17 +225,37 @@ export class SyncManager {
     try {
       const response = await this.apiClient.post('/auth/login', credentials);
       this.token = response.data.accessToken;
+      this._isOnline = true;
       
       console.log('✅ Login online bem-sucedido, token válido obtido');
       
-      // Salvar token localmente
-      // await this.dbManager.saveSetting('auth_token', this.token);
+      // Verificar se banco local está vazio e precisa de sync inicial
+      const needsInitialSync = this.isLocalDatabaseEmpty();
+      
+      if (needsInitialSync) {
+        console.log('📥 Banco local vazio detectado! Iniciando download inicial...');
+        this.emit('sync:initialSyncNeeded', { message: 'Baixando dados do servidor...' });
+        
+        // Fazer download completo em background
+        setTimeout(async () => {
+          try {
+            await this.fullPullFromServer();
+            console.log('✅ Download inicial concluído!');
+          } catch (error) {
+            console.error('❌ Erro no download inicial:', error);
+          }
+        }, 500);
+      }
+      
+      // Iniciar monitor de conexão
+      this.startConnectionMonitor();
       
       return response.data;
     } catch (error) {
       // Modo offline: validar credenciais localmente
       console.log('Backend indisponível, tentando login offline...');
       console.log('Credenciais:', credentials.email);
+      this._isOnline = false;
       
       try {
         const bcrypt = require('bcryptjs');
@@ -162,6 +343,7 @@ export class SyncManager {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+    this.stopConnectionMonitor();
     this.isRunning = false;
     console.log('⏸ Sincronização pausada');
   }
@@ -613,8 +795,30 @@ export class SyncManager {
         return { skip: true, success: false, reason: 'Pagamento sem saleId' };
         
       case 'cash_box':
-        // Caixa - verificar se endpoint existe, senão pular
-        return { skip: true, success: false, reason: 'Endpoint cash_box não implementado no backend' };
+        // Caixa - sincronizar abertura/fechamento
+        if (operation === 'create') {
+          // Abrir caixa no backend
+          const openResponse = await this.apiClient.post('/cash-box/open', {
+            branchId: data.branchId || data.branch_id || 'main-branch',
+            openingAmount: data.openingCash || data.opening_cash || 0,
+            notes: data.notes || 'Aberto via Electron Desktop'
+          });
+          console.log('✅ Caixa aberto no backend:', openResponse.data?.id || entity_id);
+          return { success: true };
+        } else if (operation === 'update') {
+          // Verificar se é fechamento de caixa
+          if (data.status === 'closed' || data.closingCash !== undefined || data.closing_cash !== undefined) {
+            const closeResponse = await this.apiClient.post(`/cash-box/${entity_id}/close`, {
+              closingAmount: data.closingCash || data.closing_cash || 0,
+              notes: data.notes || 'Fechado via Electron Desktop'
+            });
+            console.log('✅ Caixa fechado no backend:', entity_id);
+            return { success: true };
+          }
+          // Outra atualização de caixa
+          return { skip: true, success: false, reason: 'Atualização de caixa não suportada (apenas abertura/fechamento)' };
+        }
+        return { skip: true, success: false, reason: 'Operação de caixa não suportada' };
         
       case 'customer_loyalty':
         // Fidelidade - não existe endpoint separado
@@ -656,9 +860,15 @@ export class SyncManager {
       suppliers: '/suppliers',
       branch: '/branches',
       branches: '/branches',
+      debt: '/debts',
+      debts: '/debts',
+      cash_box: '/cash-box',
+      cashBox: '/cash-box',
+      inventory_item: '/inventory',
+      inventory: '/inventory',
     };
     
-    return endpoints[entity] || `/${entity}`;
+    return endpoints[entity] || `/${entity}s`;
   }
 
   async forcePush() {
@@ -671,7 +881,8 @@ export class SyncManager {
       isRunning: this.isRunning,
       pendingItems: pending.length,
       lastSync: this.lastSync,
-      isOnline: this.token !== null && this.token !== 'offline-token',
+      isOnline: this._isOnline,
+      hasValidToken: this.token !== null && this.token !== 'offline-token',
     };
   }
 

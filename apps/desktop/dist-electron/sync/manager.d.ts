@@ -5,14 +5,36 @@ export declare class SyncManager {
     private apiUrl;
     private apiClient;
     private syncInterval;
+    private connectionCheckInterval;
     private isRunning;
     private token;
     private lastSync;
     private mainWindow;
     private lastCredentials;
+    private _isOnline;
+    private _connectionCheckInProgress;
     constructor(dbManager: DatabaseManager, apiUrl: string);
     setMainWindow(window: BrowserWindow): void;
     private emit;
+    /**
+     * Verifica se o banco local está vazio ou precisa de sincronização inicial
+     */
+    isLocalDatabaseEmpty(): boolean;
+    /**
+     * Faz download completo de todos os dados do Railway para o banco local
+     * Usado quando: novo dispositivo, banco local vazio, ou sync inicial
+     */
+    fullPullFromServer(): Promise<{
+        success: boolean;
+        stats: Record<string, number>;
+    }>;
+    /**
+     * Inicia verificação periódica de conexão
+     */
+    startConnectionMonitor(): void;
+    stopConnectionMonitor(): void;
+    private updateConnectionStatus;
+    get isOnline(): boolean;
     login(credentials: {
         email: string;
         password: string;
@@ -39,6 +61,7 @@ export declare class SyncManager {
         pendingItems: number;
         lastSync: Date | null;
         isOnline: boolean;
+        hasValidToken: boolean;
     };
     checkConnection(): Promise<boolean>;
     /**

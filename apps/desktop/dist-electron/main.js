@@ -457,6 +457,28 @@ electron_1.ipcMain.handle('sync:forcePush', async () => {
 electron_1.ipcMain.handle('sync:pushFullInitialSync', async () => {
     return await syncManager.pushFullInitialSync();
 });
+// Pull completo do servidor - baixa TODOS os dados do Railway
+electron_1.ipcMain.handle('sync:fullPullFromServer', async () => {
+    return await syncManager.fullPullFromServer();
+});
+// Verifica se banco local está vazio
+electron_1.ipcMain.handle('sync:isLocalDatabaseEmpty', async () => {
+    return syncManager.isLocalDatabaseEmpty();
+});
+// Obter status detalhado da conexão
+electron_1.ipcMain.handle('sync:getConnectionStatus', async () => {
+    return syncManager.getStatus();
+});
+// Connection Monitor - iniciar monitoramento de conexão
+electron_1.ipcMain.handle('sync:startConnectionMonitor', async () => {
+    syncManager.startConnectionMonitor();
+    return { success: true };
+});
+// Connection Monitor - parar monitoramento de conexão
+electron_1.ipcMain.handle('sync:stopConnectionMonitor', async () => {
+    syncManager.stopConnectionMonitor();
+    return { success: true };
+});
 // Settings
 electron_1.ipcMain.handle('settings:get', async (_, key) => {
     return store.get(key);

@@ -136,6 +136,13 @@ declare const api: {
         onSyncComplete: (callback: (data: any) => void) => () => Electron.IpcRenderer;
         onSyncError: (callback: (error: string) => void) => () => Electron.IpcRenderer;
         onReauthenticated: (callback: (data: any) => void) => () => Electron.IpcRenderer;
+        getConnectionStatus: () => Promise<any>;
+        fullPullFromServer: () => Promise<any>;
+        startConnectionMonitor: () => Promise<any>;
+        stopConnectionMonitor: () => Promise<any>;
+        onConnectionChange: (callback: (data: {
+            isOnline: boolean;
+        }) => void) => () => Electron.IpcRenderer;
     };
     settings: {
         get: (key: string) => Promise<any>;

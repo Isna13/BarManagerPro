@@ -211,6 +211,18 @@ const api = {
       ipcRenderer.on('sync:reauthenticated', (_, data) => callback(data));
       return () => ipcRenderer.removeListener('sync:reauthenticated', callback);
     },
+    
+    // Smart Sync - Connection monitoring
+    getConnectionStatus: () => ipcRenderer.invoke('sync:getConnectionStatus'),
+    fullPullFromServer: () => ipcRenderer.invoke('sync:fullPullFromServer'),
+    startConnectionMonitor: () => ipcRenderer.invoke('sync:startConnectionMonitor'),
+    stopConnectionMonitor: () => ipcRenderer.invoke('sync:stopConnectionMonitor'),
+    
+    onConnectionChange: (callback: (data: { isOnline: boolean }) => void) => {
+      const handler = (_: any, data: { isOnline: boolean }) => callback(data);
+      ipcRenderer.on('sync:connectionChange', handler);
+      return () => ipcRenderer.removeListener('sync:connectionChange', handler);
+    },
   },
   
   // Settings

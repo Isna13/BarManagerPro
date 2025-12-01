@@ -48,6 +48,50 @@ export function useOnlineStatus() {
     }
   };
 
+  // Função para fazer pull completo do servidor (Smart Sync)
+  const triggerFullPull = async () => {
+    try {
+      console.log('📥 Iniciando download completo do servidor...');
+      setStatus(prev => ({
+        ...prev,
+        syncStatus: 'syncing',
+        syncProgress: 0,
+      }));
+      
+      const result = await (window as any).electronAPI?.sync?.fullPullFromServer?.();
+      
+      if (result?.success) {
+        console.log('✅ Download completo concluído:', result.stats);
+        setStatus(prev => ({
+          ...prev,
+          syncStatus: 'success',
+          syncProgress: 100,
+          lastSync: new Date(),
+        }));
+        
+        // Resetar após 3 segundos
+        setTimeout(() => {
+          setStatus(prev => ({
+            ...prev,
+            syncStatus: 'idle',
+            syncProgress: 0,
+          }));
+        }, 3000);
+      } else {
+        throw new Error(result?.error || 'Erro desconhecido');
+      }
+      
+      await updateSyncStatus();
+    } catch (error) {
+      console.error('Erro ao fazer download completo:', error);
+      setStatus(prev => ({
+        ...prev,
+        syncStatus: 'error',
+        syncProgress: 0,
+      }));
+    }
+  };
+
   // Função auxiliar para atualizar status de sincronização
   const updateSyncStatus = async () => {
     try {
@@ -198,6 +242,20 @@ export function useOnlineStatus() {
       }
     });
 
+    // Listener para mudança de conexão do SyncManager (Smart Sync)
+    const unsubscribeConnection = (window as any).electronAPI?.sync?.onConnectionChange?.((data: { isOnline: boolean; status: string }) => {
+      console.log('🔌 Status de conexão atualizado:', data);
+      setStatus(prev => ({
+        ...prev,
+        isOnline: data.isOnline,
+        lastOnline: data.isOnline ? new Date() : prev.lastOnline,
+      }));
+    });
+
+    // Iniciar monitor de conexão
+    (window as any).electronAPI?.sync?.startConnectionMonitor?.();
+    console.log('🔌 Monitor de conexão iniciado');
+
     // Cleanup
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -208,6 +266,8 @@ export function useOnlineStatus() {
       unsubscribeComplete?.();
       unsubscribeError?.();
       unsubscribeReauth?.();
+      unsubscribeConnection?.();
+      (window as any).electronAPI?.sync?.stopConnectionMonitor?.();
     };
   }, []); // Remover dependência de status.pendingItems para evitar re-criação de listeners
 
@@ -226,6 +286,7 @@ export function useOnlineStatus() {
   return {
     ...status,
     triggerSync,
+    triggerFullPull,
     showQueueNotification,
   };
 }

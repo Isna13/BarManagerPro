@@ -11,7 +11,7 @@ export class DebtsController {
 
   @Post()
   create(@Body() createDto: CreateDebtDto, @User() user: any) {
-    return this.debtsService.create(createDto, user.id);
+    return this.debtsService.create(createDto, user.userId);
   }
 
   @Post(':id/pay')

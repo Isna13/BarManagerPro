@@ -526,6 +526,33 @@ ipcMain.handle('sync:pushFullInitialSync', async () => {
   return await syncManager.pushFullInitialSync();
 });
 
+// Pull completo do servidor - baixa TODOS os dados do Railway
+ipcMain.handle('sync:fullPullFromServer', async () => {
+  return await syncManager.fullPullFromServer();
+});
+
+// Verifica se banco local está vazio
+ipcMain.handle('sync:isLocalDatabaseEmpty', async () => {
+  return syncManager.isLocalDatabaseEmpty();
+});
+
+// Obter status detalhado da conexão
+ipcMain.handle('sync:getConnectionStatus', async () => {
+  return syncManager.getStatus();
+});
+
+// Connection Monitor - iniciar monitoramento de conexão
+ipcMain.handle('sync:startConnectionMonitor', async () => {
+  syncManager.startConnectionMonitor();
+  return { success: true };
+});
+
+// Connection Monitor - parar monitoramento de conexão
+ipcMain.handle('sync:stopConnectionMonitor', async () => {
+  syncManager.stopConnectionMonitor();
+  return { success: true };
+});
+
 // Settings
 ipcMain.handle('settings:get', async (_, key) => {
   return store.get(key);
