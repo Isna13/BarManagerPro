@@ -232,8 +232,25 @@ export class ImportController {
             branchId: box.branch_id,
             openedBy: openedBy,
             status: box.status,
+            openingCash: parseInt(box.opening_balance) || parseInt(box.opening_cash) || 0,
+            closingCash: parseInt(box.closing_balance) || parseInt(box.closing_cash) || 0,
+            totalSales: parseInt(box.total_sales) || 0,
+            totalCash: parseInt(box.total_cash) || 0,
+            totalCard: parseInt(box.total_card) || 0,
+            totalMobileMoney: parseInt(box.total_mobile_money) || 0,
+            totalDebt: parseInt(box.total_debt) || 0,
+            difference: parseInt(box.difference) || 0,
           },
-          update: {},
+          update: {
+            openingCash: parseInt(box.opening_balance) || parseInt(box.opening_cash) || 0,
+            closingCash: parseInt(box.closing_balance) || parseInt(box.closing_cash) || 0,
+            totalSales: parseInt(box.total_sales) || 0,
+            totalCash: parseInt(box.total_cash) || 0,
+            totalCard: parseInt(box.total_card) || 0,
+            totalMobileMoney: parseInt(box.total_mobile_money) || 0,
+            totalDebt: parseInt(box.total_debt) || 0,
+            difference: parseInt(box.difference) || 0,
+          },
         });
       }
 

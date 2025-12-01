@@ -379,9 +379,16 @@ async function importToRailway(data) {
             id: cb.id,
             box_number: cb.box_number || `BOX-${Date.now()}`,
             branch_id: defaultBranchId,
+            opened_by: cb.opened_by || 'default-user',
             status: cb.status || 'closed',
-            opening_balance: cb.opening_balance || cb.openingBalance || 0,
-            closing_balance: cb.closing_balance || cb.closingBalance || 0
+            opening_cash: cb.opening_cash || 0,
+            closing_cash: cb.closing_cash || 0,
+            total_sales: cb.total_sales || 0,
+            total_cash: cb.total_cash || 0,
+            total_card: cb.total_card || 0,
+            total_mobile_money: cb.total_mobile_money || 0,
+            total_debt: cb.total_debt || 0,
+            difference: cb.difference || 0
         }))
     };
     

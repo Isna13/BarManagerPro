@@ -37,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (!mounted) return;
-      
+
       if (success) {
         print('Login successful, navigating to home');
         Navigator.pushReplacement(
