@@ -268,6 +268,18 @@ function sleep(ms) {
 async function importToRailway(data) {
     console.log('\n📤 Importando dados para o Railway...');
     
+    // Primeiro, obter o ID do usuário atual
+    let currentUserId = '502bb8c6-dfe2-4058-bb9b-4e90d103f04e'; // fallback
+    try {
+        const profile = await apiRequest('GET', '/auth/profile');
+        if (profile?.id) {
+            currentUserId = profile.id;
+        }
+    } catch (err) {
+        console.log('   ⚠️ Usando ID de usuário padrão');
+    }
+    console.log(`   👤 Usando ID de usuário: ${currentUserId}`);
+    
     // Primeiro, buscar uma branch válida
     let defaultBranchId = null;
     try {
@@ -374,12 +386,12 @@ async function importToRailway(data) {
             status: d.status || 'pending'
         })),
         
-        // Caixas
+        // Caixas - usar currentUserId em vez de default-user
         cash_boxes: (data.cashBoxes || []).map(cb => ({
             id: cb.id,
             box_number: cb.box_number || `BOX-${Date.now()}`,
             branch_id: defaultBranchId,
-            opened_by: cb.opened_by || 'default-user',
+            opened_by: currentUserId,
             status: cb.status || 'closed',
             opening_cash: cb.opening_cash || 0,
             closing_cash: cb.closing_cash || 0,
