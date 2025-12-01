@@ -30,6 +30,18 @@ export class CashBoxController {
     return this.cashBoxService.addTransaction(id, transactionDto);
   }
 
+  // Endpoint para obter movimentações do caixa
+  @Get('movements')
+  getMovements(
+    @Query('cashBoxId') cashBoxId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.cashBoxService.getMovements(
+      cashBoxId,
+      limit ? parseInt(limit) : 50,
+    );
+  }
+
   // Endpoint sem branchId (retorna o primeiro caixa aberto)
   @Get('current')
   getCurrentCashBoxAny(@User() user: any) {

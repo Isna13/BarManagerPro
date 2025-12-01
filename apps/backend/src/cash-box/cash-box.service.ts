@@ -254,6 +254,63 @@ export class CashBoxService {
       take: limit,
     });
   }
+
+  async getMovements(cashBoxId?: string, limit = 50) {
+    // Se não tiver cashBoxId, pegar do caixa mais recente
+    let targetCashBox: { id: string; openedAt: Date; branchId: string } | null = null;
+    
+    if (cashBoxId) {
+      targetCashBox = await this.prisma.cashBox.findUnique({
+        where: { id: cashBoxId },
+        select: { id: true, openedAt: true, branchId: true },
+      });
+    } else {
+      targetCashBox = await this.prisma.cashBox.findFirst({
+        where: { status: 'open' },
+        orderBy: { openedAt: 'desc' },
+        select: { id: true, openedAt: true, branchId: true },
+      });
+    }
+
+    if (!targetCashBox) {
+      return [];
+    }
+
+    // Buscar pagamentos das vendas durante o período do caixa
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        createdAt: { gte: targetCashBox.openedAt },
+        sale: { branchId: targetCashBox.branchId },
+      },
+      include: {
+        sale: {
+          select: {
+            saleNumber: true,
+            customer: { select: { fullName: true } },
+            cashier: { select: { fullName: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    // Mapear para o formato esperado pelo mobile
+    return payments.map(payment => ({
+      id: payment.id,
+      cashBoxId: targetCashBox!.id,
+      movementType: payment.method === 'cash' ? 'cash_in' : payment.method,
+      amount: payment.amount,
+      description: `Venda ${payment.sale?.saleNumber || ''}${
+        payment.sale?.customer?.fullName ? ` - ${payment.sale.customer.fullName}` : ''
+      }`,
+      referenceType: 'sale',
+      referenceId: payment.saleId,
+      userId: null,
+      userName: payment.sale?.cashier?.fullName || null,
+      createdAt: payment.createdAt,
+    }));
+  }
 }
 
 
