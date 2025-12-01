@@ -11,6 +11,23 @@ export class SalesService {
       console.log('📝 Criando venda:', JSON.stringify(createSaleDto));
       console.log('   userId:', userId);
       
+      // Se um ID foi fornecido (sincronização do desktop), verificar se já existe
+      if (createSaleDto.id) {
+        const existing = await this.prisma.sale.findUnique({
+          where: { id: createSaleDto.id },
+          include: {
+            items: { include: { product: true } },
+            table: true,
+            customer: true,
+            cashier: true,
+          },
+        });
+        if (existing) {
+          console.log('⚠️ Venda já existe, retornando existente:', existing.id);
+          return existing;
+        }
+      }
+      
       // Gerar número sequencial da venda
       const lastSale = await this.prisma.sale.findFirst({
         where: { branchId: createSaleDto.branchId },
@@ -28,6 +45,11 @@ export class SalesService {
         cashierId: userId,
         status: 'open',
       };
+
+      // Usar ID fornecido (para sincronização) ou deixar o Prisma gerar
+      if (createSaleDto.id) {
+        saleData.id = createSaleDto.id;
+      }
 
       // Adicionar campos opcionais apenas se existirem
       if (createSaleDto.tableId) {

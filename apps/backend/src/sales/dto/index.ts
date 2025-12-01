@@ -1,6 +1,10 @@
 import { IsUUID, IsOptional, IsString, IsInt, Min, IsBoolean } from 'class-validator';
 
 export class CreateSaleDto {
+  @IsUUID()
+  @IsOptional()
+  id?: string; // ID opcional para sincronização com desktop
+
   @IsString()
   branchId: string;
 

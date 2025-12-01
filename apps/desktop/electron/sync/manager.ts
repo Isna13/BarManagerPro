@@ -981,6 +981,14 @@ export class SyncManager {
       data.isActive = item.is_active === 1;
       if (item.id) data.id = item.id;
     }
+    else if (entityName === 'sale') {
+      // Venda - mapear campos do desktop para o backend
+      data.branchId = item.branchId || item.branch_id || 'main-branch';
+      data.type = item.type || 'counter';
+      data.customerId = item.customerId || item.customer_id;
+      data.tableId = item.tableId || item.table_id;
+      if (item.id) data.id = item.id;
+    }
     else if (entityName === 'suppliers') {
       data.name = item.name;
       data.code = item.code;
