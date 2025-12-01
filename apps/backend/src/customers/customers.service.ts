@@ -31,7 +31,7 @@ export class CustomersService {
   }
 
   async findAll(branchId?: string, search?: string) {
-    return this.prisma.customer.findMany({
+    const customers = await this.prisma.customer.findMany({
       where: {
         ...(branchId && { branchId }),
         ...(search && {
@@ -42,7 +42,39 @@ export class CustomersService {
           ],
         }),
       },
+      include: {
+        debts: {
+          where: { status: { not: 'paid' } },
+        },
+        sales: {
+          where: { status: 'closed' },
+          select: { total: true },
+        },
+      },
       orderBy: { fullName: 'asc' },
+    });
+
+    // Calcular campos derivados para cada cliente
+    return customers.map(customer => {
+      const totalPurchases = customer.sales.reduce((sum, sale) => sum + sale.total, 0);
+      const currentDebt = customer.debts.reduce((sum, debt) => sum + debt.balance, 0);
+
+      return {
+        id: customer.id,
+        code: customer.code,
+        fullName: customer.fullName,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address,
+        loyaltyPoints: customer.loyaltyPoints,
+        creditLimit: customer.creditLimit,
+        isActive: customer.isActive,
+        createdAt: customer.createdAt,
+        updatedAt: customer.updatedAt,
+        branchId: customer.branchId,
+        totalPurchases,
+        currentDebt,
+      };
     });
   }
 
@@ -55,6 +87,10 @@ export class CustomersService {
           where: { status: { not: 'paid' } },
           orderBy: { createdAt: 'desc' },
         },
+        sales: {
+          where: { status: 'closed' },
+          select: { total: true },
+        },
       },
     });
 
@@ -62,7 +98,14 @@ export class CustomersService {
       throw new NotFoundException('Cliente não encontrado');
     }
 
-    return customer;
+    const totalPurchases = customer.sales.reduce((sum, sale) => sum + sale.total, 0);
+    const currentDebt = customer.debts.reduce((sum, debt) => sum + debt.balance, 0);
+
+    return {
+      ...customer,
+      totalPurchases,
+      currentDebt,
+    };
   }
 
   async update(id: string, updateDto: UpdateCustomerDto) {

@@ -394,12 +394,35 @@ export class SalesService {
 
 
 
-  async findAll(branchId?: string, status?: string) {
+  async findAll(
+    branchId?: string,
+    status?: string,
+    options?: {
+      startDate?: Date;
+      endDate?: Date;
+      customerId?: string;
+      limit?: number;
+    }
+  ) {
+    const where: Record<string, unknown> = {};
+
+    if (branchId) where.branchId = branchId;
+    if (status) where.status = status;
+    if (options?.customerId) where.customerId = options.customerId;
+
+    // Filtro de data
+    if (options?.startDate || options?.endDate) {
+      where.createdAt = {};
+      if (options?.startDate) {
+        (where.createdAt as Record<string, unknown>).gte = options.startDate;
+      }
+      if (options?.endDate) {
+        (where.createdAt as Record<string, unknown>).lte = options.endDate;
+      }
+    }
+
     return this.prisma.sale.findMany({
-      where: {
-        ...(branchId && { branchId }),
-        ...(status && { status }),
-      },
+      where,
       include: {
         items: {
           include: {
@@ -412,7 +435,7 @@ export class SalesService {
         cashier: true,
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: options?.limit || 100,
     });
   }
 

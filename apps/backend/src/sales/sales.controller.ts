@@ -38,8 +38,20 @@ export class SalesController {
   }
 
   @Get()
-  findAll(@Query('branchId') branchId?: string, @Query('status') status?: string) {
-    return this.salesService.findAll(branchId, status);
+  findAll(
+    @Query('branchId') branchId?: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('customerId') customerId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.salesService.findAll(branchId, status, {
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      customerId,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get(':id')
