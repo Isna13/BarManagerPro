@@ -302,6 +302,56 @@ export class ImportController {
         });
       }
 
+      // Importar Compras (Purchases)
+      for (const p of data.purchases || []) {
+        // Usar fallback se received_by não existir
+        let receivedBy = p.received_by;
+        if (receivedBy === 'default-user' || !receivedBy) {
+          receivedBy = fallbackUserId;
+        }
+        
+        await this.prisma.purchase.upsert({
+          where: { id: p.id },
+          create: {
+            id: p.id,
+            purchaseNumber: p.purchase_number,
+            branchId: p.branch_id,
+            supplierId: p.supplier_id,
+            status: p.status || 'completed',
+            subtotal: parseInt(p.subtotal) || 0,
+            taxTotal: parseInt(p.tax_total) || 0,
+            discountTotal: parseInt(p.discount_total) || 0,
+            total: parseInt(p.total) || 0,
+            totalCost: parseInt(p.total) || 0,
+            paymentMethod: p.payment_method,
+            paymentStatus: p.payment_status || 'paid',
+            notes: p.notes,
+            receivedBy: receivedBy,
+            completedAt: p.status === 'completed' ? new Date() : null,
+          },
+          update: {},
+        });
+      }
+
+      // Importar Itens de Compra (Purchase Items)
+      for (const pi of data.purchase_items || []) {
+        await this.prisma.purchaseItem.upsert({
+          where: { id: pi.id },
+          create: {
+            id: pi.id,
+            purchaseId: pi.purchase_id,
+            productId: pi.product_id,
+            qtyUnits: pi.qty_units || 1,
+            unitCost: parseInt(pi.unit_cost) || 0,
+            subtotal: parseInt(pi.subtotal) || 0,
+            taxAmount: parseInt(pi.tax_amount) || 0,
+            discountAmount: parseInt(pi.discount_amount) || 0,
+            total: parseInt(pi.total) || 0,
+          },
+          update: {},
+        });
+      }
+
       // Importar Tables (mesas)
       for (const t of data.tables || []) {
         await this.prisma.table.upsert({
@@ -547,6 +597,8 @@ export class ImportController {
           payments: data.payments?.length || 0,
           cash_boxes: data.cash_boxes?.length || 0,
           debts: data.debts?.length || 0,
+          purchases: data.purchases?.length || 0,
+          purchase_items: data.purchase_items?.length || 0,
           tables: data.tables?.length || 0,
           table_sessions: data.table_sessions?.length || 0,
           table_customers: data.table_customers?.length || 0,

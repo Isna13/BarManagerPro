@@ -206,6 +206,32 @@ async function readSQLiteData() {
         console.log(`   🏦 Caixas: ${data.cashBoxes.length}`);
     }
     
+    // Ler compras
+    const purchases = db.exec('SELECT * FROM purchases');
+    if (purchases.length > 0) {
+        const cols = purchases[0].columns;
+        const rows = purchases[0].values;
+        data.purchases = rows.map(row => {
+            const obj = {};
+            cols.forEach((col, i) => obj[col] = row[i]);
+            return obj;
+        });
+        console.log(`   🛒 Compras: ${data.purchases.length}`);
+    }
+    
+    // Ler itens de compra
+    const purchaseItems = db.exec('SELECT * FROM purchase_items');
+    if (purchaseItems.length > 0) {
+        const cols = purchaseItems[0].columns;
+        const rows = purchaseItems[0].values;
+        data.purchaseItems = rows.map(row => {
+            const obj = {};
+            cols.forEach((col, i) => obj[col] = row[i]);
+            return obj;
+        });
+        console.log(`   📦 Itens de compra: ${data.purchaseItems.length}`);
+    }
+    
     db.close();
     return data;
 }
@@ -401,6 +427,37 @@ async function importToRailway(data) {
             total_mobile_money: cb.total_mobile_money || 0,
             total_debt: cb.total_debt || 0,
             difference: cb.difference || 0
+        })),
+        
+        // Compras
+        purchases: (data.purchases || []).map(p => ({
+            id: p.id,
+            purchase_number: p.purchase_number || `PUR-${Date.now()}`,
+            branch_id: defaultBranchId,
+            supplier_id: p.supplier_id,
+            status: p.status || 'completed',
+            subtotal: p.subtotal || 0,
+            tax_total: p.tax_total || 0,
+            discount_total: p.discount_total || 0,
+            total: p.total || 0,
+            payment_method: p.payment_method || 'cash',
+            payment_status: p.payment_status || 'paid',
+            notes: p.notes,
+            received_by: currentUserId,
+            created_at: p.created_at
+        })),
+        
+        // Itens de compra
+        purchase_items: (data.purchaseItems || []).map(pi => ({
+            id: pi.id,
+            purchase_id: pi.purchase_id,
+            product_id: pi.product_id,
+            qty_units: pi.qty_units || 1,
+            unit_cost: pi.unit_cost || 0,
+            subtotal: pi.subtotal || 0,
+            tax_amount: pi.tax_amount || 0,
+            discount_amount: pi.discount_amount || 0,
+            total: pi.total || 0
         }))
     };
     
@@ -414,6 +471,8 @@ async function importToRailway(data) {
     console.log(`      Itens de venda: ${bulkData.sale_items.length}`);
     console.log(`      Dívidas: ${bulkData.debts.length}`);
     console.log(`      Caixas: ${bulkData.cash_boxes.length}`);
+    console.log(`      Compras: ${bulkData.purchases.length}`);
+    console.log(`      Itens de compra: ${bulkData.purchase_items.length}`);
     
     // Usar endpoint de importação em bulk
     console.log('\n   🚀 Enviando dados para o endpoint de importação bulk...');
