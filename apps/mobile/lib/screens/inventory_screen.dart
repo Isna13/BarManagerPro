@@ -23,7 +23,9 @@ class _InventoryScreenState extends State<InventoryScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
   }
 
   @override
@@ -250,7 +252,9 @@ class _InventoryMovementsState extends State<_InventoryMovements> {
   @override
   void initState() {
     super.initState();
-    _loadMovements();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadMovements();
+    });
   }
 
   Future<void> _loadMovements() async {
