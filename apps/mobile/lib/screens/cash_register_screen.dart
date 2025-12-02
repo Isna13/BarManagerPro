@@ -406,9 +406,12 @@ class _MovementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // cash_in é entrada de dinheiro (vendas em dinheiro)
     final isEntry = movement.movementType == 'entry' ||
         movement.movementType == 'entrada' ||
-        movement.movementType == 'sale';
+        movement.movementType == 'sale' ||
+        movement.movementType == 'cash_in' ||
+        movement.movementType == 'cash';
     final color = isEntry ? AppTheme.accentColor : AppTheme.dangerColor;
     final icon = isEntry ? Icons.arrow_downward : Icons.arrow_upward;
 
@@ -421,10 +424,13 @@ class _MovementCard extends StatelessWidget {
       case 'exit':
       case 'saida':
       case 'saída':
+      case 'cash_out':
         typeLabel = 'Saída';
         break;
       case 'sale':
       case 'venda':
+      case 'cash_in':
+      case 'cash':
         typeLabel = 'Venda';
         break;
       default:

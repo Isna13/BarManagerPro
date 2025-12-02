@@ -380,6 +380,15 @@ export declare class DatabaseManager {
     getPendingSyncItems(): unknown[];
     markSyncItemCompleted(id: string): void;
     markSyncItemFailed(id: string, error: string): void;
+    /**
+     * Marca itens falhados como pendentes para re-tentativa
+     * Útil após sincronizar dependências (ex: clientes antes de vendas)
+     */
+    retryFailedSyncItems(maxRetries?: number): number;
+    /**
+     * Obtém contagem de itens falhados por entidade
+     */
+    getFailedSyncStats(): unknown[];
     getSalesReport(startDate: Date, endDate: Date, branchId?: string): unknown[];
     getInventoryReport(branchId?: string): unknown[];
     /**
