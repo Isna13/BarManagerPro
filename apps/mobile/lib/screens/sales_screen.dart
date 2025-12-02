@@ -56,6 +56,10 @@ class _SalesScreenState extends State<SalesScreen> {
         endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
     }
 
+    print('📅 SalesScreen._loadData: filter=$_selectedFilter');
+    print('📅 startDate: $startDate (${startDate.toIso8601String()})');
+    print('📅 endDate: $endDate (${endDate.toIso8601String()})');
+    
     await provider.loadSales(startDate: startDate, endDate: endDate);
   }
 

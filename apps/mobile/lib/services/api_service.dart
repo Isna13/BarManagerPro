@@ -180,9 +180,11 @@ class ApiService {
       if (customerId != null) queryParams['customerId'] = customerId;
       if (limit != null) queryParams['limit'] = limit;
 
+      print('🌐 getSales queryParams: $queryParams');
       final response = await _dio.get('/sales', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
+      print('🌐 getSales response: ${data.length} vendas');
       return data.map((json) => Sale.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);

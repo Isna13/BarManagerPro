@@ -145,14 +145,17 @@ class DataProvider extends ChangeNotifier {
     if (_apiService == null) return;
     _setLoading(true);
     try {
+      print('📊 loadSales: startDate=$startDate, endDate=$endDate, status=$status, limit=$limit');
       _sales = await _apiService!.getSales(
         startDate: startDate,
         endDate: endDate,
         status: status,
         limit: limit,
       );
+      print('📊 loadSales: ${_sales.length} vendas carregadas');
       _error = null;
     } catch (e) {
+      print('❌ loadSales error: $e');
       _error = e.toString();
     }
     _setLoading(false);
