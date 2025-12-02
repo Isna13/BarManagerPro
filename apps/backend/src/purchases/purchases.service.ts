@@ -124,7 +124,11 @@ export class PurchasesService {
         supplier: true,
         branch: true,
         createdByUser: true,
-        items: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

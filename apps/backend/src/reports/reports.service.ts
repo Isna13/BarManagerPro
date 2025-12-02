@@ -375,13 +375,16 @@ export class ReportsService {
 
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Vendas de hoje - usar apenas closedAt para precisão
-    // (vendas importadas não têm closedAt e não devem contar como "hoje")
+    // Vendas de hoje - usar closedAt preferencialmente, createdAt como fallback
+    // para incluir vendas que não foram fechadas ou vendas importadas
     const todaySales = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
         status: { in: ['closed', 'paid'] },
-        closedAt: { gte: today, lt: tomorrow },
+        OR: [
+          { closedAt: { gte: today, lt: tomorrow } },
+          { closedAt: null, createdAt: { gte: today, lt: tomorrow } },
+        ],
       },
       _sum: { total: true, subtotal: true },
       _count: true,
@@ -403,22 +406,28 @@ export class ReportsService {
     const todayProfit = todaySalesTotal - todayCostsTotal;
     const todayMargin = todaySalesTotal > 0 ? (todayProfit / todaySalesTotal) * 100 : 0;
 
-    // Faturamento semanal - usar apenas closedAt para precisão
+    // Faturamento semanal - usar closedAt ou createdAt
     const weekRevenue = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
         status: { in: ['closed', 'paid'] },
-        closedAt: { gte: weekStart },
+        OR: [
+          { closedAt: { gte: weekStart } },
+          { closedAt: null, createdAt: { gte: weekStart } },
+        ],
       },
       _sum: { total: true },
     });
 
-    // Faturamento mensal - usar apenas closedAt para precisão
+    // Faturamento mensal - usar closedAt ou createdAt
     const monthRevenue = await this.prisma.sale.aggregate({
       where: {
         ...(branchId && { branchId }),
         status: { in: ['closed', 'paid'] },
-        closedAt: { gte: monthStart },
+        OR: [
+          { closedAt: { gte: monthStart } },
+          { closedAt: null, createdAt: { gte: monthStart } },
+        ],
       },
       _sum: { total: true },
     });

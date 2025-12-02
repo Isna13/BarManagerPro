@@ -656,12 +656,19 @@ class PurchaseItem {
   });
 
   factory PurchaseItem.fromJson(Map<String, dynamic> json) {
+    // productName pode vir direto ou dentro do objeto 'product'
+    String? productName = json['product_name'] ?? json['productName'];
+    if (productName == null && json['product'] != null) {
+      productName = json['product']['name'];
+    }
+
     return PurchaseItem(
       id: json['id'] ?? '',
       purchaseId: json['purchase_id'] ?? json['purchaseId'] ?? '',
       productId: json['product_id'] ?? json['productId'] ?? '',
-      productName: json['product_name'] ?? json['productName'],
-      quantity: json['quantity'] ?? 1,
+      productName: productName,
+      // Backend retorna qtyUnits, mas também aceitar quantity para compatibilidade
+      quantity: json['qtyUnits'] ?? json['qty_units'] ?? json['quantity'] ?? 1,
       unitCost: (json['unit_cost'] ?? json['unitCost'] ?? 0) / 100,
       subtotal: (json['subtotal'] ?? 0) / 100,
     );
