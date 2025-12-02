@@ -464,6 +464,11 @@ export class SalesService {
       }
     }
 
+    // Se tem filtro de data, não limitar (ou usar limite alto)
+    // Se não tem filtro, limitar para evitar sobrecarga
+    const hasDateFilter = options?.startDate || options?.endDate;
+    const takeLimit = options?.limit || (hasDateFilter ? 1000 : 100);
+
     return this.prisma.sale.findMany({
       where,
       include: {
@@ -478,7 +483,7 @@ export class SalesService {
         cashier: true,
       },
       orderBy: { createdAt: 'desc' },
-      take: options?.limit || 100,
+      take: takeLimit,
     });
   }
 

@@ -31,21 +31,29 @@ class _SalesScreenState extends State<SalesScreen> {
 
   Future<void> _loadData() async {
     final provider = context.read<DataProvider>();
+    final now = DateTime.now();
     DateTime startDate;
-    DateTime endDate = DateTime.now();
+    DateTime endDate;
 
     switch (_selectedFilter) {
       case 'today':
-        startDate = DateTime(endDate.year, endDate.month, endDate.day);
+        // Hoje: do início do dia até o fim do dia
+        startDate = DateTime(now.year, now.month, now.day);
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       case 'week':
-        startDate = endDate.subtract(const Duration(days: 7));
+        // Última semana: 7 dias atrás até agora
+        startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 7));
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       case 'month':
-        startDate = DateTime(endDate.year, endDate.month, 1);
+        // Este mês: do dia 1 até hoje
+        startDate = DateTime(now.year, now.month, 1);
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       default:
-        startDate = DateTime(endDate.year, endDate.month, endDate.day);
+        startDate = DateTime(now.year, now.month, now.day);
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
     }
 
     await provider.loadSales(startDate: startDate, endDate: endDate);
