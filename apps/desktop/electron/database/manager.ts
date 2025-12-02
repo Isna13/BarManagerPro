@@ -3597,7 +3597,8 @@ export class DatabaseManager {
       VALUES (?, ?, ?, ?, ?, 1)
     `).run(id, data.branchId, data.number, data.seats, data.area || null);
     
-    this.addToSyncQueue('create', 'table', id, data, 3);
+    // Prioridade 0 - mesas devem ser sincronizadas ANTES das vendas (prioridade 1)
+    this.addToSyncQueue('create', 'table', id, data, 0);
     
     return this.db.prepare('SELECT * FROM tables WHERE id = ?').get(id);
   }
@@ -3629,6 +3630,86 @@ export class DatabaseManager {
    */
   getTableById(id: string) {
     return this.db.prepare('SELECT * FROM tables WHERE id = ?').get(id);
+  }
+
+  /**
+   * Re-sincronizar todas as mesas não sincronizadas
+   * Isso adiciona mesas com synced=0 à fila de sync
+   */
+  resyncUnsyncedTables() {
+    const unsyncedTables = this.db.prepare(`
+      SELECT * FROM tables WHERE synced = 0
+    `).all() as any[];
+
+    console.log(`[RESYNC] Encontradas ${unsyncedTables.length} mesas não sincronizadas`);
+
+    for (const table of unsyncedTables) {
+      // Verificar se já está na fila
+      const inQueue = this.db.prepare(`
+        SELECT id FROM sync_queue 
+        WHERE entity = 'table' AND entity_id = ? AND status != 'completed'
+      `).get(table.id);
+
+      if (!inQueue) {
+        console.log(`[RESYNC] Adicionando mesa ${table.number} à fila de sync`);
+        this.addToSyncQueue('create', 'table', table.id, {
+          id: table.id,
+          branchId: table.branch_id,
+          number: table.number,
+          seats: table.seats,
+          area: table.area,
+          isActive: table.is_active === 1,
+        }, 0); // Prioridade 0 - antes das vendas
+      }
+    }
+
+    return unsyncedTables.length;
+  }
+
+  /**
+   * Re-tentar vendas de mesa que falharam
+   * Isso reseta o status das vendas com erro de FK para 'pending'
+   */
+  retryFailedTableSales() {
+    // Buscar vendas de mesa que falharam com erro de FK
+    const failedSales = this.db.prepare(`
+      SELECT * FROM sync_queue 
+      WHERE entity = 'sale' 
+      AND status = 'failed'
+      AND json_extract(data, '$.type') = 'table'
+    `).all() as any[];
+
+    console.log(`[RETRY] Encontradas ${failedSales.length} vendas de mesa com falha`);
+
+    let retried = 0;
+    for (const sale of failedSales) {
+      // Resetar status para pending
+      this.db.prepare(`
+        UPDATE sync_queue 
+        SET status = 'pending', 
+            retry_count = 0, 
+            last_error = NULL,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(sale.id);
+      retried++;
+      console.log(`[RETRY] Venda ${sale.entity_id} marcada para re-sincronização`);
+    }
+
+    // Também re-tentar itens e pagamentos relacionados
+    const failedItems = this.db.prepare(`
+      UPDATE sync_queue 
+      SET status = 'pending', 
+          retry_count = 0, 
+          last_error = NULL,
+          updated_at = datetime('now')
+      WHERE entity IN ('sale_item', 'payment') 
+      AND status = 'failed'
+    `).run();
+
+    console.log(`[RETRY] ${failedItems.changes} itens/pagamentos marcados para re-sincronização`);
+
+    return retried;
   }
 
   /**

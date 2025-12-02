@@ -1214,6 +1214,9 @@ export class SyncManager {
       cashBox: '/cash-box',
       inventory_item: '/inventory',
       inventory: '/inventory',
+      table: '/tables',
+      tables: '/tables',
+      table_session: '/table-sessions',
     };
     
     return endpoints[entity] || `/${entity}s`;

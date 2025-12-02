@@ -534,6 +534,24 @@ ipcMain.handle('sync:forcePush', async () => {
   return { success: true };
 });
 
+// Re-sincronizar mesas não sincronizadas e re-tentar vendas falhadas
+ipcMain.handle('sync:resyncTablesAndRetryFailedSales', async () => {
+  // 1. Adicionar mesas não sincronizadas à fila
+  const tablesResynced = dbManager.resyncUnsyncedTables();
+  
+  // 2. Re-tentar vendas de mesa que falharam
+  const failedSales = dbManager.retryFailedTableSales();
+  
+  // 3. Forçar push
+  await syncManager.forcePush();
+  
+  return { 
+    success: true, 
+    tablesResynced,
+    salesRetried: failedSales
+  };
+});
+
 // Push inicial completo - envia TODOS os dados existentes para o servidor
 ipcMain.handle('sync:pushFullInitialSync', async () => {
   return await syncManager.pushFullInitialSync();

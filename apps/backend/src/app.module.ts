@@ -20,6 +20,7 @@ import { CustomersModule } from './customers/customers.module';
 import { DebtsModule } from './debts/debts.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { PurchasesModule } from './purchases/purchases.module';
+import { TablesModule } from './tables/tables.module';
 
 // Advanced features
 import { ForecastModule } from './forecast/forecast.module';
@@ -69,6 +70,7 @@ import { ImportModule } from './import/import.module';
     DebtsModule,
     SuppliersModule,
     PurchasesModule,
+    TablesModule,
     
     // Advanced
     ForecastModule,
