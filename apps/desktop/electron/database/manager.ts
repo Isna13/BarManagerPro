@@ -4775,6 +4775,19 @@ export class DatabaseManager {
         order.total,
         muntuSavings
       );
+
+      // Adicionar item à fila de sincronização
+      this.addToSyncQueue('create', 'sale_item', itemId, {
+        saleId,
+        productId: order.product_id,
+        qtyUnits: order.qty_units,
+        isMuntu: order.is_muntu ? true : false,
+        unitPrice: order.unit_price,
+        unitCost: order.unit_cost,
+        subtotal: order.subtotal,
+        total: order.total,
+        muntuSavings: muntuSavings,
+      }, 2); // Prioridade 2 (após a venda)
     }
 
     // Atualizar economia Muntu na venda
@@ -4789,6 +4802,15 @@ export class DatabaseManager {
         id, sale_id, method, amount, reference_number, status, processed_at
       ) VALUES (?, ?, ?, ?, ?, 'completed', datetime('now'))
     `).run(paymentId, saleId, data.method, data.amount, data.referenceNumber || null);
+
+    // Adicionar pagamento à fila de sincronização
+    this.addToSyncQueue('create', 'payment', paymentId, {
+      saleId,
+      method: data.method,
+      amount: data.amount,
+      referenceNumber: data.referenceNumber || null,
+      status: 'completed',
+    }, 3); // Prioridade 3 (após itens da venda)
 
     // Criar pagamento de mesa (table_payments) para rastreamento
     const tablePaymentId = this.generateUUID();
@@ -5009,6 +5031,19 @@ export class DatabaseManager {
         muntuSavings
       );
 
+      // Adicionar item à fila de sincronização
+      this.addToSyncQueue('create', 'sale_item', itemId, {
+        saleId,
+        productId: order.product_id,
+        qtyUnits: order.qty_units,
+        isMuntu: order.is_muntu ? true : false,
+        unitPrice: order.unit_price,
+        unitCost: order.unit_cost,
+        subtotal: order.subtotal,
+        total: order.total,
+        muntuSavings: muntuSavings,
+      }, 2); // Prioridade 2 (após a venda)
+
       // Coletar IDs de clientes para pontos
       if (order.customer_id) {
         customerIds.add(order.customer_id);
@@ -5027,6 +5062,15 @@ export class DatabaseManager {
         id, sale_id, method, amount, reference_number, status, processed_at
       ) VALUES (?, ?, ?, ?, ?, 'completed', datetime('now'))
     `).run(paymentId, saleId, data.method, data.amount, data.referenceNumber || null);
+
+    // Adicionar pagamento à fila de sincronização
+    this.addToSyncQueue('create', 'payment', paymentId, {
+      saleId,
+      method: data.method,
+      amount: data.amount,
+      referenceNumber: data.referenceNumber || null,
+      status: 'completed',
+    }, 3); // Prioridade 3 (após itens da venda)
 
     // Criar pagamento de mesa (table_payments)
     const tablePaymentId = this.generateUUID();

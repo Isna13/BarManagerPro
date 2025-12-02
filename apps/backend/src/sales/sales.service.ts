@@ -117,8 +117,19 @@ export class SalesService {
       throw new NotFoundException('Venda não encontrada');
     }
 
+    // Para vendas já pagas/fechadas (sincronizadas do desktop), verificar se o item já existe
+    // Se a venda está fechada e já tem itens, significa que já foi sincronizada
     if (sale.status !== 'open') {
-      throw new BadRequestException('Venda já foi fechada');
+      // Verificar se o item já existe na venda (evitar duplicação)
+      const existingItem = sale.items.find(
+        item => item.productId === addItemDto.productId && item.qtyUnits === addItemDto.qtyUnits
+      );
+      if (existingItem) {
+        console.log(`⚠️ Item já existe na venda ${saleId}, pulando...`);
+        return existingItem;
+      }
+      // Se não existe, permitir adicionar (sincronização do desktop)
+      console.log(`📝 Adicionando item à venda já fechada ${saleId} (sync do desktop)`);
     }
 
     const product = await this.prisma.product.findUnique({
@@ -169,8 +180,9 @@ export class SalesService {
     // Atualizar totais da venda
     await this.updateSaleTotals(saleId);
 
-    // Deduzir estoque (se trackInventory)
-    if (product.trackInventory) {
+    // Deduzir estoque APENAS para vendas abertas (não para vendas sincronizadas do desktop)
+    // Vendas já pagas/fechadas vindas do desktop já tiveram o estoque deduzido localmente
+    if (product.trackInventory && sale.status === 'open') {
       await this.deductInventory(product.id, sale.branchId, qtyUnits, saleId);
     }
 
@@ -218,8 +230,18 @@ export class SalesService {
       throw new NotFoundException('Venda não encontrada');
     }
 
+    // Para vendas já fechadas (sincronizadas do desktop), verificar se pagamento já existe
     if (sale.status !== 'open') {
-      throw new BadRequestException('Venda já foi processada');
+      // Verificar se já existe um pagamento com o mesmo valor (evitar duplicação)
+      const existingPayment = sale.payments.find(
+        p => p.amount === paymentDto.amount && p.method === paymentDto.method
+      );
+      if (existingPayment) {
+        console.log(`⚠️ Pagamento já existe na venda ${saleId}, pulando...`);
+        return existingPayment;
+      }
+      // Se não existe, permitir adicionar (sincronização do desktop)
+      console.log(`📝 Adicionando pagamento à venda já fechada ${saleId} (sync do desktop)`);
     }
 
     // Se for fiado, requer cliente
