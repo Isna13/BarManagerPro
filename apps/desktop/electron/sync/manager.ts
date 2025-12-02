@@ -718,8 +718,37 @@ export class SyncManager {
   }
   
   /**
+   * Verifica se um item local tem alterações pendentes (não sincronizadas)
+   * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
+   */
+  private hasLocalPendingChanges(entityName: string, itemId: string, existing: any): boolean {
+    // Se não existe localmente, não há conflito
+    if (!existing) return false;
+    
+    // Verificar se synced = 0 (alteração local pendente)
+    const synced = existing.synced ?? existing.is_synced ?? 1;
+    if (synced === 0) {
+      console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais pendentes (synced=0)`);
+      return true;
+    }
+    
+    // Verificar se está na fila de sincronização
+    const pendingItems = this.dbManager.getPendingSyncItems() as SyncItem[];
+    const hasPendingSync = pendingItems.some(
+      item => item.entity === entityName.slice(0, -1) && item.entity_id === itemId
+    );
+    
+    if (hasPendingSync) {
+      console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais (na fila de sync)`);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * Mescla dados recebidos do servidor com dados locais
-   * Estratégia: servidor tem prioridade, mas não apaga dados locais não sincronizados
+   * Estratégia: servidor tem prioridade, MAS respeita alterações locais não sincronizadas
    */
   private async mergeEntityData(entityName: string, items: any[]) {
     const mergeStrategies: Record<string, (items: any[]) => void> = {
@@ -727,6 +756,12 @@ export class SyncManager {
         for (const item of items) {
           try {
             const existing = this.dbManager.getBranchById(item.id);
+            
+            // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('branches', item.id, existing)) {
+              continue;
+            }
+            
             if (existing) {
               this.dbManager.updateBranch(item.id, {
                 name: item.name,
@@ -761,9 +796,15 @@ export class SyncManager {
         for (const item of items) {
           try {
             const existing = this.dbManager.getUserByEmail(item.email);
+            
+            // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
+            if (existing && this.hasLocalPendingChanges('users', (existing as any).id, existing)) {
+              continue;
+            }
+            
             if (existing) {
               // Não sobrescrever senha local se usuário já existe
-              this.dbManager.updateUserFromServer(item.id, {
+              this.dbManager.updateUserFromServer((existing as any).id, {
                 email: item.email,
                 full_name: item.fullName,
                 role: item.role,
@@ -785,6 +826,12 @@ export class SyncManager {
         for (const item of items) {
           try {
             const existing = this.dbManager.getCategoryById(item.id);
+            
+            // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('categories', item.id, existing)) {
+              continue;
+            }
+            
             if (existing) {
               this.dbManager.updateCategory(item.id, {
                 name: item.name,
@@ -817,6 +864,12 @@ export class SyncManager {
         for (const item of items) {
           try {
             const existing = this.dbManager.getProductById(item.id);
+            
+            // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('products', item.id, existing)) {
+              continue;
+            }
+            
             if (existing) {
               this.dbManager.updateProduct(item.id, {
                 name: item.name,
@@ -861,6 +914,12 @@ export class SyncManager {
         for (const item of items) {
           try {
             const existing = this.dbManager.getCustomerById(item.id);
+            
+            // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('customers', item.id, existing)) {
+              continue;
+            }
+            
             // Mapear name corretamente - backend pode enviar name, fullName ou firstName/lastName
             const fullName = item.name || item.fullName || 
               (item.firstName && item.lastName ? `${item.firstName} ${item.lastName}` : null);
@@ -912,6 +971,12 @@ export class SyncManager {
         for (const item of items) {
           try {
             const existing = this.dbManager.getSupplierById(item.id);
+            
+            // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('suppliers', item.id, existing)) {
+              continue;
+            }
+            
             if (existing) {
               this.dbManager.updateSupplier(item.id, {
                 name: item.name,
