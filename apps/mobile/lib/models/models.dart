@@ -704,7 +704,7 @@ class CashBox {
     // Mapear campos: API usa openingCash/closingCash, modelo espera openingBalance/closingBalance
     // O backend pode retornar stats como objeto aninhado com totalSales, cashPayments, etc.
     final stats = json['stats'] as Map<String, dynamic>?;
-    
+
     final openingBalance = (json['opening_balance'] ??
             json['openingBalance'] ??
             json['openingCash'] ??
@@ -714,10 +714,13 @@ class CashBox {
         json['closingBalance'] ??
         json['closingCash'];
     // Ler totalSales do stats se disponível
-    final totalSales = stats?['totalSales'] ?? json['total_sales'] ?? json['totalSales'];
+    final totalSales =
+        stats?['totalSales'] ?? json['total_sales'] ?? json['totalSales'];
     // totalCashIn usa cashPayments do stats (pagamentos em dinheiro)
     final totalCashIn = stats?['cashPayments'] ??
-        json['total_cash_in'] ?? json['totalCashIn'] ?? json['totalCash'];
+        json['total_cash_in'] ??
+        json['totalCashIn'] ??
+        json['totalCash'];
     final totalCashOut = json['total_cash_out'] ?? json['totalCashOut'];
 
     return CashBox(
@@ -753,9 +756,7 @@ class CashBox {
     // totalCashIn representa os pagamentos em dinheiro (vendas pagas em cash)
     // totalSales é o valor total das vendas (pode incluir outros métodos)
     // Para o saldo do caixa físico, usamos apenas o dinheiro em espécie
-    return openingBalance +
-        (totalCashIn ?? 0) -
-        (totalCashOut ?? 0);
+    return openingBalance + (totalCashIn ?? 0) - (totalCashOut ?? 0);
   }
 
   double? get difference {

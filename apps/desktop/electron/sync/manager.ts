@@ -871,13 +871,19 @@ export class SyncManager {
             }
             
             if (existing) {
+              // Preservar creditLimit local se o servidor não enviar
+              const existingAny = existing as any;
+              const creditLimit = item.creditLimit !== undefined 
+                ? item.creditLimit 
+                : (existingAny.credit_limit || 0);
+              
               this.dbManager.updateCustomer(item.id, {
                 name: fullName,
                 email: item.email,
                 phone: item.phone,
                 code: item.code,
                 address: item.address,
-                credit_limit: item.creditLimit,
+                creditLimit: creditLimit,
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
@@ -890,7 +896,7 @@ export class SyncManager {
                 phone: item.phone,
                 code: item.code,
                 address: item.address,
-                credit_limit: item.creditLimit || 0,
+                creditLimit: item.creditLimit || 0,
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
@@ -1432,13 +1438,14 @@ export class SyncManager {
       data.trackInventory = true;
       if (item.id) data.id = item.id;
     }
-    else if (entityName === 'customers') {
+    else if (entityName === 'customers' || entityName === 'customer') {
       data.name = item.full_name || item.name || 'Cliente';
       data.fullName = item.full_name || item.name;
       data.phone = item.phone;
       data.email = item.email;
       data.code = item.code;
-      data.creditLimit = item.credit_limit || 0;
+      // Aceitar tanto creditLimit quanto credit_limit
+      data.creditLimit = item.creditLimit ?? item.credit_limit ?? 0;
       data.notes = item.notes;
       if (item.id) data.id = item.id;
     }

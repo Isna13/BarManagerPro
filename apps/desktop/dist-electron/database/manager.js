@@ -2027,12 +2027,16 @@ class DatabaseManager {
         return this.getCustomerById(id);
     }
     updateCustomer(id, data, skipSyncQueue = false) {
+        // Aceitar tanto creditLimit quanto credit_limit
+        const creditLimit = data.creditLimit ?? data.credit_limit ?? 0;
         const stmt = this.db.prepare(`
       UPDATE customers 
-      SET full_name = ?, phone = ?, email = ?, credit_limit = ?, updated_at = datetime('now'), synced = 0
+      SET full_name = ?, phone = ?, email = ?, credit_limit = ?, updated_at = datetime('now'), synced = ?
       WHERE id = ?
     `);
-        stmt.run(data.name, data.phone, data.email, data.creditLimit || 0, id);
+        // Se skipSyncQueue é true, significa que veio do servidor, então marcar como synced = 1
+        const synced = skipSyncQueue ? 1 : 0;
+        stmt.run(data.name, data.phone, data.email, creditLimit, synced, id);
         if (!skipSyncQueue) {
             // Prioridade 0 = mais alta (antes de vendas)
             this.addToSyncQueue('update', 'customer', id, data, 0);
