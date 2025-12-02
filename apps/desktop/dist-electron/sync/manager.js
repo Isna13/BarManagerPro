@@ -455,6 +455,12 @@ class SyncManager {
         }
         try {
             this.emit('sync:started');
+            // Restaurar itens falhados para pendentes antes de sincronizar
+            // Isso garante que vendas que falharam por queda de conexão sejam retentadas
+            const retriedItems = this.dbManager.retryFailedSyncItems(10); // Aumentado para 10 tentativas
+            if (retriedItems > 0) {
+                console.log(`🔄 ${retriedItems} itens restaurados para re-sincronização`);
+            }
             // Simular progresso durante sincronização
             const progressInterval = setInterval(() => {
                 // Progresso gradual simulado (será mais preciso com implementação real)
@@ -585,6 +591,7 @@ class SyncManager {
                 { name: 'products', endpoint: '/products' },
                 { name: 'customers', endpoint: '/customers' },
                 { name: 'suppliers', endpoint: '/suppliers' },
+                { name: 'inventory', endpoint: '/inventory' }, // Inventário para atualizar quantidades
             ];
             for (const entity of entities) {
                 try {
@@ -905,6 +912,33 @@ class SyncManager {
                     }
                     catch (e) {
                         console.error(`Erro ao mesclar supplier ${item.id}:`, e?.message);
+                    }
+                }
+            },
+            inventory: (items) => {
+                // Inventário - atualizar quantidades dos produtos no desktop
+                for (const item of items) {
+                    try {
+                        // O backend retorna items com productId e qtyUnits
+                        const productId = item.productId || item.product_id;
+                        if (!productId)
+                            continue;
+                        // Atualizar quantidade no produto (o desktop usa stock no product, não inventory_items separado)
+                        // Verificar se o produto existe
+                        const product = this.dbManager.getProductById(productId);
+                        if (product) {
+                            // Atualizar stock do produto usando updateProduct
+                            const newQty = item.qtyUnits ?? item.qty_units ?? 0;
+                            this.dbManager.updateProduct(productId, {
+                                stock: newQty,
+                                synced: 1,
+                                last_sync: new Date().toISOString(),
+                            }, true); // skipSyncQueue = true para evitar loop
+                            console.log(`📦 Inventário atualizado: ${productId} = ${newQty} unidades`);
+                        }
+                    }
+                    catch (e) {
+                        console.error(`Erro ao mesclar inventory ${item.id}:`, e?.message);
                     }
                 }
             },
@@ -1329,6 +1363,17 @@ class SyncManager {
             data.type = item.type || 'counter';
             data.customerId = item.customerId || item.customer_id;
             data.tableId = item.tableId || item.table_id;
+            // Campos de valores e status
+            data.subtotal = item.subtotal ?? item.sub_total ?? 0;
+            data.total = item.total ?? 0;
+            data.discountTotal = item.discountTotal ?? item.discount_total ?? 0;
+            data.status = item.status || 'open';
+            data.notes = item.notes;
+            // Nome do cliente para vendas de mesa sem cadastro
+            data.customerName = item.customerName ?? item.customer_name;
+            data.saleNumber = item.saleNumber ?? item.sale_number;
+            // Campos de pagamento (para referência)
+            data.paymentMethod = item.paymentMethod ?? item.payment_method;
             if (item.id)
                 data.id = item.id;
         }

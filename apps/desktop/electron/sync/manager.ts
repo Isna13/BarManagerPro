@@ -1035,16 +1035,13 @@ export class SyncManager {
             // Verificar se o produto existe
             const product = this.dbManager.getProductById(productId);
             if (product) {
-              // Atualizar stock do produto
+              // Atualizar stock do produto usando updateProduct
               const newQty = item.qtyUnits ?? item.qty_units ?? 0;
-              this.dbManager.db.prepare(`
-                UPDATE products 
-                SET stock = ?,
-                    synced = 1,
-                    last_sync = datetime('now'),
-                    updated_at = datetime('now')
-                WHERE id = ?
-              `).run(newQty, productId);
+              this.dbManager.updateProduct(productId, {
+                stock: newQty,
+                synced: 1,
+                last_sync: new Date().toISOString(),
+              }, true); // skipSyncQueue = true para evitar loop
               console.log(`📦 Inventário atualizado: ${productId} = ${newQty} unidades`);
             }
           } catch (e: any) {
