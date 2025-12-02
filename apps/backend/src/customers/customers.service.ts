@@ -7,13 +7,30 @@ export class CustomersService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateCustomerDto) {
-    // Verificar se já existe cliente com mesmo telefone ou email
-    if (createDto.phone && createDto.branchId) {
-      const existing = await this.prisma.customer.findFirst({
-        where: { phone: createDto.phone, branchId: createDto.branchId },
+    // Se um ID foi fornecido (sincronização do desktop), verificar se já existe
+    if (createDto.id) {
+      const existing = await this.prisma.customer.findUnique({
+        where: { id: createDto.id },
       });
       if (existing) {
-        throw new BadRequestException('Já existe cliente com este telefone');
+        console.log('⚠️ Cliente já existe com este ID, retornando existente:', existing.id);
+        return existing;
+      }
+    }
+
+    // Verificar se já existe cliente com mesmo telefone ou email
+    if (createDto.phone) {
+      const existingByPhone = await this.prisma.customer.findFirst({
+        where: { 
+          phone: createDto.phone,
+          ...(createDto.branchId && { branchId: createDto.branchId }),
+        },
+      });
+      if (existingByPhone) {
+        // Se existe por telefone mas não temos ID, retornar o existente
+        // Isso acontece quando o cliente foi criado sem ID anteriormente
+        console.log('⚠️ Cliente já existe com este telefone, retornando existente:', existingByPhone.id);
+        return existingByPhone;
       }
     }
 

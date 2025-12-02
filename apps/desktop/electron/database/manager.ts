@@ -850,7 +850,12 @@ export class DatabaseManager {
              data.tableId, data.customerId, data.cashierId);
     
     // Adicionar à fila de sincronização
-    this.addToSyncQueue('create', 'sale', id, data, 1); // Alta prioridade
+    // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
+    const syncData = {
+      ...data,
+      id, // Garantir que o ID seja enviado para o backend
+    };
+    this.addToSyncQueue('create', 'sale', id, syncData, 1); // Alta prioridade
     
     return this.getSaleById(id);
   }
@@ -2415,7 +2420,14 @@ export class DatabaseManager {
     stmt.run(id, code, data.name, data.phone, data.email, data.creditLimit || 0);
     
     if (!skipSyncQueue) {
-      this.addToSyncQueue('create', 'customer', id, data, 2);
+      // Prioridade 0 = mais alta (antes de vendas que são prioridade 1)
+      // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
+      const syncData = {
+        ...data,
+        id, // Garantir que o ID seja enviado para o backend
+        code,
+      };
+      this.addToSyncQueue('create', 'customer', id, syncData, 0);
     }
     
     return this.getCustomerById(id);
@@ -2431,7 +2443,8 @@ export class DatabaseManager {
     stmt.run(data.name, data.phone, data.email, data.creditLimit || 0, id);
     
     if (!skipSyncQueue) {
-      this.addToSyncQueue('update', 'customer', id, data, 2);
+      // Prioridade 0 = mais alta (antes de vendas)
+      this.addToSyncQueue('update', 'customer', id, data, 0);
     }
     
     return this.getCustomerById(id);
@@ -2447,7 +2460,8 @@ export class DatabaseManager {
     
     stmt.run(id);
     
-    this.addToSyncQueue('delete', 'customer', id, {}, 2);
+    // Prioridade 0 = mais alta (antes de vendas)
+    this.addToSyncQueue('delete', 'customer', id, {}, 0);
     
     return { success: true };
   }
@@ -3466,6 +3480,34 @@ export class DatabaseManager {
       SET status = 'failed', retry_count = retry_count + 1, last_error = ? 
       WHERE id = ?
     `).run(error, id);
+  }
+
+  /**
+   * Marca itens falhados como pendentes para re-tentativa
+   * Útil após sincronizar dependências (ex: clientes antes de vendas)
+   */
+  retryFailedSyncItems(maxRetries: number = 3) {
+    // Resetar itens falhados que ainda não atingiram o limite de retentativas
+    const result = this.db.prepare(`
+      UPDATE sync_queue 
+      SET status = 'pending', last_error = NULL 
+      WHERE status = 'failed' AND retry_count < ?
+    `).run(maxRetries);
+    
+    console.log(`🔄 ${result.changes} itens marcados para re-tentativa`);
+    return result.changes;
+  }
+
+  /**
+   * Obtém contagem de itens falhados por entidade
+   */
+  getFailedSyncStats() {
+    return this.db.prepare(`
+      SELECT entity, COUNT(*) as count, MAX(last_error) as last_error
+      FROM sync_queue 
+      WHERE status = 'failed'
+      GROUP BY entity
+    `).all();
   }
 
   // ============================================

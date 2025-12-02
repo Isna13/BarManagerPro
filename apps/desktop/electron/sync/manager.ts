@@ -585,6 +585,7 @@ export class SyncManager {
 
   private async pushLocalChanges() {
     const pendingItems = this.dbManager.getPendingSyncItems() as SyncItem[];
+    let hasFailures = false;
     
     for (const item of pendingItems) {
       try {
@@ -604,6 +605,7 @@ export class SyncManager {
         }
         
       } catch (error: any) {
+        hasFailures = true;
         const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
         console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
         
@@ -622,6 +624,35 @@ export class SyncManager {
         } else {
           console.error('⚠️ Erro desconhecido:', error);
           this.dbManager.markSyncItemFailed(item.id, errorMsg);
+        }
+      }
+    }
+    
+    // Se houve falhas, tentar re-sincronizar itens falhados
+    // (útil quando dependências foram sincronizadas nesta rodada)
+    if (hasFailures) {
+      const retried = this.dbManager.retryFailedSyncItems(5); // max 5 tentativas
+      if (retried > 0) {
+        console.log(`🔄 Re-tentando ${retried} itens que podem ter sido desbloqueados por dependências...`);
+        // Fazer uma segunda passada imediata
+        const retryItems = this.dbManager.getPendingSyncItems() as SyncItem[];
+        for (const item of retryItems) {
+          try {
+            const rawData = JSON.parse(item.data);
+            const data = this.prepareDataForSync(item.entity, rawData);
+            const syncResult = await this.syncEntityItem(item, data);
+            
+            if (syncResult.success) {
+              this.dbManager.markSyncItemCompleted(item.id);
+              console.log(`✅ Re-sync ${item.entity} concluído`);
+            } else if (syncResult.skip) {
+              this.dbManager.markSyncItemCompleted(item.id);
+            }
+          } catch (error: any) {
+            const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+            console.error(`❌ Re-sync ${item.entity} falhou:`, errorMsg);
+            this.dbManager.markSyncItemFailed(item.id, errorMsg);
+          }
         }
       }
     }
