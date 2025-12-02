@@ -144,15 +144,24 @@ async function main() {
   // ============ VENDAS ============
   console.log('VENDAS');
   console.log('-'.repeat(40));
-  const sales = await fetchAPI('/sales?limit=10');
+  const sales = await fetchAPI('/sales?limit=15');
   console.log('Total de vendas:', Array.isArray(sales) ? sales.length : 'erro');
   
   if (Array.isArray(sales)) {
     sales.forEach(sale => {
       const itemsCount = sale.items?.length || 0;
       const itemsTotal = sale.items?.reduce((sum, i) => sum + (i.total || 0), 0) || 0;
-      console.log(`  - ${sale.saleNumber}: Total=${(sale.total || 0)/100} FCFA | Items=${itemsCount} | ItemsSum=${itemsTotal/100} | ${sale.status}`);
+      console.log(`  - ${sale.saleNumber}: ID=${sale.id.substring(0,8)}... | Total=${(sale.total || 0)/100} FCFA | Items=${itemsCount} | ${sale.status}`);
     });
+    
+    // Buscar venda específica
+    console.log('\n  Buscando venda 28775190...');
+    const targetSale = sales.find(s => s.id.startsWith('28775190'));
+    if (targetSale) {
+      console.log('    ENCONTRADA!', targetSale.saleNumber);
+    } else {
+      console.log('    Nao encontrada com esse ID');
+    }
   } else {
     console.log('  Resposta:', JSON.stringify(sales).substring(0, 200));
   }

@@ -5113,6 +5113,19 @@ export class DatabaseManager {
 
     const previousPoints = customer.loyalty_points || 0;
 
+    // Se os pontos não mudaram, não fazer nada (evitar loop infinito)
+    if (previousPoints === points) {
+      return {
+        success: true,
+        customerName: customer.full_name,
+        customerCode: customer.code,
+        previousPoints,
+        newPoints: points,
+        difference: 0,
+        skipped: true
+      };
+    }
+
     // Atualizar pontos
     this.db.prepare(`
       UPDATE customers 

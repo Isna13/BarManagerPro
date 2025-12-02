@@ -879,6 +879,19 @@ class SyncManager {
                     return { skip: true, success: false, reason: 'Atualização de caixa não suportada (apenas abertura/fechamento)' };
                 }
                 return { skip: true, success: false, reason: 'Operação de caixa não suportada' };
+            case 'debt_payment':
+                // Pagamento de dívida - deve chamar POST /debts/:debtId/pay
+                if (operation === 'create' && data.debtId) {
+                    await this.apiClient.post(`/debts/${data.debtId}/pay`, {
+                        amount: data.amount,
+                        method: data.method || 'cash',
+                        reference: data.reference,
+                        notes: data.notes,
+                    });
+                    console.log('✅ Pagamento de dívida sincronizado:', data.debtId);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Pagamento de dívida sem debtId' };
             case 'customer_loyalty':
                 // Fidelidade - não existe endpoint separado
                 return { skip: true, success: false, reason: 'Lealdade gerenciada via customer' };

@@ -601,6 +601,15 @@ export declare class DatabaseManager {
         previousPoints: any;
         newPoints: number;
         difference: number;
+        skipped: boolean;
+    } | {
+        success: boolean;
+        customerName: any;
+        customerCode: any;
+        previousPoints: any;
+        newPoints: number;
+        difference: number;
+        skipped?: undefined;
     };
     /**
      * Corrigir pontos de fidelidade de um cliente

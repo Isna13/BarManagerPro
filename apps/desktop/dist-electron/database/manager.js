@@ -2532,7 +2532,14 @@ class DatabaseManager {
       INSERT INTO payments (id, debt_id, method, amount, status, notes)
       VALUES (?, ?, ?, ?, 'completed', ?)
     `).run(generalPaymentId, data.debtId, data.method, data.amount, `Pagamento de dívida ${debt.debt_number}`);
-        this.addToSyncQueue('update', 'debt', data.debtId, data, 2);
+        // Sincronizar pagamento de dívida para o backend
+        this.addToSyncQueue('create', 'debt_payment', paymentId, {
+            debtId: data.debtId,
+            amount: data.amount,
+            method: data.method,
+            reference: data.reference,
+            notes: data.notes,
+        }, 1); // Alta prioridade
         return {
             paymentId,
             newBalance,
@@ -4102,6 +4109,18 @@ class DatabaseManager {
             throw new Error(`Cliente com código ${customerCode} não encontrado`);
         }
         const previousPoints = customer.loyalty_points || 0;
+        // Se os pontos não mudaram, não fazer nada (evitar loop infinito)
+        if (previousPoints === points) {
+            return {
+                success: true,
+                customerName: customer.full_name,
+                customerCode: customer.code,
+                previousPoints,
+                newPoints: points,
+                difference: 0,
+                skipped: true
+            };
+        }
         // Atualizar pontos
         this.db.prepare(`
       UPDATE customers 
