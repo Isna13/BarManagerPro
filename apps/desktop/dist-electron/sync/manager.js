@@ -836,6 +836,7 @@ class SyncManager {
                                 code: item.code,
                                 address: item.address,
                                 creditLimit: creditLimit,
+                                loyalty_points: item.loyaltyPoints ?? item.loyalty_points ?? existingAny.loyalty_points ?? 0,
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
@@ -850,6 +851,7 @@ class SyncManager {
                                 code: item.code,
                                 address: item.address,
                                 creditLimit: item.creditLimit || 0,
+                                loyalty_points: item.loyaltyPoints ?? item.loyalty_points ?? 0,
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
@@ -876,6 +878,9 @@ class SyncManager {
                                 phone: item.phone,
                                 address: item.address,
                                 contact_person: item.contactPerson,
+                                tax_id: item.taxId,
+                                payment_terms: item.paymentTerms,
+                                notes: item.notes,
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
@@ -889,6 +894,9 @@ class SyncManager {
                                 phone: item.phone,
                                 address: item.address,
                                 contact_person: item.contactPerson,
+                                tax_id: item.taxId,
+                                payment_terms: item.paymentTerms,
+                                notes: item.notes,
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
@@ -1363,6 +1371,8 @@ class SyncManager {
             data.code = item.code;
             // Aceitar tanto creditLimit quanto credit_limit
             data.creditLimit = item.creditLimit ?? item.credit_limit ?? 0;
+            data.loyaltyPoints = item.loyalty_points ?? item.loyaltyPoints ?? 0;
+            data.address = item.address;
             data.notes = item.notes;
             if (item.id)
                 data.id = item.id;

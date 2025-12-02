@@ -931,6 +931,15 @@ export class DatabaseManager {
       WHERE id = ?
     `).run(saleId);
     
+    // IMPORTANTE: Atualizar totais do caixa
+    const currentCashBox: any = this.getCurrentCashBox();
+    if (currentCashBox) {
+      this.updateCashBoxTotals(currentCashBox.id, paymentData.amount, paymentData.method || 'cash');
+      console.log(`[CASH-BOX] Atualizado: +${paymentData.amount/100} FCFA (${paymentData.method})`);
+    } else {
+      console.warn('[CASH-BOX] Nenhum caixa aberto - totais não atualizados');
+    }
+    
     // Adicionar à fila - incluir saleId nos dados
     this.addToSyncQueue('create', 'payment', id, { ...paymentData, saleId }, 1);
     
@@ -4853,8 +4862,24 @@ export class DatabaseManager {
       }
     }
 
-    // Adicionar à fila de sincronização
-    this.addToSyncQueue('create', 'sale', saleId, { saleNumber, amount: data.amount }, 1);
+    // Adicionar à fila de sincronização - DADOS COMPLETOS DA VENDA
+    const saleData = this.getSaleById(saleId);
+    this.addToSyncQueue('create', 'sale', saleId, {
+      id: saleId,
+      saleNumber,
+      branchId: session.branch_id,
+      type: 'table',
+      tableId: session.table_id,
+      customerId: customer.customer_id || null,
+      customerName: customer.customer_name,
+      cashierId: data.processedBy,
+      status: 'paid',
+      subtotal: customer.total,
+      total: customer.total,
+      muntuSavings: totalMuntuSavings,
+      paymentMethod: data.method,
+      ...saleData
+    }, 1);
 
     // Registrar ação
     this.logTableAction({
@@ -5069,8 +5094,23 @@ export class DatabaseManager {
       }
     }
 
-    // Adicionar à fila de sincronização
-    this.addToSyncQueue('create', 'sale', saleId, { saleNumber, amount: data.amount }, 1);
+    // Adicionar à fila de sincronização - DADOS COMPLETOS DA VENDA
+    const saleData = this.getSaleById(saleId);
+    this.addToSyncQueue('create', 'sale', saleId, {
+      id: saleId,
+      saleNumber,
+      branchId: session.branch_id,
+      type: 'table',
+      tableId: session.table_id,
+      customerId: singleCustomerId,
+      cashierId: data.processedBy,
+      status: 'paid',
+      subtotal: totalOrders,
+      total: totalOrders,
+      muntuSavings: totalMuntuSavings,
+      paymentMethod: data.method,
+      ...saleData
+    }, 1);
 
     // Registrar ação
     this.logTableAction({

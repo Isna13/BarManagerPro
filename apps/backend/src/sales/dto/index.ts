@@ -19,6 +19,39 @@ export class CreateSaleDto {
   @IsUUID()
   @IsOptional()
   customerId?: string;
+
+  // Campos para sincronização de vendas já completas do desktop
+  @IsString()
+  @IsOptional()
+  customerName?: string; // Nome do cliente (para vendas de mesa sem cadastro)
+
+  @IsString()
+  @IsOptional()
+  saleNumber?: string; // Número da venda
+
+  @IsInt()
+  @IsOptional()
+  subtotal?: number; // Subtotal em centavos
+
+  @IsInt()
+  @IsOptional()
+  total?: number; // Total em centavos
+
+  @IsInt()
+  @IsOptional()
+  discountTotal?: number; // Desconto total em centavos
+
+  @IsString()
+  @IsOptional()
+  status?: string; // open, paid, closed, cancelled
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string; // Método de pagamento principal
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 
 export class AddSaleItemDto {

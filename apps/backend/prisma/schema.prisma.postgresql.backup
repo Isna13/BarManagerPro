@@ -382,6 +382,9 @@ model Sale {
   customerId     String?
   customer       Customer? @relation(fields: [customerId], references: [id])
   
+  // Nome do cliente para vendas sem cadastro (ex: vendas de mesa)
+  customerName   String?
+  
   cashierId      String
   cashier        User      @relation(fields: [cashierId], references: [id])
   

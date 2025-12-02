@@ -397,6 +397,7 @@ model Sale {
   table         Table?    @relation(fields: [tableId], references: [id])
   customerId    String?   @map("customer_id")
   customer      Customer? @relation(fields: [customerId], references: [id])
+  customerName  String?   @map("customer_name") // Nome do cliente para vendas sem cadastro
   cashierId     String    @map("cashier_id")
   cashier       User?     @relation(fields: [cashierId], references: [id])
   status        String    @default("open")

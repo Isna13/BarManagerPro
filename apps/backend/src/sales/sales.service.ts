@@ -39,11 +39,11 @@ export class SalesService {
 
       // Construir data object apenas com campos válidos
       const saleData: any = {
-        saleNumber,
+        saleNumber: createSaleDto.saleNumber || saleNumber,
         branchId: createSaleDto.branchId,
         type: createSaleDto.type || 'counter',
         cashierId: userId,
-        status: 'open',
+        status: createSaleDto.status || 'open',
       };
 
       // Usar ID fornecido (para sincronização) ou deixar o Prisma gerar
@@ -57,6 +57,27 @@ export class SalesService {
       }
       if (createSaleDto.customerId) {
         saleData.customerId = createSaleDto.customerId;
+      }
+      // Nome do cliente para vendas sem cadastro (ex: vendas de mesa)
+      if (createSaleDto.customerName) {
+        saleData.customerName = createSaleDto.customerName;
+      }
+      // Valores (para sincronização de vendas já completas)
+      if (createSaleDto.subtotal !== undefined) {
+        saleData.subtotal = createSaleDto.subtotal;
+      }
+      if (createSaleDto.total !== undefined) {
+        saleData.total = createSaleDto.total;
+      }
+      if (createSaleDto.discountTotal !== undefined) {
+        saleData.discountTotal = createSaleDto.discountTotal;
+      }
+      if (createSaleDto.notes) {
+        saleData.notes = createSaleDto.notes;
+      }
+      // Se status é paid ou closed, definir closedAt
+      if (createSaleDto.status === 'paid' || createSaleDto.status === 'closed') {
+        saleData.closedAt = new Date();
       }
 
       console.log('   saleData:', JSON.stringify(saleData));
