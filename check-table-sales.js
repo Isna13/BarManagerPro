@@ -1,4 +1,4 @@
-// Verificar vendas de mesa que estão falhando
+// Verificar e corrigir vendas de mesa na fila de sync
 const Database = require('better-sqlite3');
 const path = require('path');
 const os = require('os');
@@ -8,104 +8,154 @@ const dbPath = path.join(appDataPath, 'database.sqlite');
 
 console.log('📁 Database:', dbPath);
 
+// Usar o módulo nativo do desktop
+const args = process.argv.slice(2);
+const fixMode = args.includes('--fix');
+
+if (fixMode) {
+  console.log('🔧 MODO DE CORREÇÃO ATIVADO\n');
+}
+
 try {
-  const db = new Database(dbPath, { readonly: true });
+  const db = new Database(dbPath);
   
-  // Vendas de mesa
-  console.log('\n🍽️ === VENDAS DE MESA (type=table) ===');
-  const tableSales = db.prepare(`
-    SELECT s.*, 
-           (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) as item_count,
-           (SELECT COUNT(*) FROM payments WHERE sale_id = s.id) as payment_count
+  // Vendas de mesa que não foram sincronizadas
+  console.log('\n🍽️ === VENDAS DE MESA NÃO SINCRONIZADAS ===');
+  const unsyncedTableSales = db.prepare(`
+    SELECT s.id, s.sale_number, s.total, s.customer_name, s.synced, s.created_at
     FROM sales s 
-    WHERE s.type = 'table'
+    WHERE s.type = 'table' AND (s.synced = 0 OR s.synced IS NULL)
     ORDER BY s.created_at DESC
-    LIMIT 10
-  `).all();
-  
-  if (tableSales.length === 0) {
-    console.log('Nenhuma venda de mesa encontrada');
-  } else {
-    tableSales.forEach(sale => {
-      console.log(`\n  📋 ${sale.sale_number} (${sale.status})`);
-      console.log(`     ID: ${sale.id}`);
-      console.log(`     Total: ${sale.total/100} FCFA`);
-      console.log(`     Customer: ${sale.customer_name || sale.customer_id || 'N/A'}`);
-      console.log(`     Items: ${sale.item_count}, Payments: ${sale.payment_count}`);
-      console.log(`     Synced: ${sale.synced ? 'Sim' : 'Não'}`);
-      
-      // Verificar na fila de sync
-      const syncItems = db.prepare(`
-        SELECT entity, operation, status, retry_count, last_error, created_at
-        FROM sync_queue 
-        WHERE entity_id = ? OR data LIKE ?
-        ORDER BY created_at ASC
-      `).all(sale.id, `%${sale.id}%`);
-      
-      if (syncItems.length > 0) {
-        console.log('     Sync Queue:');
-        syncItems.forEach(item => {
-          const statusIcon = item.status === 'completed' ? '✅' : 
-                            item.status === 'failed' ? '❌' : '⏳';
-          console.log(`       ${statusIcon} ${item.entity}/${item.operation} - ${item.status}`);
-          if (item.last_error) {
-            console.log(`          Erro: ${item.last_error}`);
-          }
-        });
-      } else {
-        console.log('     ⚠️ Nenhum item na fila de sync!');
-      }
-    });
-  }
-  
-  // Verificar itens falhados
-  console.log('\n\n❌ === SYNC FALHADOS (sale/sale_item/payment) ===');
-  const failed = db.prepare(`
-    SELECT * FROM sync_queue 
-    WHERE status = 'failed' 
-      AND entity IN ('sale', 'sale_item', 'payment')
-    ORDER BY created_at DESC
     LIMIT 20
   `).all();
   
-  if (failed.length === 0) {
-    console.log('Nenhum item de venda falhado');
-  } else {
-    failed.forEach(item => {
-      console.log(`\n  ❌ ${item.entity}/${item.operation}`);
-      console.log(`     ID: ${item.entity_id}`);
-      console.log(`     Tentativas: ${item.retry_count}`);
-      console.log(`     Erro: ${item.last_error}`);
+  console.log(`Encontradas ${unsyncedTableSales.length} vendas de mesa não sincronizadas:`);
+  unsyncedTableSales.forEach(sale => {
+    console.log(`  📋 ${sale.sale_number} | ${sale.total/100} FCFA | ${sale.customer_name || 'N/A'}`);
+  });
+  
+  // Verificar se estas vendas estão na fila de sync
+  console.log('\n📤 === VERIFICANDO FILA DE SYNC ===');
+  for (const sale of unsyncedTableSales) {
+    const inQueue = db.prepare(`
+      SELECT id, status, retry_count, last_error
+      FROM sync_queue 
+      WHERE entity = 'sale' AND entity_id = ?
+    `).get(sale.id);
+    
+    if (inQueue) {
+      const icon = inQueue.status === 'completed' ? '✅' : 
+                   inQueue.status === 'failed' ? '❌' : '⏳';
+      console.log(`  ${icon} ${sale.sale_number}: ${inQueue.status} (retries: ${inQueue.retry_count})`);
+      if (inQueue.last_error) {
+        console.log(`     Erro: ${inQueue.last_error}`);
+      }
       
-      // Parsear dados
-      try {
-        const data = JSON.parse(item.data);
-        if (data.saleId) console.log(`     SaleId: ${data.saleId}`);
-        if (data.saleNumber) console.log(`     SaleNumber: ${data.saleNumber}`);
-      } catch(e) {}
-    });
+      // Se está marcado como completed mas a venda não está synced, há um problema
+      if (inQueue.status === 'completed' && !sale.synced) {
+        console.log(`     ⚠️ PROBLEMA: Marcado como completed mas venda não está synced!`);
+        
+        if (fixMode) {
+          // Resetar para pending
+          db.prepare(`UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE id = ?`).run(inQueue.id);
+          console.log(`     🔧 Resetado para pending`);
+        }
+      }
+    } else {
+      console.log(`  ⚠️ ${sale.sale_number}: NÃO ESTÁ NA FILA!`);
+      
+      if (fixMode) {
+        // Adicionar à fila
+        const saleData = db.prepare('SELECT * FROM sales WHERE id = ?').get(sale.id);
+        const items = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(sale.id);
+        const payments = db.prepare('SELECT * FROM payments WHERE sale_id = ?').all(sale.id);
+        
+        const queueData = {
+          id: sale.id,
+          saleNumber: sale.sale_number,
+          branchId: saleData.branch_id || 'main-branch',
+          type: 'table',
+          tableId: saleData.table_id,
+          customerId: saleData.customer_id,
+          customerName: saleData.customer_name,
+          cashierId: saleData.cashier_id,
+          status: saleData.status,
+          subtotal: saleData.subtotal,
+          total: saleData.total,
+        };
+        
+        const uuid = require('crypto').randomUUID();
+        db.prepare(`
+          INSERT INTO sync_queue (id, operation, entity, entity_id, data, priority, status)
+          VALUES (?, 'create', 'sale', ?, ?, 1, 'pending')
+        `).run(uuid, sale.id, JSON.stringify(queueData));
+        console.log(`     🔧 Adicionado à fila de sync`);
+        
+        // Adicionar itens
+        for (const item of items) {
+          const itemUuid = require('crypto').randomUUID();
+          const itemData = {
+            saleId: sale.id,
+            productId: item.product_id,
+            qtyUnits: item.qty_units,
+            isMuntu: item.is_muntu === 1,
+            unitPrice: item.unit_price,
+            unitCost: item.unit_cost,
+            subtotal: item.subtotal,
+            total: item.total,
+          };
+          db.prepare(`
+            INSERT INTO sync_queue (id, operation, entity, entity_id, data, priority, status)
+            VALUES (?, 'create', 'sale_item', ?, ?, 2, 'pending')
+          `).run(itemUuid, item.id, JSON.stringify(itemData));
+        }
+        console.log(`     🔧 Adicionados ${items.length} itens à fila`);
+        
+        // Adicionar pagamentos
+        for (const payment of payments) {
+          const paymentUuid = require('crypto').randomUUID();
+          const paymentData = {
+            saleId: sale.id,
+            method: payment.method,
+            amount: payment.amount,
+            referenceNumber: payment.reference_number,
+            status: payment.status,
+          };
+          db.prepare(`
+            INSERT INTO sync_queue (id, operation, entity, entity_id, data, priority, status)
+            VALUES (?, 'create', 'payment', ?, ?, 3, 'pending')
+          `).run(paymentUuid, payment.id, JSON.stringify(paymentData));
+        }
+        console.log(`     🔧 Adicionados ${payments.length} pagamentos à fila`);
+      }
+    }
   }
   
-  // Verificar items completos para vendas
-  console.log('\n\n✅ === SYNC COMPLETED PARA VENDAS ===');
-  const completed = db.prepare(`
-    SELECT * FROM sync_queue 
-    WHERE status = 'completed' 
-      AND entity = 'sale'
-    ORDER BY processed_at DESC
-    LIMIT 10
+  // Mostrar estatísticas
+  console.log('\n📊 === ESTATÍSTICAS ===');
+  const stats = db.prepare(`
+    SELECT 
+      entity,
+      status,
+      COUNT(*) as count
+    FROM sync_queue 
+    WHERE entity IN ('sale', 'sale_item', 'payment')
+    GROUP BY entity, status
+    ORDER BY entity, status
   `).all();
   
-  completed.forEach(item => {
-    console.log(`  ✅ ${item.entity_id}`);
-    try {
-      const data = JSON.parse(item.data);
-      console.log(`     SaleNumber: ${data.saleNumber || 'N/A'}, Type: ${data.type || 'N/A'}`);
-    } catch(e) {}
+  stats.forEach(s => {
+    console.log(`  ${s.entity}: ${s.status} = ${s.count}`);
   });
   
   db.close();
   
+  if (!fixMode) {
+    console.log('\n💡 Execute com --fix para corrigir os problemas encontrados');
+  }
+  
 } catch (error) {
   console.error('Erro:', error.message);
+  console.log('\nSe o erro for sobre versão do Node, execute este script de dentro do desktop:');
+  console.log('  cd apps/desktop && node ../../check-table-sales.js');
 }

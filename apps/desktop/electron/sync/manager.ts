@@ -1080,6 +1080,18 @@ export class SyncManager {
       case 'sale_item':
         // Itens de venda devem ser adicionados via POST /sales/:saleId/items
         if (operation === 'create' && data.saleId) {
+          // Verificar se a venda existe primeiro
+          try {
+            await this.apiClient.get(`/sales/${data.saleId}`);
+          } catch (checkError: any) {
+            if (checkError.response?.status === 404) {
+              console.log(`⏳ Venda ${data.saleId} ainda não existe no servidor, adiando item...`);
+              // Não marcar como falhado permanente, apenas retornar false para retry
+              throw new Error(`Venda ${data.saleId} não encontrada - aguardando sync`);
+            }
+            throw checkError;
+          }
+          
           await this.apiClient.post(`/sales/${data.saleId}/items`, {
             productId: data.productId,
             qtyUnits: data.qtyUnits || data.qty_units || 1,
@@ -1094,6 +1106,17 @@ export class SyncManager {
       case 'payment':
         // Pagamentos devem ser processados via POST /sales/:saleId/payments
         if (operation === 'create' && data.saleId) {
+          // Verificar se a venda existe primeiro
+          try {
+            await this.apiClient.get(`/sales/${data.saleId}`);
+          } catch (checkError: any) {
+            if (checkError.response?.status === 404) {
+              console.log(`⏳ Venda ${data.saleId} ainda não existe no servidor, adiando pagamento...`);
+              throw new Error(`Venda ${data.saleId} não encontrada - aguardando sync`);
+            }
+            throw checkError;
+          }
+          
           await this.apiClient.post(`/sales/${data.saleId}/payments`, {
             method: data.method || 'cash',
             amount: data.amount,
