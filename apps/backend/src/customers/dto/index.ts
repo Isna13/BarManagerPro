@@ -42,6 +42,11 @@ export class CreateCustomerDto {
   creditLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  loyaltyPoints?: number;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 }
@@ -71,6 +76,11 @@ export class UpdateCustomerDto {
   @IsInt()
   @Min(0)
   creditLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  loyaltyPoints?: number;
 
   @IsOptional()
   @IsString()

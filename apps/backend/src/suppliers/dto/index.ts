@@ -42,6 +42,14 @@ export class CreateSupplierDto {
 
   @IsOptional()
   @IsString()
+  taxId?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentTerms?: string;
+
+  @IsOptional()
+  @IsString()
   notes?: string;
 }
 
@@ -53,6 +61,10 @@ export class UpdateSupplierDto {
   @IsOptional()
   @IsString()
   contact?: string;
+
+  @IsOptional()
+  @IsString()
+  contactPerson?: string;
 
   @IsOptional()
   @IsString()
@@ -69,6 +81,14 @@ export class UpdateSupplierDto {
   @IsOptional()
   @IsString()
   nif?: string;
+
+  @IsOptional()
+  @IsString()
+  taxId?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentTerms?: string;
 
   @IsOptional()
   @IsString()
