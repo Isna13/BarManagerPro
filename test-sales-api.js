@@ -7,8 +7,8 @@ const BASE_URL = 'barmanagerbackend-production.up.railway.app';
 function login() {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
-      email: 'admin@barmanager.gw',
-      password: 'admin123'
+      email: 'isnatchuda1@gmail.com',
+      password: 'isna123'
     });
 
     const options = {
@@ -30,7 +30,7 @@ function login() {
         console.log('Login response:', data.substring(0, 200));
         try {
           const json = JSON.parse(data);
-          resolve(json.access_token);
+          resolve(json.accessToken || json.access_token);
         } catch (e) {
           reject(new Error('Failed to parse login response: ' + data));
         }

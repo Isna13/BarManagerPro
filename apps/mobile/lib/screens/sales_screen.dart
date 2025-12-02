@@ -37,23 +37,24 @@ class _SalesScreenState extends State<SalesScreen> {
 
     switch (_selectedFilter) {
       case 'today':
-        // Hoje: do início do dia até o fim do dia
-        startDate = DateTime(now.year, now.month, now.day);
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        // Hoje: do início do dia até o fim do dia (usando UTC)
+        startDate = DateTime.utc(now.year, now.month, now.day, 0, 0, 0);
+        endDate = DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       case 'week':
-        // Última semana: 7 dias atrás até agora
-        startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 7));
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        // Última semana: 7 dias atrás até fim de hoje
+        final weekAgo = now.subtract(const Duration(days: 7));
+        startDate = DateTime.utc(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0);
+        endDate = DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       case 'month':
-        // Este mês: do dia 1 até hoje
-        startDate = DateTime(now.year, now.month, 1);
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        // Este mês: do dia 1 até fim de hoje
+        startDate = DateTime.utc(now.year, now.month, 1, 0, 0, 0);
+        endDate = DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       default:
-        startDate = DateTime(now.year, now.month, now.day);
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = DateTime.utc(now.year, now.month, now.day, 0, 0, 0);
+        endDate = DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999);
     }
 
     print('📅 SalesScreen._loadData: filter=$_selectedFilter');
