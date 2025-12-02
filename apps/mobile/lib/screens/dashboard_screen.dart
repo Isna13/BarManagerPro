@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../config/app_theme.dart';
+import '../config/responsive.dart';
 import '../providers/data_provider.dart';
 import '../widgets/common_widgets.dart';
 
@@ -126,13 +127,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatsGrid(stats) {
+    final isTablet = Responsive.isTablet(context);
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final crossAxisCount = isTablet || isLandscape ? 4 : 2;
+    final childAspectRatio = isTablet ? 1.5 : (isLandscape ? 1.8 : 1.4);
+    
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
+      crossAxisCount: crossAxisCount,
       crossAxisSpacing: AppTheme.spacingMD,
       mainAxisSpacing: AppTheme.spacingMD,
-      childAspectRatio: 1.4,
+      childAspectRatio: childAspectRatio,
       children: [
         StatCard(
           title: 'Vendas Hoje',

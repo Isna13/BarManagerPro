@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../config/app_theme.dart';
+import '../config/responsive.dart';
 import '../providers/data_provider.dart';
 import '../models/models.dart';
 import '../widgets/common_widgets.dart';
@@ -44,7 +45,8 @@ class _SalesScreenState extends State<SalesScreen> {
       case 'week':
         // Última semana: 7 dias atrás até fim de hoje
         final weekAgo = now.subtract(const Duration(days: 7));
-        startDate = DateTime.utc(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0);
+        startDate =
+            DateTime.utc(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0);
         endDate = DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999);
         break;
       case 'month':
@@ -57,10 +59,6 @@ class _SalesScreenState extends State<SalesScreen> {
         endDate = DateTime.utc(now.year, now.month, now.day, 23, 59, 59, 999);
     }
 
-    print('📅 SalesScreen._loadData: filter=$_selectedFilter');
-    print('📅 startDate: $startDate (${startDate.toIso8601String()})');
-    print('📅 endDate: $endDate (${endDate.toIso8601String()})');
-    
     await provider.loadSales(startDate: startDate, endDate: endDate);
   }
 

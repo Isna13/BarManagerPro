@@ -14,6 +14,7 @@ import 'purchases_screen.dart';
 import 'debts_screen.dart';
 import 'cash_register_screen.dart';
 import 'cash_history_screen.dart';
+import 'login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -116,14 +117,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: Text(_getTitle()),
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        title: Text(
+          _getTitle(),
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         actions: [
           Consumer<DataProvider>(
             builder: (context, provider, _) {
               return IconButton(
+                tooltip: 'Atualizar',
                 icon: provider.isLoading
                     ? const SizedBox(
                         width: 20,
@@ -133,27 +143,41 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: AppTheme.primaryColor,
                         ),
                       )
-                    : const Icon(Icons.refresh),
+                    : const Icon(Icons.refresh_rounded),
                 onPressed:
                     provider.isLoading ? null : () => provider.refreshAll(),
               );
             },
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
+            icon: const Icon(Icons.more_vert_rounded),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             onSelected: (value) {
               if (value == 'logout') {
                 _showLogoutDialog();
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: AppTheme.dangerColor),
-                    SizedBox(width: AppTheme.spacingSM),
-                    Text('Sair'),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.dangerColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.logout_rounded,
+                        color: AppTheme.dangerColor,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('Sair da conta'),
                   ],
                 ),
               ),
@@ -162,10 +186,53 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: _getCurrentScreen(),
-      bottomNavigationBar: ModernNavBar(
-        currentIndex: _currentIndex < 5 ? _currentIndex : 4,
-        onTap: _onNavTap,
-      ),
+      bottomNavigationBar: isLandscape
+          ? null
+          : ModernNavBar(
+              currentIndex: _currentIndex < 5 ? _currentIndex : 4,
+              onTap: _onNavTap,
+            ),
+      // Navigation rail para landscape em tablets
+      drawer: isLandscape ? _buildNavigationDrawer() : null,
+    );
+  }
+
+  Widget _buildNavigationDrawer() {
+    return NavigationDrawer(
+      selectedIndex: _currentIndex,
+      onDestinationSelected: (index) {
+        setState(() => _currentIndex = index);
+        Navigator.pop(context);
+      },
+      children: const [
+        Padding(
+          padding: EdgeInsets.fromLTRB(28, 16, 16, 10),
+          child: Text(
+            'BarManager Pro',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        NavigationDrawerDestination(
+          icon: Icon(Icons.dashboard_outlined),
+          selectedIcon: Icon(Icons.dashboard),
+          label: Text('Dashboard'),
+        ),
+        NavigationDrawerDestination(
+          icon: Icon(Icons.receipt_long_outlined),
+          selectedIcon: Icon(Icons.receipt_long),
+          label: Text('Vendas'),
+        ),
+        NavigationDrawerDestination(
+          icon: Icon(Icons.inventory_2_outlined),
+          selectedIcon: Icon(Icons.inventory_2),
+          label: Text('Estoque'),
+        ),
+        NavigationDrawerDestination(
+          icon: Icon(Icons.people_outlined),
+          selectedIcon: Icon(Icons.people),
+          label: Text('Clientes'),
+        ),
+      ],
     );
   }
 
@@ -173,8 +240,26 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sair'),
-        content: const Text('Tem certeza que deseja sair?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.dangerColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                color: AppTheme.dangerColor,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('Sair'),
+          ],
+        ),
+        content: const Text('Tem certeza que deseja sair da sua conta?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -183,11 +268,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.dangerColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () {
               Navigator.pop(context);
               context.read<AuthProvider>().logout();
-              Navigator.of(context).pushReplacementNamed('/login');
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
             },
             child: const Text('Sair'),
           ),

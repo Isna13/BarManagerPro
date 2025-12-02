@@ -1,4 +1,5 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'database_service.dart';
 
@@ -70,7 +71,9 @@ class SyncService {
         });
       }
     } catch (e) {
-      print('Error pulling products: $e');
+      if (kDebugMode) {
+        debugPrint('Error pulling products: $e');
+      }
       rethrow;
     }
   }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../models/models.dart';
@@ -23,15 +24,21 @@ class ApiService {
           if (_token != null) {
             options.headers['Authorization'] = 'Bearer $_token';
           }
-          print('🌐 API Request: ${options.method} ${options.path}');
+          if (kDebugMode) {
+            debugPrint('🌐 API Request: ${options.method} ${options.path}');
+          }
           return handler.next(options);
         },
         onResponse: (response, handler) {
-          print('✅ API Response: ${response.statusCode}');
+          if (kDebugMode) {
+            debugPrint('✅ API Response: ${response.statusCode}');
+          }
           return handler.next(response);
         },
         onError: (error, handler) {
-          print('❌ API Error: ${error.message}');
+          if (kDebugMode) {
+            debugPrint('❌ API Error: ${error.message}');
+          }
           return handler.next(error);
         },
       ),
@@ -180,11 +187,9 @@ class ApiService {
       if (customerId != null) queryParams['customerId'] = customerId;
       if (limit != null) queryParams['limit'] = limit;
 
-      print('🌐 getSales queryParams: $queryParams');
       final response = await _dio.get('/sales', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      print('🌐 getSales response: ${data.length} vendas');
       return data.map((json) => Sale.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);

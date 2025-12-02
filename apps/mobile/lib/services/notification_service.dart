@@ -1,4 +1,5 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:async';
 
@@ -35,7 +36,7 @@ class NotificationService {
       );
 
       if (settings.authorizationStatus != AuthorizationStatus.authorized) {
-        print('⚠️ Notification permissions not granted');
+        if (kDebugMode) debugPrint('⚠️ Notification permissions not granted');
         return;
       }
 
@@ -59,13 +60,13 @@ class NotificationService {
 
       // Get FCM token
       _fcmToken = await _firebaseMessaging.getToken();
-      print('✅ FCM Token: $_fcmToken');
+      if (kDebugMode) debugPrint('✅ FCM Token: $_fcmToken');
       onTokenRefresh?.call(_fcmToken!);
 
       // Listen to token refresh
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
         _fcmToken = newToken;
-        print('🔄 FCM Token refreshed: $newToken');
+        if (kDebugMode) debugPrint('🔄 FCM Token refreshed: $newToken');
         onTokenRefresh?.call(newToken);
       });
 
@@ -83,9 +84,9 @@ class NotificationService {
       }
 
       _initialized = true;
-      print('✅ Notification Service initialized');
+      if (kDebugMode) debugPrint('✅ Notification Service initialized');
     } catch (e) {
-      print('❌ Error initializing Notification Service: $e');
+      if (kDebugMode) debugPrint('❌ Error initializing Notification Service: $e');
     }
   }
 
@@ -142,7 +143,7 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    print('📨 Foreground message received: ${message.notification?.title}');
+    if (kDebugMode) debugPrint('📨 Foreground message received: ${message.notification?.title}');
 
     final notification = message.notification;
     final data = message.data;
@@ -159,12 +160,12 @@ class NotificationService {
   }
 
   void _handleBackgroundMessage(RemoteMessage message) {
-    print('📨 Background message opened: ${message.notification?.title}');
+    if (kDebugMode) debugPrint('📨 Background message opened: ${message.notification?.title}');
     onMessageReceived?.call(message.data);
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    print('👆 Notification tapped: ${response.payload}');
+    if (kDebugMode) debugPrint('👆 Notification tapped: ${response.payload}');
     // Handle notification tap - navigate to specific screen based on payload
   }
 
@@ -253,18 +254,18 @@ class NotificationService {
   Future<void> subscribeToTopic(String topic) async {
     try {
       await _firebaseMessaging.subscribeToTopic(topic);
-      print('✅ Subscribed to topic: $topic');
+      if (kDebugMode) debugPrint('✅ Subscribed to topic: $topic');
     } catch (e) {
-      print('❌ Error subscribing to topic: $e');
+      if (kDebugMode) debugPrint('❌ Error subscribing to topic: $e');
     }
   }
 
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
       await _firebaseMessaging.unsubscribeFromTopic(topic);
-      print('✅ Unsubscribed from topic: $topic');
+      if (kDebugMode) debugPrint('✅ Unsubscribed from topic: $topic');
     } catch (e) {
-      print('❌ Error unsubscribing from topic: $e');
+      if (kDebugMode) debugPrint('❌ Error unsubscribing from topic: $e');
     }
   }
 }
@@ -272,5 +273,5 @@ class NotificationService {
 // Background message handler (must be top-level function)
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('📨 Background message received: ${message.notification?.title}');
+  if (kDebugMode) debugPrint('📨 Background message received: ${message.notification?.title}');
 }

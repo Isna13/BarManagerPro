@@ -82,7 +82,6 @@ class _ReportsScreenState extends State<ReportsScreen>
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading reports: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
