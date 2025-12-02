@@ -412,6 +412,16 @@ export declare class DatabaseManager {
      */
     getTableById(id: string): unknown;
     /**
+     * Re-sincronizar todas as mesas não sincronizadas
+     * Isso adiciona mesas com synced=0 à fila de sync
+     */
+    resyncUnsyncedTables(): number;
+    /**
+     * Re-tentar vendas de mesa que falharam
+     * Isso reseta o status das vendas com erro de FK para 'pending'
+     */
+    retryFailedTableSales(): number;
+    /**
      * Abrir uma sessão de mesa
      */
     openTableSession(data: {

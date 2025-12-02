@@ -405,6 +405,20 @@ class SyncManager {
         console.log('📊 Status do token:', this.token === 'offline-token' ? '❌ OFFLINE-TOKEN (tentará reconectar)' : '✅ TOKEN VÁLIDO');
         console.log(`⏰ Intervalo de sincronização: ${intervalSecs} segundos (otimizado para Railway Free)`);
         console.log('💡 Dica: Railway Free tem 0.5GB RAM e 1 vCPU - sync menos frequente economiza recursos');
+        // Re-sincronizar mesas não sincronizadas e retry de vendas falhadas
+        try {
+            const tablesResynced = this.dbManager.resyncUnsyncedTables();
+            if (tablesResynced > 0) {
+                console.log(`📋 ${tablesResynced} mesas adicionadas à fila de sync`);
+            }
+            const salesRetried = this.dbManager.retryFailedTableSales();
+            if (salesRetried > 0) {
+                console.log(`🔁 ${salesRetried} vendas de mesa marcadas para retry`);
+            }
+        }
+        catch (err) {
+            console.error('⚠️ Erro ao preparar resync:', err);
+        }
         this.emit('sync:started');
         // Sincronização inicial
         await this.syncNow();
@@ -1097,6 +1111,9 @@ class SyncManager {
             cashBox: '/cash-box',
             inventory_item: '/inventory',
             inventory: '/inventory',
+            table: '/tables',
+            tables: '/tables',
+            table_session: '/table-sessions',
         };
         return endpoints[entity] || `/${entity}s`;
     }
