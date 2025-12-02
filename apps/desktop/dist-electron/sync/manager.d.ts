@@ -75,8 +75,13 @@ export declare class SyncManager {
     private pushLocalChanges;
     private pullServerChanges;
     /**
+     * Verifica se um item local tem alterações pendentes (não sincronizadas)
+     * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
+     */
+    private hasLocalPendingChanges;
+    /**
      * Mescla dados recebidos do servidor com dados locais
-     * Estratégia: servidor tem prioridade, mas não apaga dados locais não sincronizados
+     * Estratégia: servidor tem prioridade, MAS respeita alterações locais não sincronizadas
      */
     private mergeEntityData;
     /**

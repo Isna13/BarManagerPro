@@ -2401,7 +2401,7 @@ export class DatabaseManager {
 
   getCustomerById(id: string) {
     return this.db.prepare(`
-      SELECT id, code, full_name as name, phone, email, credit_limit, current_debt, is_blocked, loyalty_points 
+      SELECT id, code, full_name as name, phone, email, credit_limit, current_debt, is_blocked, loyalty_points, synced 
       FROM customers WHERE id = ?
     `).get(id);
   }
