@@ -93,6 +93,7 @@ export class DebtsService {
       where: { id },
       data: {
         paid: newPaid,
+        paidAmount: newPaid, // Manter sincronizado com 'paid' para compatibilidade mobile
         balance: newBalance,
         status: newStatus,
       },
