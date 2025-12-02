@@ -263,7 +263,20 @@ ipcMain.handle('loyalty:fixCustomerPoints', async (_, customerCode) => {
   return dbManager.fixCustomerLoyaltyPoints(customerCode);
 });
 
+// Rate limiter para evitar chamadas excessivas
+const loyaltyCallCache = new Map<string, number>();
+const LOYALTY_RATE_LIMIT_MS = 1000; // Máximo 1 chamada por segundo por cliente
+
 ipcMain.handle('loyalty:setCustomerPoints', async (_, { customerCode, points }) => {
+  const now = Date.now();
+  const lastCall = loyaltyCallCache.get(customerCode) || 0;
+  
+  if (now - lastCall < LOYALTY_RATE_LIMIT_MS) {
+    // Ignorar chamadas muito frequentes
+    return { success: true, skipped: true, reason: 'rate_limited' };
+  }
+  
+  loyaltyCallCache.set(customerCode, now);
   return dbManager.setCustomerLoyaltyPoints(customerCode, points);
 });
 

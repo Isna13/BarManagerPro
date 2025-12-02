@@ -742,9 +742,16 @@ class SyncManager {
                 for (const item of items) {
                     try {
                         const existing = this.dbManager.getCustomerById(item.id);
+                        // Mapear name corretamente - backend pode enviar name, fullName ou firstName/lastName
+                        const fullName = item.name || item.fullName ||
+                            (item.firstName && item.lastName ? `${item.firstName} ${item.lastName}` : null);
+                        if (!fullName) {
+                            console.warn(`⚠️ Cliente ${item.id} sem nome válido - pulando`);
+                            continue;
+                        }
                         if (existing) {
                             this.dbManager.updateCustomer(item.id, {
-                                name: item.name,
+                                name: fullName,
                                 email: item.email,
                                 phone: item.phone,
                                 code: item.code,
@@ -758,7 +765,7 @@ class SyncManager {
                         else {
                             this.dbManager.createCustomer({
                                 id: item.id,
-                                name: item.name,
+                                name: fullName,
                                 email: item.email,
                                 phone: item.phone,
                                 code: item.code,
