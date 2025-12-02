@@ -139,6 +139,53 @@ async function main() {
       console.log(`  - ${cat.name}`);
     });
   }
+  console.log();
+
+  // ============ VENDAS ============
+  console.log('VENDAS');
+  console.log('-'.repeat(40));
+  const sales = await fetchAPI('/sales?limit=10');
+  console.log('Total de vendas:', Array.isArray(sales) ? sales.length : 'erro');
+  
+  if (Array.isArray(sales)) {
+    sales.forEach(sale => {
+      const itemsCount = sale.items?.length || 0;
+      const itemsTotal = sale.items?.reduce((sum, i) => sum + (i.total || 0), 0) || 0;
+      console.log(`  - ${sale.saleNumber}: Total=${(sale.total || 0)/100} FCFA | Items=${itemsCount} | ItemsSum=${itemsTotal/100} | ${sale.status}`);
+    });
+  } else {
+    console.log('  Resposta:', JSON.stringify(sales).substring(0, 200));
+  }
+  console.log();
+
+  // ============ DIVIDAS ============
+  console.log('DIVIDAS');
+  console.log('-'.repeat(40));
+  const debts = await fetchAPI('/debts');
+  console.log('Total de dividas:', Array.isArray(debts) ? debts.length : 'erro');
+  
+  if (Array.isArray(debts)) {
+    debts.forEach(debt => {
+      const customerName = debt.customer?.fullName || debt.customer?.name || 'N/A';
+      const paymentsCount = debt.payments?.length || 0;
+      console.log(`  - ${debt.debtNumber}: ${customerName} | Saldo=${(debt.balance || 0)/100} FCFA | Pagamentos=${paymentsCount} | ${debt.status}`);
+    });
+  } else {
+    console.log('  Resposta:', JSON.stringify(debts).substring(0, 200));
+  }
+  console.log();
+
+  // ============ CLIENTES ============
+  console.log('CLIENTES');
+  console.log('-'.repeat(40));
+  const customers = await fetchAPI('/customers');
+  console.log('Total de clientes:', Array.isArray(customers) ? customers.length : 'erro');
+  
+  if (Array.isArray(customers)) {
+    customers.forEach(cust => {
+      console.log(`  - ${cust.fullName || cust.name}: Divida atual=${(cust.currentDebt || 0)/100} FCFA | Pontos=${cust.loyaltyPoints || 0}`);
+    });
+  }
 }
 
 main().catch(console.error);

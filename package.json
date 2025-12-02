@@ -30,7 +30,11 @@
     "electron": "^39.2.3",
     "eslint": "^8.56.0",
     "prettier": "^3.1.1",
+    "sqlite3": "^5.1.7",
     "turbo": "^1.11.2",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0"
   }
 }

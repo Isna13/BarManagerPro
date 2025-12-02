@@ -13,9 +13,38 @@ export declare class SyncManager {
     private lastCredentials;
     private _isOnline;
     private _connectionCheckInProgress;
+    private _coldStartDetected;
+    private _consecutiveFailures;
+    private _lastSuccessfulRequest;
     constructor(dbManager: DatabaseManager, apiUrl: string);
     setMainWindow(window: BrowserWindow): void;
     private emit;
+    /**
+     * Executa requisição com retry e backoff exponencial
+     * Otimizado para lidar com cold starts do Railway Free Plan
+     */
+    private requestWithRetry;
+    /**
+     * Verifica se o erro indica um possível cold start do Railway
+     */
+    private isColdStartError;
+    /**
+     * Utilitário para aguardar um tempo
+     */
+    private sleep;
+    /**
+     * Retorna estatísticas do sync para monitoramento
+     */
+    getSyncStats(): {
+        isOnline: boolean;
+        isRunning: boolean;
+        consecutiveFailures: number;
+        coldStartDetected: boolean;
+        lastSuccessfulRequest: Date | null;
+        lastSync: Date | null;
+        syncIntervalMs: number;
+        pendingItems: number;
+    };
     /**
      * Verifica se o banco local está vazio ou precisa de sincronização inicial
      */

@@ -3110,7 +3110,14 @@ export class DatabaseManager {
       `Pagamento de dívida ${debt.debt_number}`
     );
 
-    this.addToSyncQueue('update', 'debt', data.debtId, data, 2);
+    // Sincronizar pagamento de dívida para o backend
+    this.addToSyncQueue('create', 'debt_payment', paymentId, {
+      debtId: data.debtId,
+      amount: data.amount,
+      method: data.method,
+      reference: data.reference,
+      notes: data.notes,
+    }, 1); // Alta prioridade
 
     return {
       paymentId,
