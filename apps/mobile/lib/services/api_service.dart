@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
-import '../models/models.dart';
+import '../models/models.dart' as models;
 
 class ApiService {
   late Dio _dio;
@@ -89,14 +89,14 @@ class ApiService {
 
   // ==================== DASHBOARD ====================
 
-  Future<DashboardStats> getDashboardStats({String? branchId}) async {
+  Future<models.DashboardStats> getDashboardStats({String? branchId}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (branchId != null) queryParams['branchId'] = branchId;
 
       final response =
           await _dio.get('/reports/dashboard', queryParameters: queryParams);
-      return DashboardStats.fromJson(response.data);
+      return models.DashboardStats.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -104,7 +104,7 @@ class ApiService {
 
   // ==================== PRODUCTS ====================
 
-  Future<List<Product>> getProducts(
+  Future<List<models.Product>> getProducts(
       {String? categoryId, String? search, bool? active}) async {
     try {
       final queryParams = <String, dynamic>{};
@@ -116,27 +116,27 @@ class ApiService {
           await _dio.get('/products', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Product.fromJson(json)).toList();
+      return data.map((json) => models.Product.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<Product?> getProductById(String id) async {
+  Future<models.Product?> getProductById(String id) async {
     try {
       final response = await _dio.get('/products/$id');
-      return Product.fromJson(response.data);
+      return models.Product.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<List<Category>> getCategories() async {
+  Future<List<models.Category>> getCategories() async {
     try {
       final response = await _dio.get('/products/categories');
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Category.fromJson(json)).toList();
+      return data.map((json) => models.Category.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -144,7 +144,7 @@ class ApiService {
 
   // ==================== SUPPLIERS ====================
 
-  Future<List<Supplier>> getSuppliers({String? search, bool? active}) async {
+  Future<List<models.Supplier>> getSuppliers({String? search, bool? active}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (search != null) queryParams['search'] = search;
@@ -154,16 +154,16 @@ class ApiService {
           await _dio.get('/suppliers', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Supplier.fromJson(json)).toList();
+      return data.map((json) => models.Supplier.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<Supplier?> getSupplierById(String id) async {
+  Future<models.Supplier?> getSupplierById(String id) async {
     try {
       final response = await _dio.get('/suppliers/$id');
-      return Supplier.fromJson(response.data);
+      return models.Supplier.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -171,7 +171,7 @@ class ApiService {
 
   // ==================== SALES ====================
 
-  Future<List<Sale>> getSales({
+  Future<List<models.Sale>> getSales({
     String? status,
     DateTime? startDate,
     DateTime? endDate,
@@ -190,16 +190,16 @@ class ApiService {
       final response = await _dio.get('/sales', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Sale.fromJson(json)).toList();
+      return data.map((json) => models.Sale.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<Sale?> getSaleById(String id) async {
+  Future<models.Sale?> getSaleById(String id) async {
     try {
       final response = await _dio.get('/sales/$id');
-      return Sale.fromJson(response.data);
+      return models.Sale.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -207,7 +207,7 @@ class ApiService {
 
   // ==================== PURCHASES ====================
 
-  Future<List<Purchase>> getPurchases({
+  Future<List<models.Purchase>> getPurchases({
     String? status,
     String? supplierId,
     DateTime? startDate,
@@ -225,16 +225,16 @@ class ApiService {
           await _dio.get('/purchases', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Purchase.fromJson(json)).toList();
+      return data.map((json) => models.Purchase.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<Purchase?> getPurchaseById(String id) async {
+  Future<models.Purchase?> getPurchaseById(String id) async {
     try {
       final response = await _dio.get('/purchases/$id');
-      return Purchase.fromJson(response.data);
+      return models.Purchase.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -242,7 +242,7 @@ class ApiService {
 
   // ==================== INVENTORY ====================
 
-  Future<List<Inventory>> getInventory({
+  Future<List<models.Inventory>> getInventory({
     String? branchId,
     bool? lowStock,
     String? search,
@@ -257,13 +257,13 @@ class ApiService {
           await _dio.get('/inventory', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Inventory.fromJson(json)).toList();
+      return data.map((json) => models.Inventory.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<List<InventoryMovement>> getInventoryMovements({
+  Future<List<models.InventoryMovement>> getInventoryMovements({
     String? productId,
     String? branchId,
     String? movementType,
@@ -285,7 +285,7 @@ class ApiService {
           await _dio.get('/inventory/movements', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => InventoryMovement.fromJson(json)).toList();
+      return data.map((json) => models.InventoryMovement.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -306,7 +306,7 @@ class ApiService {
 
   // ==================== CUSTOMERS ====================
 
-  Future<List<Customer>> getCustomers({String? search, bool? active}) async {
+  Future<List<models.Customer>> getCustomers({String? search, bool? active}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (search != null) queryParams['search'] = search;
@@ -316,16 +316,16 @@ class ApiService {
           await _dio.get('/customers', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Customer.fromJson(json)).toList();
+      return data.map((json) => models.Customer.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<Customer?> getCustomerById(String id) async {
+  Future<models.Customer?> getCustomerById(String id) async {
     try {
       final response = await _dio.get('/customers/$id');
-      return Customer.fromJson(response.data);
+      return models.Customer.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -333,7 +333,7 @@ class ApiService {
 
   // ==================== DEBTS ====================
 
-  Future<List<Debt>> getDebts({String? status, String? customerId}) async {
+  Future<List<models.Debt>> getDebts({String? status, String? customerId}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (status != null) queryParams['status'] = status;
@@ -342,7 +342,7 @@ class ApiService {
       final response = await _dio.get('/debts', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => Debt.fromJson(json)).toList();
+      return data.map((json) => models.Debt.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -359,7 +359,7 @@ class ApiService {
 
   // ==================== CASH BOX ====================
 
-  Future<List<CashBox>> getCashBoxHistory({
+  Future<List<models.CashBox>> getCashBoxHistory({
     String? branchId,
     DateTime? startDate,
     DateTime? endDate,
@@ -377,13 +377,13 @@ class ApiService {
           await _dio.get('/cash-box/history', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => CashBox.fromJson(json)).toList();
+      return data.map((json) => models.CashBox.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  Future<CashBox?> getCurrentCashBox({String? branchId}) async {
+  Future<models.CashBox?> getCurrentCashBox({String? branchId}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (branchId != null) queryParams['branchId'] = branchId;
@@ -391,14 +391,14 @@ class ApiService {
       final response =
           await _dio.get('/cash-box/current', queryParameters: queryParams);
       if (response.data == null) return null;
-      return CashBox.fromJson(response.data);
+      return models.CashBox.fromJson(response.data);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
       throw _handleError(e);
     }
   }
 
-  Future<List<CashMovement>> getCashMovements({
+  Future<List<models.CashMovement>> getCashMovements({
     String? cashBoxId,
     String? movementType,
     int? limit,
@@ -413,7 +413,7 @@ class ApiService {
           await _dio.get('/cash-box/movements', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => CashMovement.fromJson(json)).toList();
+      return data.map((json) => models.CashMovement.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -441,13 +441,13 @@ class ApiService {
     }
   }
 
-  Future<List<TopProduct>> getTopProducts({int limit = 10}) async {
+  Future<List<models.TopProduct>> getTopProducts({int limit = 10}) async {
     try {
       final response = await _dio
           .get('/reports/top-products', queryParameters: {'limit': limit});
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => TopProduct.fromJson(json)).toList();
+      return data.map((json) => models.TopProduct.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
