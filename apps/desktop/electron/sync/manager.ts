@@ -1065,7 +1065,15 @@ export class SyncManager {
   private async syncEntityItem(item: SyncItem, data: any): Promise<{ success: boolean; skip?: boolean; reason?: string }> {
     const { entity, operation, entity_id } = item;
     
-    console.log(`📤 Sync ${entity}/${operation}:`, JSON.stringify(data).substring(0, 100));
+    console.log(`📤 Sync ${entity}/${operation}:`, JSON.stringify(data).substring(0, 200));
+    
+    // Log especial para vendas de mesa
+    if (entity === 'sale') {
+      console.log(`🍽️ Sincronizando venda: ID=${entity_id}, Type=${data.type}, Status=${data.status}, Total=${data.total}`);
+      if (data.type === 'table') {
+        console.log(`   Mesa: tableId=${data.tableId}, customerName=${data.customerName}`);
+      }
+    }
     
     // Casos especiais - entidades que são sub-recursos de outras
     switch (entity) {

@@ -4886,7 +4886,7 @@ export class DatabaseManager {
 
     // Adicionar à fila de sincronização - DADOS COMPLETOS DA VENDA
     const saleData = this.getSaleById(saleId);
-    this.addToSyncQueue('create', 'sale', saleId, {
+    const saleQueueData = {
       id: saleId,
       saleNumber,
       branchId: session.branch_id,
@@ -4901,7 +4901,9 @@ export class DatabaseManager {
       muntuSavings: totalMuntuSavings,
       paymentMethod: data.method,
       ...saleData
-    }, 1);
+    };
+    console.log('[MESA] Adicionando venda à fila de sync:', JSON.stringify(saleQueueData, null, 2).substring(0, 500));
+    this.addToSyncQueue('create', 'sale', saleId, saleQueueData, 1);
 
     // Registrar ação
     this.logTableAction({
