@@ -47,7 +47,8 @@ class _SalesScreenState extends State<SalesScreen> {
         // Hoje: do início do dia local até o fim do dia local, convertido para UTC
         // Criar DateTime local (não UTC) primeiro, depois converter para UTC
         final localMidnight = DateTime(now.year, now.month, now.day, 0, 0, 0);
-        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        final localEndOfDay =
+            DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         startDate = localMidnight.toUtc();
         endDate = localEndOfDay.toUtc();
         debugPrint('📅 Hoje - Local: $localMidnight → UTC: $startDate');
@@ -56,8 +57,10 @@ class _SalesScreenState extends State<SalesScreen> {
       case 'week':
         // Última semana: 7 dias atrás até fim de hoje
         final weekAgo = now.subtract(const Duration(days: 7));
-        final localWeekStart = DateTime(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0);
-        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        final localWeekStart =
+            DateTime(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0);
+        final localEndOfDay =
+            DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         startDate = localWeekStart.toUtc();
         endDate = localEndOfDay.toUtc();
         debugPrint('📅 Semana - Local: $localWeekStart → UTC: $startDate');
@@ -66,7 +69,8 @@ class _SalesScreenState extends State<SalesScreen> {
       case 'month':
         // Este mês: do dia 1 até fim de hoje
         final localMonthStart = DateTime(now.year, now.month, 1, 0, 0, 0);
-        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        final localEndOfDay =
+            DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         startDate = localMonthStart.toUtc();
         endDate = localEndOfDay.toUtc();
         debugPrint('📅 Mês - Local: $localMonthStart → UTC: $startDate');
@@ -74,7 +78,8 @@ class _SalesScreenState extends State<SalesScreen> {
         break;
       default:
         final localMidnight = DateTime(now.year, now.month, now.day, 0, 0, 0);
-        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        final localEndOfDay =
+            DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
         startDate = localMidnight.toUtc();
         endDate = localEndOfDay.toUtc();
     }
