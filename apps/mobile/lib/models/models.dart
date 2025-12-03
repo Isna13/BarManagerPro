@@ -439,10 +439,15 @@ class DebtPayment {
       id: json['id'] ?? '',
       debtId: json['debt_id'] ?? json['debtId'] ?? '',
       amount: (json['amount'] ?? 0) / 100,
-      paymentMethod: json['payment_method'] ?? json['paymentMethod'] ?? json['method'],
+      paymentMethod:
+          json['payment_method'] ?? json['paymentMethod'] ?? json['method'],
       notes: json['notes'],
       // Backend retorna createdAt, não paidAt
-      paidAt: DateTime.tryParse(json['paid_at'] ?? json['paidAt'] ?? json['createdAt'] ?? json['processedAt'] ?? '') ??
+      paidAt: DateTime.tryParse(json['paid_at'] ??
+              json['paidAt'] ??
+              json['createdAt'] ??
+              json['processedAt'] ??
+              '') ??
           DateTime.now(),
     );
   }

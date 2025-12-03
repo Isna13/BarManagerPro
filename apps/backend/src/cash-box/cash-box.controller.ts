@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Patch } from '@nestjs/common';
 import { CashBoxService } from './cash-box.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OpenCashBoxDto, CloseCashBoxDto, AddTransactionDto } from './dto';
@@ -20,6 +20,18 @@ export class CashBoxController {
     @Body() closeDto: CloseCashBoxDto
   ) {
     return this.cashBoxService.closeCashBox(id, closeDto);
+  }
+
+  // Endpoint para forçar fechamento de caixa (admin)
+  @Patch(':id/force-close')
+  forceCloseCashBox(@Param('id') id: string) {
+    return this.cashBoxService.forceCloseCashBox(id);
+  }
+
+  // Endpoint para corrigir caixas fechados sem closedAt
+  @Post('fix-closed-at')
+  fixClosedAt() {
+    return this.cashBoxService.fixClosedAtForClosedBoxes();
   }
 
   @Post(':id/transaction')

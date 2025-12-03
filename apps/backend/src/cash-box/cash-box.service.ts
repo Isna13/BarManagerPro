@@ -92,6 +92,48 @@ export class CashBoxService {
     });
   }
 
+  // Forçar fechamento de um caixa específico (para correção de dados)
+  async forceCloseCashBox(id: string) {
+    const cashBox = await this.prisma.cashBox.findUnique({
+      where: { id },
+    });
+
+    if (!cashBox) {
+      throw new NotFoundException('Caixa não encontrado');
+    }
+
+    return this.prisma.cashBox.update({
+      where: { id },
+      data: {
+        status: 'closed',
+        closedAt: cashBox.closedAt || new Date(),
+        closingCash: cashBox.closingCash || cashBox.openingCash,
+      },
+      include: {
+        openedByUser: true,
+        branch: true,
+      },
+    });
+  }
+
+  // Corrigir todos os caixas que estão fechados mas sem closedAt
+  async fixClosedAtForClosedBoxes() {
+    const result = await this.prisma.cashBox.updateMany({
+      where: {
+        status: 'closed',
+        closedAt: null,
+      },
+      data: {
+        closedAt: new Date(),
+      },
+    });
+
+    return { 
+      message: `${result.count} caixas corrigidos`,
+      count: result.count 
+    };
+  }
+
   async addTransaction(id: string, transactionDto: AddTransactionDto) {
     const cashBox = await this.prisma.cashBox.findUnique({
       where: { id },
