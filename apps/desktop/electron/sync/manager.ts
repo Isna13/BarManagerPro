@@ -697,7 +697,10 @@ export class SyncManager {
         { name: 'products', endpoint: '/products' },
         { name: 'customers', endpoint: '/customers' },
         { name: 'suppliers', endpoint: '/suppliers' },
-        { name: 'inventory', endpoint: '/inventory' }, // Inventário para atualizar quantidades
+        { name: 'inventory', endpoint: '/inventory' },
+        { name: 'debts', endpoint: '/debts' },
+        { name: 'purchases', endpoint: '/purchases' },
+        { name: 'sales', endpoint: '/sales' },
       ];
       
       for (const entity of entities) {
@@ -1065,6 +1068,221 @@ export class SyncManager {
           }
         }
       },
+      
+      debts: (items) => {
+        // Débitos/Vales - sincronizar do servidor para o desktop
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getDebtById ? this.dbManager.getDebtById(item.id) : null;
+            
+            // Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('debts', item.id, existing)) {
+              continue;
+            }
+            
+            // Calcular valores corretos
+            const amount = item.amount || item.originalAmount || 0;
+            const paidAmount = item.paid || item.paidAmount || 0;
+            const balance = item.balance ?? (amount - paidAmount);
+            
+            if (existing) {
+              // Atualizar débito existente
+              this.dbManager.db.prepare(`
+                UPDATE debts SET
+                  customer_id = ?,
+                  original_amount = ?,
+                  amount = ?,
+                  paid_amount = ?,
+                  balance = ?,
+                  status = ?,
+                  due_date = ?,
+                  notes = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(
+                item.customerId || item.customer_id,
+                item.originalAmount || amount,
+                amount,
+                paidAmount,
+                balance,
+                item.status || 'pending',
+                item.dueDate || item.due_date || null,
+                item.notes || null,
+                item.id
+              );
+              console.log(`📝 Débito atualizado: ${item.id} (${item.status}, saldo: ${balance})`);
+            } else {
+              // Criar novo débito
+              this.dbManager.db.prepare(`
+                INSERT INTO debts (id, debt_number, customer_id, original_amount, amount, paid_amount, balance, status, due_date, notes, created_by, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(
+                item.id,
+                item.debtNumber || item.debt_number || `DEBT-${Date.now()}`,
+                item.customerId || item.customer_id,
+                item.originalAmount || amount,
+                amount,
+                paidAmount,
+                balance,
+                item.status || 'pending',
+                item.dueDate || item.due_date || null,
+                item.notes || null,
+                item.createdBy || item.created_by || null
+              );
+              console.log(`➕ Débito criado: ${item.id} (${item.status})`);
+            }
+            
+            // Sincronizar pagamentos do débito se existirem
+            if (item.payments && Array.isArray(item.payments)) {
+              for (const payment of item.payments) {
+                try {
+                  const existingPayment = this.dbManager.db.prepare(`
+                    SELECT id FROM debt_payments WHERE id = ?
+                  `).get(payment.id);
+                  
+                  if (!existingPayment) {
+                    this.dbManager.db.prepare(`
+                      INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, created_at)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)
+                    `).run(
+                      payment.id,
+                      item.id,
+                      payment.amount,
+                      payment.method || 'cash',
+                      payment.referenceNumber || payment.reference || null,
+                      payment.notes || null,
+                      payment.createdAt || new Date().toISOString()
+                    );
+                    console.log(`  💰 Pagamento sincronizado: ${payment.id}`);
+                  }
+                } catch (paymentError: any) {
+                  console.error(`  ❌ Erro ao sincronizar pagamento ${payment.id}:`, paymentError?.message);
+                }
+              }
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar debt ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      purchases: (items) => {
+        // Compras - sincronizar do servidor para o desktop
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getPurchaseById ? this.dbManager.getPurchaseById(item.id) : null;
+            
+            // Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('purchases', item.id, existing)) {
+              continue;
+            }
+            
+            if (existing) {
+              // Atualizar compra existente - especialmente o status
+              this.dbManager.db.prepare(`
+                UPDATE purchases SET
+                  supplier_id = ?,
+                  status = ?,
+                  total = ?,
+                  notes = ?,
+                  received_at = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(
+                item.supplierId || item.supplier_id,
+                item.status || 'pending',
+                item.total || 0,
+                item.notes || null,
+                item.receivedAt || item.received_at || null,
+                item.id
+              );
+              console.log(`📦 Compra atualizada: ${item.id} (status: ${item.status})`);
+            } else {
+              // Criar nova compra
+              this.dbManager.db.prepare(`
+                INSERT INTO purchases (id, purchase_number, branch_id, supplier_id, status, total, notes, created_by, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(
+                item.id,
+                item.purchaseNumber || item.purchase_number || `PUR-${Date.now()}`,
+                item.branchId || item.branch_id || 'main-branch',
+                item.supplierId || item.supplier_id,
+                item.status || 'pending',
+                item.total || 0,
+                item.notes || null,
+                item.createdBy || item.created_by || null
+              );
+              console.log(`➕ Compra criada: ${item.id}`);
+            }
+            
+            // Sincronizar itens da compra se existirem
+            if (item.items && Array.isArray(item.items)) {
+              for (const purchaseItem of item.items) {
+                try {
+                  const existingItem = this.dbManager.db.prepare(`
+                    SELECT id FROM purchase_items WHERE id = ?
+                  `).get(purchaseItem.id);
+                  
+                  if (!existingItem) {
+                    this.dbManager.db.prepare(`
+                      INSERT INTO purchase_items (id, purchase_id, product_id, qty_units, qty_boxes, unit_cost, subtotal, total)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    `).run(
+                      purchaseItem.id,
+                      item.id,
+                      purchaseItem.productId || purchaseItem.product_id,
+                      purchaseItem.qtyUnits || purchaseItem.qty_units || 0,
+                      purchaseItem.qtyBoxes || purchaseItem.qty_boxes || 0,
+                      purchaseItem.unitCost || purchaseItem.unit_cost || 0,
+                      purchaseItem.subtotal || 0,
+                      purchaseItem.total || purchaseItem.subtotal || 0
+                    );
+                    console.log(`  📋 Item de compra sincronizado: ${purchaseItem.id}`);
+                  }
+                } catch (itemError: any) {
+                  console.error(`  ❌ Erro ao sincronizar item ${purchaseItem.id}:`, itemError?.message);
+                }
+              }
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar purchase ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      sales: (items) => {
+        // Vendas - sincronizar do servidor para o desktop (apenas para visualização)
+        for (const item of items) {
+          try {
+            // Verificar se a venda já existe localmente
+            const existing = this.dbManager.getSaleById ? this.dbManager.getSaleById(item.id) : null;
+            
+            // Não sobrescrever vendas locais que ainda não foram sincronizadas
+            if (this.hasLocalPendingChanges('sales', item.id, existing)) {
+              continue;
+            }
+            
+            // Atualizar apenas se a venda do servidor for mais recente ou se não existir
+            if (!existing) {
+              console.log(`ℹ️ Venda ${item.id} do servidor (não criar localmente, apenas sync unidirecional desktop→servidor)`);
+            } else {
+              // Atualizar status se necessário
+              const existingAny = existing as any;
+              if (existingAny.status !== item.status || existingAny.synced === 0) {
+                this.dbManager.db.prepare(`
+                  UPDATE sales SET status = ?, synced = 1, updated_at = datetime('now')
+                  WHERE id = ?
+                `).run(item.status, item.id);
+                console.log(`📝 Venda atualizada: ${item.id} (status: ${item.status})`);
+              }
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar sale ${item.id}:`, e?.message);
+          }
+        }
+      },
     };
     
     const strategy = mergeStrategies[entityName];
@@ -1191,6 +1409,31 @@ export class SyncManager {
       case 'purchase_item':
         // Similar a sale_item
         return { skip: true, success: false, reason: 'Itens de compra são incluídos na compra' };
+      
+      case 'purchase':
+        // Compra - sincronizar criação e atualização
+        if (operation === 'create') {
+          await this.apiClient.post('/purchases', {
+            id: entity_id,
+            purchaseNumber: data.purchaseNumber || data.purchase_number,
+            branchId: data.branchId || data.branch_id,
+            supplierId: data.supplierId || data.supplier_id,
+            status: data.status || 'pending',
+            total: data.total || 0,
+            notes: data.notes,
+          });
+          console.log('✅ Compra sincronizada:', entity_id);
+          return { success: true };
+        } else if (operation === 'update') {
+          await this.apiClient.put(`/purchases/${entity_id}`, {
+            status: data.status,
+            total: data.total,
+            notes: data.notes,
+          });
+          console.log('✅ Compra atualizada no backend:', entity_id, '- Status:', data.status);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de compra não suportada' };
         
       default:
         // Entidades normais - usar endpoint padrão

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -36,29 +37,49 @@ class _SalesScreenState extends State<SalesScreen> {
     DateTime startDate;
     DateTime endDate;
 
+    // Debug: mostrar timezone do dispositivo
+    debugPrint('🕐 DateTime.now(): $now');
+    debugPrint('🕐 Timezone offset: ${now.timeZoneOffset}');
+    debugPrint('🕐 Filtro selecionado: $_selectedFilter');
+
     switch (_selectedFilter) {
       case 'today':
         // Hoje: do início do dia local até o fim do dia local, convertido para UTC
-        startDate = DateTime(now.year, now.month, now.day, 0, 0, 0).toUtc();
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toUtc();
+        // Criar DateTime local (não UTC) primeiro, depois converter para UTC
+        final localMidnight = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = localMidnight.toUtc();
+        endDate = localEndOfDay.toUtc();
+        debugPrint('📅 Hoje - Local: $localMidnight → UTC: $startDate');
+        debugPrint('📅 Hoje - Local: $localEndOfDay → UTC: $endDate');
         break;
       case 'week':
         // Última semana: 7 dias atrás até fim de hoje
         final weekAgo = now.subtract(const Duration(days: 7));
-        startDate =
-            DateTime(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0).toUtc();
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toUtc();
+        final localWeekStart = DateTime(weekAgo.year, weekAgo.month, weekAgo.day, 0, 0, 0);
+        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = localWeekStart.toUtc();
+        endDate = localEndOfDay.toUtc();
+        debugPrint('📅 Semana - Local: $localWeekStart → UTC: $startDate');
+        debugPrint('📅 Semana - Local: $localEndOfDay → UTC: $endDate');
         break;
       case 'month':
         // Este mês: do dia 1 até fim de hoje
-        startDate = DateTime(now.year, now.month, 1, 0, 0, 0).toUtc();
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toUtc();
+        final localMonthStart = DateTime(now.year, now.month, 1, 0, 0, 0);
+        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = localMonthStart.toUtc();
+        endDate = localEndOfDay.toUtc();
+        debugPrint('📅 Mês - Local: $localMonthStart → UTC: $startDate');
+        debugPrint('📅 Mês - Local: $localEndOfDay → UTC: $endDate');
         break;
       default:
-        startDate = DateTime(now.year, now.month, now.day, 0, 0, 0).toUtc();
-        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toUtc();
+        final localMidnight = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        final localEndOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = localMidnight.toUtc();
+        endDate = localEndOfDay.toUtc();
     }
 
+    debugPrint('🔍 Buscando vendas de $startDate até $endDate');
     await provider.loadSales(startDate: startDate, endDate: endDate);
   }
 

@@ -1,27 +1,91 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreatePurchaseDto, AddPurchaseItemDto } from './dto';
+import { CreatePurchaseDto, AddPurchaseItemDto, UpdatePurchaseDto } from './dto';
 
 @Injectable()
 export class PurchasesService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreatePurchaseDto, userId: string) {
-    const purchaseNumber = `PUR-${Date.now()}`;
+    // Se ID foi fornecido (sincronização do Electron), verificar se já existe
+    if (createDto.id) {
+      const existing = await this.prisma.purchase.findUnique({
+        where: { id: createDto.id },
+        include: {
+          supplier: true,
+          branch: true,
+          createdByUser: true,
+          items: { include: { product: true } },
+        },
+      });
+      if (existing) {
+        console.log('⚠️ Compra já existe, retornando existente:', existing.id);
+        return existing;
+      }
+    }
+
+    const purchaseNumber = createDto.purchaseNumber || `PUR-${Date.now()}`;
+    
+    const purchaseData: any = {
+      purchaseNumber,
+      branchId: createDto.branchId,
+      supplierId: createDto.supplierId,
+      createdBy: userId,
+      status: createDto.status || 'pending',
+      total: createDto.total || 0,
+      notes: createDto.notes,
+    };
+
+    // Usar ID fornecido se disponível
+    if (createDto.id) {
+      purchaseData.id = createDto.id;
+    }
+
     return this.prisma.purchase.create({
-      data: {
-        purchaseNumber,
-        branchId: createDto.branchId,
-        supplierId: createDto.supplierId,
-        createdBy: userId,
-        status: 'pending',
-        total: 0,
-        notes: createDto.notes,
-      },
+      data: purchaseData,
       include: {
         supplier: true,
         branch: true,
         createdByUser: true,
+      },
+    });
+  }
+
+  async update(id: string, updateDto: UpdatePurchaseDto) {
+    const existing = await this.prisma.purchase.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Compra não encontrada');
+    }
+
+    const updateData: any = {};
+    
+    if (updateDto.status) {
+      updateData.status = updateDto.status;
+      // Se marcando como completed/received, registrar data
+      if (updateDto.status === 'completed' || updateDto.status === 'received') {
+        updateData.completedAt = new Date();
+      }
+    }
+    
+    if (updateDto.notes !== undefined) {
+      updateData.notes = updateDto.notes;
+    }
+    
+    if (updateDto.total !== undefined) {
+      updateData.total = updateDto.total;
+    }
+
+    return this.prisma.purchase.update({
+      where: { id },
+      data: updateData,
+      include: {
+        supplier: true,
+        branch: true,
+        createdByUser: true,
+        items: { include: { product: true } },
       },
     });
   }

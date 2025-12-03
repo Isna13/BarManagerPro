@@ -1,6 +1,14 @@
-import { IsString, IsInt, IsOptional, Min } from 'class-validator';
+import { IsString, IsInt, IsOptional, Min, IsIn } from 'class-validator';
 
 export class CreatePurchaseDto {
+  @IsOptional()
+  @IsString()
+  id?: string; // ID opcional para sincronização
+
+  @IsOptional()
+  @IsString()
+  purchaseNumber?: string; // Número opcional para sincronização
+
   @IsString()
   branchId: string;
 
@@ -9,7 +17,30 @@ export class CreatePurchaseDto {
 
   @IsOptional()
   @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsInt()
+  total?: number;
+
+  @IsOptional()
+  @IsString()
   notes?: string;
+}
+
+export class UpdatePurchaseDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(['pending', 'received', 'completed', 'cancelled'])
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsInt()
+  total?: number;
 }
 
 export class AddPurchaseItemDto {

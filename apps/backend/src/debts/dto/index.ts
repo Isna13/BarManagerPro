@@ -1,8 +1,24 @@
 import { IsString, IsInt, IsOptional, Min, IsDateString } from 'class-validator';
 
 export class CreateDebtDto {
+  @IsOptional()
+  @IsString()
+  id?: string; // ID opcional para sincronização do Electron
+
+  @IsOptional()
+  @IsString()
+  debtNumber?: string; // Número opcional para sincronização
+
   @IsString()
   customerId: string;
+
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @IsOptional()
+  @IsString()
+  saleId?: string;
 
   @IsInt()
   @Min(1)

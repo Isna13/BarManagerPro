@@ -7,6 +7,22 @@ export class DebtsService {
   constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateDebtDto, userId: string) {
+    // Se ID foi fornecido (sincronização do Electron), verificar se já existe
+    if (createDto.id) {
+      const existing = await this.prisma.debt.findUnique({
+        where: { id: createDto.id },
+        include: {
+          customer: true,
+          createdByUser: true,
+          payments: true,
+        },
+      });
+      if (existing) {
+        console.log('⚠️ Débito já existe, retornando existente:', existing.id);
+        return existing;
+      }
+    }
+
     const customer = await this.prisma.customer.findUnique({
       where: { id: createDto.customerId },
     });
@@ -25,23 +41,43 @@ export class DebtsService {
       }
     }
 
+    // Construir dados do débito
+    const debtData: any = {
+      debtNumber: createDto.debtNumber || `DEBT-${Date.now()}`,
+      customer: { connect: { id: createDto.customerId } },
+      createdByUser: { connect: { id: userId } },
+      originalAmount: createDto.amount,
+      amount: createDto.amount,
+      balance: createDto.amount,
+      dueDate: createDto.dueDate,
+      notes: createDto.notes,
+      status: 'pending',
+    };
+
+    // Usar ID fornecido (sincronização do Electron) ou deixar Prisma gerar
+    if (createDto.id) {
+      debtData.id = createDto.id;
+    }
+
+    // Associar à venda se fornecido
+    if (createDto.saleId) {
+      debtData.sale = { connect: { id: createDto.saleId } };
+    }
+
+    // Associar ao branch se fornecido
+    if (createDto.branchId) {
+      debtData.branch = { connect: { id: createDto.branchId } };
+    }
+
     const debt = await this.prisma.debt.create({
-      data: {
-        debtNumber: `DEBT-${Date.now()}`,
-        customer: { connect: { id: createDto.customerId } },
-        createdByUser: { connect: { id: userId } },
-        originalAmount: createDto.amount,
-        amount: createDto.amount,
-        balance: createDto.amount,
-        dueDate: createDto.dueDate,
-        notes: createDto.notes,
-        status: 'pending',
-      },
+      data: debtData,
       include: {
         customer: true,
         createdByUser: true,
       },
     });
+
+    console.log('✅ Débito criado:', debt.id, '- Valor:', debt.amount);
 
     // Atualizar dívida total do cliente
     await this.prisma.customer.update({

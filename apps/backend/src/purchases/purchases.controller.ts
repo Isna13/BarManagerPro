@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { PurchasesService } from './purchases.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreatePurchaseDto, AddPurchaseItemDto } from './dto';
+import { CreatePurchaseDto, AddPurchaseItemDto, UpdatePurchaseDto } from './dto';
 import { User } from '../auth/decorators/user.decorator';
 
 @Controller('purchases')
@@ -12,6 +12,11 @@ export class PurchasesController {
   @Post()
   create(@Body() createDto: CreatePurchaseDto, @User() user: any) {
     return this.purchasesService.create(createDto, user.id);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() updateDto: UpdatePurchaseDto) {
+    return this.purchasesService.update(id, updateDto);
   }
 
   @Post(':id/items')
