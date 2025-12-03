@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { DebtsService } from './debts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateDebtDto, PayDebtDto } from './dto';
+import { CreateDebtDto, PayDebtDto, UpdateDebtDto } from './dto';
 import { User } from '../auth/decorators/user.decorator';
 
 @Controller('debts')
@@ -17,6 +17,11 @@ export class DebtsController {
   @Post(':id/pay')
   payDebt(@Param('id') id: string, @Body() payDto: PayDebtDto) {
     return this.debtsService.payDebt(id, payDto);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateDto: UpdateDebtDto) {
+    return this.debtsService.updateDebt(id, updateDto);
   }
 
   @Get()

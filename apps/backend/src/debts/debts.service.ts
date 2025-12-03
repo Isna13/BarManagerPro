@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateDebtDto, PayDebtDto } from './dto';
+import { CreateDebtDto, PayDebtDto, UpdateDebtDto } from './dto';
 
 @Injectable()
 export class DebtsService {
@@ -142,6 +142,66 @@ export class DebtsService {
         currentDebt: { decrement: payDto.amount },
       },
     });
+
+    return this.findOne(id);
+  }
+
+  async updateDebt(id: string, updateDto: UpdateDebtDto) {
+    const debt = await this.prisma.debt.findUnique({
+      where: { id },
+      include: { customer: true },
+    });
+
+    if (!debt) {
+      throw new NotFoundException('Dívida não encontrada');
+    }
+
+    // Construir dados de atualização
+    const updateData: any = {};
+
+    // Atualizar valores se fornecidos
+    if (updateDto.paidAmount !== undefined) {
+      updateData.paid = updateDto.paidAmount;
+      updateData.paidAmount = updateDto.paidAmount;
+    } else if (updateDto.paid !== undefined) {
+      updateData.paid = updateDto.paid;
+      updateData.paidAmount = updateDto.paid;
+    }
+
+    if (updateDto.balance !== undefined) {
+      updateData.balance = updateDto.balance;
+    }
+
+    if (updateDto.status !== undefined) {
+      updateData.status = updateDto.status;
+    }
+
+    if (updateDto.notes !== undefined) {
+      updateData.notes = updateDto.notes;
+    }
+
+    // Calcular diferença de dívida para atualizar cliente
+    const oldBalance = debt.balance;
+    const newBalance = updateDto.balance !== undefined ? updateDto.balance : oldBalance;
+    const balanceDiff = oldBalance - newBalance;
+
+    // Atualizar dívida
+    await this.prisma.debt.update({
+      where: { id },
+      data: updateData,
+    });
+
+    // Atualizar dívida total do cliente se houve mudança no saldo
+    if (balanceDiff !== 0) {
+      await this.prisma.customer.update({
+        where: { id: debt.customerId },
+        data: {
+          currentDebt: { decrement: balanceDiff },
+        },
+      });
+    }
+
+    console.log('✅ Dívida atualizada via PATCH:', id, '- Status:', updateDto.status, '- Balance:', newBalance);
 
     return this.findOne(id);
   }

@@ -53,3 +53,28 @@ export class PayDebtDto {
   @IsString()
   notes?: string;
 }
+
+export class UpdateDebtDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  paidAmount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  paid?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  balance?: number;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
