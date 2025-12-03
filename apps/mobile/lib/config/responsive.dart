@@ -24,8 +24,10 @@ class Responsive {
     blockSizeVertical = screenHeight / 100;
     orientation = _mediaQueryData.orientation;
 
-    final safeAreaH = _mediaQueryData.padding.left + _mediaQueryData.padding.right;
-    final safeAreaV = _mediaQueryData.padding.top + _mediaQueryData.padding.bottom;
+    final safeAreaH =
+        _mediaQueryData.padding.left + _mediaQueryData.padding.right;
+    final safeAreaV =
+        _mediaQueryData.padding.top + _mediaQueryData.padding.bottom;
     safeAreaHorizontal = (screenWidth - safeAreaH) / 100;
     safeAreaVertical = (screenHeight - safeAreaV) / 100;
     safeBlockHorizontal = safeAreaHorizontal;
@@ -45,7 +47,8 @@ class Responsive {
   }
 
   /// Retorna o aspect ratio baseado no tamanho da tela
-  static double getCardAspectRatio({double mobile = 1.4, double tablet = 1.3, double desktop = 1.2}) {
+  static double getCardAspectRatio(
+      {double mobile = 1.4, double tablet = 1.3, double desktop = 1.2}) {
     if (isLargeScreen) return desktop;
     if (isTablet) return tablet;
     return mobile;
@@ -81,8 +84,9 @@ extension ResponsiveContext on BuildContext {
   double get screenHeight => MediaQuery.of(this).size.height;
   bool get isTablet => screenWidth >= 600;
   bool get isSmallScreen => screenWidth < 360;
-  bool get isLandscape => MediaQuery.of(this).orientation == Orientation.landscape;
-  
+  bool get isLandscape =>
+      MediaQuery.of(this).orientation == Orientation.landscape;
+
   /// Padding seguro considerando notch e navigation bar
   EdgeInsets get safePadding => MediaQuery.of(this).padding;
 }

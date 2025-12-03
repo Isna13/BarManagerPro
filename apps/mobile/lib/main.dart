@@ -86,14 +86,14 @@ class BarManagerApp extends StatelessWidget {
             builder: (context, child) {
               // Inicializar Responsive
               Responsive.init(context);
-              
+
               // Limitar scale factor para melhor consistência
               final mediaQuery = MediaQuery.of(context);
               final constrainedTextScaleFactor = mediaQuery.textScaler.clamp(
                 minScaleFactor: 0.8,
                 maxScaleFactor: 1.2,
               );
-              
+
               return MediaQuery(
                 data: mediaQuery.copyWith(
                   textScaler: constrainedTextScaleFactor,

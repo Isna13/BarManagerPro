@@ -31,7 +31,8 @@ class _ReportsScreenState extends State<ReportsScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _apiService = Provider.of<AuthProvider>(context, listen: false).apiService;
+      _apiService =
+          Provider.of<AuthProvider>(context, listen: false).apiService;
       _loadReports();
     });
   }

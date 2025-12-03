@@ -144,7 +144,8 @@ class ApiService {
 
   // ==================== SUPPLIERS ====================
 
-  Future<List<models.Supplier>> getSuppliers({String? search, bool? active}) async {
+  Future<List<models.Supplier>> getSuppliers(
+      {String? search, bool? active}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (search != null) queryParams['search'] = search;
@@ -285,7 +286,9 @@ class ApiService {
           await _dio.get('/inventory/movements', queryParameters: queryParams);
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
-      return data.map((json) => models.InventoryMovement.fromJson(json)).toList();
+      return data
+          .map((json) => models.InventoryMovement.fromJson(json))
+          .toList();
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -306,7 +309,8 @@ class ApiService {
 
   // ==================== CUSTOMERS ====================
 
-  Future<List<models.Customer>> getCustomers({String? search, bool? active}) async {
+  Future<List<models.Customer>> getCustomers(
+      {String? search, bool? active}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (search != null) queryParams['search'] = search;
@@ -333,7 +337,8 @@ class ApiService {
 
   // ==================== DEBTS ====================
 
-  Future<List<models.Debt>> getDebts({String? status, String? customerId}) async {
+  Future<List<models.Debt>> getDebts(
+      {String? status, String? customerId}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (status != null) queryParams['status'] = status;

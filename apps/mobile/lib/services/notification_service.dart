@@ -86,7 +86,8 @@ class NotificationService {
       _initialized = true;
       if (kDebugMode) debugPrint('✅ Notification Service initialized');
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ Error initializing Notification Service: $e');
+      if (kDebugMode)
+        debugPrint('❌ Error initializing Notification Service: $e');
     }
   }
 
@@ -143,7 +144,9 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    if (kDebugMode) debugPrint('📨 Foreground message received: ${message.notification?.title}');
+    if (kDebugMode)
+      debugPrint(
+          '📨 Foreground message received: ${message.notification?.title}');
 
     final notification = message.notification;
     final data = message.data;
@@ -160,7 +163,9 @@ class NotificationService {
   }
 
   void _handleBackgroundMessage(RemoteMessage message) {
-    if (kDebugMode) debugPrint('📨 Background message opened: ${message.notification?.title}');
+    if (kDebugMode)
+      debugPrint(
+          '📨 Background message opened: ${message.notification?.title}');
     onMessageReceived?.call(message.data);
   }
 
@@ -273,5 +278,7 @@ class NotificationService {
 // Background message handler (must be top-level function)
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  if (kDebugMode) debugPrint('📨 Background message received: ${message.notification?.title}');
+  if (kDebugMode)
+    debugPrint(
+        '📨 Background message received: ${message.notification?.title}');
 }

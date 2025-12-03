@@ -128,10 +128,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildStatsGrid(stats) {
     final isTablet = Responsive.isTablet;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     final crossAxisCount = isTablet || isLandscape ? 4 : 2;
     final childAspectRatio = isTablet ? 1.5 : (isLandscape ? 1.8 : 1.4);
-    
+
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

@@ -172,14 +172,57 @@ export class CashBoxService {
   }
 
   async getHistory(branchId: string, limit = 30) {
-    return this.prisma.cashBox.findMany({
+    const cashBoxes = await this.prisma.cashBox.findMany({
       where: { branchId },
       include: {
         openedByUser: true,
+        branch: true,
       },
       orderBy: { openedAt: 'desc' },
       take: limit,
     });
+
+    // Para cada caixa, calcular estatísticas
+    const enrichedCashBoxes = await Promise.all(
+      cashBoxes.map(async (cashBox) => {
+        const salesQuery: any = {
+          branchId: cashBox.branchId,
+          openedAt: { gte: cashBox.openedAt },
+        };
+        
+        if (cashBox.closedAt) {
+          salesQuery.openedAt = {
+            gte: cashBox.openedAt,
+            lte: cashBox.closedAt,
+          };
+        }
+
+        const sales = await this.prisma.sale.findMany({
+          where: salesQuery,
+          include: { payments: true },
+        });
+
+        const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        const cashPayments = sales.reduce((sum, sale) => {
+          const cashAmount = sale.payments
+            .filter(p => p.method === 'cash')
+            .reduce((s, p) => s + p.amount, 0);
+          return sum + cashAmount;
+        }, 0);
+
+        return {
+          ...cashBox,
+          stats: {
+            totalSales,
+            cashPayments,
+            currentAmount: cashBox.openingCash + cashPayments,
+            salesCount: sales.length,
+          },
+        };
+      })
+    );
+
+    return enrichedCashBoxes;
   }
 
   async findOne(id: string) {
@@ -245,7 +288,7 @@ export class CashBoxService {
   }
 
   async getHistoryAll(limit = 30) {
-    return this.prisma.cashBox.findMany({
+    const cashBoxes = await this.prisma.cashBox.findMany({
       include: {
         openedByUser: true,
         branch: true,
@@ -253,6 +296,50 @@ export class CashBoxService {
       orderBy: { openedAt: 'desc' },
       take: limit,
     });
+
+    // Para cada caixa, calcular estatísticas
+    const enrichedCashBoxes = await Promise.all(
+      cashBoxes.map(async (cashBox) => {
+        // Buscar vendas do período desse caixa
+        const salesQuery: any = {
+          branchId: cashBox.branchId,
+          openedAt: { gte: cashBox.openedAt },
+        };
+        
+        // Se o caixa está fechado, limitar até a data de fechamento
+        if (cashBox.closedAt) {
+          salesQuery.openedAt = {
+            gte: cashBox.openedAt,
+            lte: cashBox.closedAt,
+          };
+        }
+
+        const sales = await this.prisma.sale.findMany({
+          where: salesQuery,
+          include: { payments: true },
+        });
+
+        const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        const cashPayments = sales.reduce((sum, sale) => {
+          const cashAmount = sale.payments
+            .filter(p => p.method === 'cash')
+            .reduce((s, p) => s + p.amount, 0);
+          return sum + cashAmount;
+        }, 0);
+
+        return {
+          ...cashBox,
+          stats: {
+            totalSales,
+            cashPayments,
+            currentAmount: cashBox.openingCash + cashPayments,
+            salesCount: sales.length,
+          },
+        };
+      })
+    );
+
+    return enrichedCashBoxes;
   }
 
   async getMovements(cashBoxId?: string, limit = 50) {
