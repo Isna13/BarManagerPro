@@ -73,6 +73,11 @@ export declare class SyncManager {
     stop(): Promise<void>;
     syncNow(): Promise<void>;
     private pushLocalChanges;
+    /**
+     * Ordena itens de sincronização por dependência
+     * Entidades base devem ser sincronizadas antes de entidades que dependem delas
+     */
+    private sortByDependency;
     private pullServerChanges;
     /**
      * Verifica se um item local tem alterações pendentes (não sincronizadas)
