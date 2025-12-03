@@ -608,9 +608,22 @@ export class SyncManager {
 
   private async pushLocalChanges() {
     const pendingItems = this.dbManager.getPendingSyncItems() as SyncItem[];
+    
+    if (pendingItems.length === 0) {
+      console.log('📭 Nenhum item pendente para sincronização');
+      return;
+    }
+    
+    // Ordenar itens por prioridade de dependência
+    const sortedItems = this.sortByDependency(pendingItems);
+    console.log(`📤 Sincronizando ${sortedItems.length} itens (ordenados por dependência):`);
+    sortedItems.forEach((item, idx) => {
+      console.log(`  ${idx + 1}. ${item.entity}/${item.operation} - ${item.entity_id}`);
+    });
+    
     let hasFailures = false;
     
-    for (const item of pendingItems) {
+    for (const item of sortedItems) {
       try {
         const rawData = JSON.parse(item.data);
         const data = this.prepareDataForSync(item.entity, rawData);
@@ -679,6 +692,61 @@ export class SyncManager {
         }
       }
     }
+  }
+
+  /**
+   * Ordena itens de sincronização por dependência
+   * Entidades base devem ser sincronizadas antes de entidades que dependem delas
+   */
+  private sortByDependency(items: SyncItem[]): SyncItem[] {
+    // Ordem de prioridade (menor número = sincroniza primeiro)
+    const priorityMap: Record<string, number> = {
+      // Entidades base (sem dependências)
+      'branch': 1,
+      'branches': 1,
+      'user': 2,
+      'users': 2,
+      'category': 3,
+      'categories': 3,
+      'supplier': 4,
+      'suppliers': 4,
+      'customer': 5,
+      'customers': 5,
+      
+      // Entidades com dependências leves
+      'product': 10,
+      'products': 10,
+      'table': 11,
+      'tables': 11,
+      
+      // Entidades transacionais (dependem das anteriores)
+      'debt': 20,
+      'debts': 20,
+      'purchase': 21,
+      'purchases': 21,
+      'sale': 22,
+      'sales': 22,
+      'cash_box': 23,
+      'cashBox': 23,
+      
+      // Itens de transações (dependem da transação pai)
+      'debt_payment': 30,
+      'purchase_item': 31,
+      'sale_item': 32,
+      'payment': 33,
+      
+      // Outros
+      'inventory': 40,
+      'inventory_item': 40,
+      'customer_loyalty': 50,
+      'table_session': 51,
+    };
+    
+    return items.sort((a, b) => {
+      const priorityA = priorityMap[a.entity] || 100;
+      const priorityB = priorityMap[b.entity] || 100;
+      return priorityA - priorityB;
+    });
   }
 
   private async pullServerChanges() {

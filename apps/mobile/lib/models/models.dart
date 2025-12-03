@@ -220,7 +220,7 @@ class Sale {
     // O backend pode retornar customer e cashier como objetos aninhados
     final customer = json['customer'] as Map<String, dynamic>?;
     final cashier = json['cashier'] as Map<String, dynamic>?;
-    
+
     // O backend retorna payments como array, pegar o método do primeiro pagamento
     final payments = json['payments'] as List<dynamic>?;
     String paymentMethod = 'cash';
@@ -391,20 +391,25 @@ class Debt {
             json['amount'] ??
             0)
         .toDouble();
-    
+
     // paidAmount pode vir como 'paid', 'paidAmount' ou 'paid_amount'
     // Usar o maior valor não-nulo entre 'paid' e 'paidAmount'
     final paidFromServer = (json['paid'] ?? 0).toDouble();
-    final paidAmountFromServer = (json['paid_amount'] ?? json['paidAmount'] ?? 0).toDouble();
-    final paidAmount = paidFromServer > paidAmountFromServer ? paidFromServer : paidAmountFromServer;
-    
+    final paidAmountFromServer =
+        (json['paid_amount'] ?? json['paidAmount'] ?? 0).toDouble();
+    final paidAmount = paidFromServer > paidAmountFromServer
+        ? paidFromServer
+        : paidAmountFromServer;
+
     // Balance/remainingAmount - se não vier, calcular
     final balanceFromServer = (json['remaining_amount'] ??
             json['remainingAmount'] ??
             json['balance'] ??
             0)
         .toDouble();
-    final balance = balanceFromServer > 0 ? balanceFromServer : (originalAmount - paidAmount);
+    final balance = balanceFromServer > 0
+        ? balanceFromServer
+        : (originalAmount - paidAmount);
 
     return Debt(
       id: json['id'] ?? '',
@@ -633,23 +638,34 @@ class Purchase {
   factory Purchase.fromJson(Map<String, dynamic> json) {
     // O backend retorna supplier como objeto aninhado
     final supplier = json['supplier'] as Map<String, dynamic>?;
-    
+
     return Purchase(
       id: json['id'] ?? '',
       supplierId: json['supplier_id'] ?? json['supplierId'] ?? '',
-      supplierName: supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
-      invoiceNumber: json['invoice_number'] ?? json['invoiceNumber'] ?? json['purchaseNumber'],
+      supplierName:
+          supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
+      invoiceNumber: json['invoice_number'] ??
+          json['invoiceNumber'] ??
+          json['purchaseNumber'],
       subtotal: (json['subtotal'] ?? json['totalCost'] ?? 0) / 100,
       tax: (json['tax'] ?? 0) / 100,
       discount: (json['discount'] ?? 0) / 100,
       total: (json['total'] ?? json['totalCost'] ?? 0) / 100,
       status: json['status'] ?? 'pending',
       notes: json['notes'],
-      purchaseDate: DateTime.tryParse(
-              json['purchase_date'] ?? json['purchaseDate'] ?? json['createdAt'] ?? json['created_at'] ?? '') ??
+      purchaseDate: DateTime.tryParse(json['purchase_date'] ??
+              json['purchaseDate'] ??
+              json['createdAt'] ??
+              json['created_at'] ??
+              '') ??
           DateTime.now(),
-      receivedAt: json['received_at'] != null || json['receivedAt'] != null || json['completedAt'] != null
-          ? DateTime.tryParse(json['received_at'] ?? json['receivedAt'] ?? json['completedAt'] ?? '')
+      receivedAt: json['received_at'] != null ||
+              json['receivedAt'] != null ||
+              json['completedAt'] != null
+          ? DateTime.tryParse(json['received_at'] ??
+              json['receivedAt'] ??
+              json['completedAt'] ??
+              '')
           : null,
       items: (json['items'] as List<dynamic>?)
               ?.map((item) => PurchaseItem.fromJson(item))
