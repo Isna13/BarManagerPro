@@ -1348,10 +1348,12 @@ class SyncManager {
             case 'cash_box':
                 // Caixa - sincronizar abertura/fechamento
                 if (operation === 'create') {
-                    // Abrir caixa no backend
+                    // Abrir caixa no backend - usar o mesmo ID do Electron
                     const openResponse = await this.apiClient.post('/cash-box/open', {
+                        id: entity_id, // Enviar o ID do Electron para manter consistência
                         branchId: data.branchId || data.branch_id || 'main-branch',
                         openingAmount: data.openingCash || data.opening_cash || 0,
+                        boxNumber: data.boxNumber || data.box_number,
                         notes: data.notes || 'Aberto via Electron Desktop'
                     });
                     console.log('✅ Caixa aberto no backend:', openResponse.data?.id || entity_id);
@@ -1360,12 +1362,45 @@ class SyncManager {
                 else if (operation === 'update') {
                     // Verificar se é fechamento de caixa
                     if (data.status === 'closed' || data.closingCash !== undefined || data.closing_cash !== undefined) {
-                        const closeResponse = await this.apiClient.post(`/cash-box/${entity_id}/close`, {
-                            closingAmount: data.closingCash || data.closing_cash || 0,
-                            notes: data.notes || 'Fechado via Electron Desktop'
-                        });
-                        console.log('✅ Caixa fechado no backend:', entity_id);
-                        return { success: true };
+                        try {
+                            const closeResponse = await this.apiClient.post(`/cash-box/${entity_id}/close`, {
+                                closingAmount: data.closingCash || data.closing_cash || 0,
+                                notes: data.notes || 'Fechado via Electron Desktop'
+                            });
+                            console.log('✅ Caixa fechado no backend:', entity_id);
+                            return { success: true };
+                        }
+                        catch (closeError) {
+                            // Se o caixa não foi encontrado, pode ser que nunca foi sincronizado
+                            // Tentar criar primeiro e depois fechar
+                            if (closeError?.response?.status === 404 && entity_id) {
+                                console.log('⚠️ Caixa não encontrado no backend, tentando criar primeiro...');
+                                try {
+                                    // Buscar dados completos do caixa local
+                                    const localCashBox = this.dbManager.getCashBoxById(entity_id);
+                                    if (localCashBox) {
+                                        await this.apiClient.post('/cash-box/open', {
+                                            id: entity_id,
+                                            branchId: localCashBox.branch_id || 'main-branch',
+                                            openingAmount: localCashBox.opening_cash || 0,
+                                            boxNumber: localCashBox.box_number,
+                                            notes: localCashBox.notes || 'Sincronizado via Electron Desktop'
+                                        });
+                                        // Agora fechar
+                                        await this.apiClient.post(`/cash-box/${entity_id}/close`, {
+                                            closingAmount: data.closingCash || data.closing_cash || 0,
+                                            notes: data.notes || 'Fechado via Electron Desktop'
+                                        });
+                                        console.log('✅ Caixa criado e fechado no backend:', entity_id);
+                                        return { success: true };
+                                    }
+                                }
+                                catch (createError) {
+                                    console.error('❌ Erro ao criar caixa antes de fechar:', createError);
+                                }
+                            }
+                            throw closeError;
+                        }
                     }
                     // Outra atualização de caixa
                     return { skip: true, success: false, reason: 'Atualização de caixa não suportada (apenas abertura/fechamento)' };
