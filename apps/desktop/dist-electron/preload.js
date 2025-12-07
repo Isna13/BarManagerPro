@@ -155,6 +155,8 @@ const api = {
         pushFullInitialSync: () => electron_1.ipcRenderer.invoke('sync:pushFullInitialSync'),
         checkConnection: () => electron_1.ipcRenderer.invoke('sync:checkConnection'),
         tryReauthenticate: () => electron_1.ipcRenderer.invoke('sync:tryReauthenticate'),
+        queueFullResync: () => electron_1.ipcRenderer.invoke('sync:queueFullResync'),
+        getQueueStats: () => electron_1.ipcRenderer.invoke('sync:getQueueStats'),
         // Listeners
         onSyncStart: (callback) => {
             electron_1.ipcRenderer.on('sync:started', callback);

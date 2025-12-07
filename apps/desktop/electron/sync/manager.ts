@@ -548,6 +548,10 @@ export class SyncManager {
     try {
       this.emit('sync:started');
       
+      // Verificar se Railway está vazio e banco local tem dados
+      // Se sim, fazer resync automático completo
+      await this.checkAndTriggerFullResyncIfNeeded();
+      
       // Restaurar itens falhados para pendentes antes de sincronizar
       // Isso garante que vendas que falharam por queda de conexão sejam retentadas
       const retriedItems = this.dbManager.retryFailedSyncItems(10); // Aumentado para 10 tentativas
@@ -691,6 +695,114 @@ export class SyncManager {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Verifica se o Railway está vazio mas o banco local tem dados
+   * Se sim, executa automaticamente um resync completo
+   */
+  private async checkAndTriggerFullResyncIfNeeded(): Promise<void> {
+    // Verificar se já fizemos resync recentemente (evitar loop)
+    const lastResyncCheck = this.dbManager.getSetting('last_resync_check');
+    const now = new Date();
+    if (lastResyncCheck) {
+      const lastCheck = new Date(lastResyncCheck);
+      const diffMinutes = (now.getTime() - lastCheck.getTime()) / 1000 / 60;
+      if (diffMinutes < 2) {
+        // Verificado há menos de 2 minutos, pular
+        return;
+      }
+    }
+    
+    // Salvar timestamp da verificação
+    this.dbManager.setSetting('last_resync_check', now.toISOString());
+    
+    try {
+      // Verificar se fila está vazia ou só tem itens falhados
+      const pendingItems = this.dbManager.getPendingSyncItems() as SyncItem[];
+      const queueStats = this.dbManager.getSyncQueueStats();
+      
+      // Se tem itens pendentes novos (não falhados), não fazer resync
+      if (pendingItems.length > 0 && queueStats.failed === 0) {
+        console.log('📋 Fila tem itens pendentes, resync não necessário');
+        return;
+      }
+      
+      // Verificar contagem local
+      const localCounts = this.getLocalEntityCounts();
+      const hasLocalData = localCounts.products > 0 || localCounts.customers > 0 || localCounts.sales > 0;
+      
+      if (!hasLocalData) {
+        console.log('📭 Banco local vazio, nenhum resync necessário');
+        return;
+      }
+      
+      // Verificar Railway - fazer requests para ver se está vazio
+      console.log('🔍 Verificando se Railway precisa de resync...');
+      console.log(`   Dados locais: ${localCounts.products} produtos, ${localCounts.customers} clientes, ${localCounts.sales} vendas`);
+      
+      const railwayCounts = await this.getRailwayEntityCounts();
+      console.log(`   Dados Railway: ${railwayCounts.products} produtos, ${railwayCounts.customers} clientes`);
+      
+      // Se Railway está vazio mas local tem dados, fazer resync
+      if (railwayCounts.products === 0 && railwayCounts.customers === 0 && localCounts.products > 0) {
+        console.log('⚠️ Railway vazio detectado! Iniciando resync automático completo...');
+        
+        // Executar queueFullResync
+        const result = this.dbManager.queueFullResync();
+        console.log(`✅ Resync automático enfileirado: ${result.total} itens`);
+        
+        // Notificar UI
+        this.emit('sync:progress', { 
+          progress: 5, 
+          message: `Resync automático: ${result.total} itens enfileirados` 
+        });
+      } else {
+        console.log('✅ Railway não está vazio, resync não necessário');
+      }
+    } catch (error: any) {
+      console.log('⚠️ Erro ao verificar necessidade de resync:', error?.message);
+      // Não falhar a sincronização por causa disso
+    }
+  }
+
+  /**
+   * Conta entidades no banco local
+   */
+  private getLocalEntityCounts(): { products: number; customers: number; sales: number; debts: number } {
+    try {
+      const products = (this.dbManager.prepare('SELECT COUNT(*) as count FROM products').get() as any)?.count || 0;
+      const customers = (this.dbManager.prepare('SELECT COUNT(*) as count FROM customers').get() as any)?.count || 0;
+      const sales = (this.dbManager.prepare('SELECT COUNT(*) as count FROM sales').get() as any)?.count || 0;
+      const debts = (this.dbManager.prepare('SELECT COUNT(*) as count FROM debts').get() as any)?.count || 0;
+      return { products, customers, sales, debts };
+    } catch (e) {
+      return { products: 0, customers: 0, sales: 0, debts: 0 };
+    }
+  }
+
+  /**
+   * Conta entidades no Railway
+   */
+  private async getRailwayEntityCounts(): Promise<{ products: number; customers: number }> {
+    try {
+      const [productsRes, customersRes] = await Promise.all([
+        this.apiClient.get('/products', { params: { limit: 1 } }),
+        this.apiClient.get('/customers', { params: { limit: 1 } }),
+      ]);
+      
+      // Tentar pegar o total da resposta
+      const products = Array.isArray(productsRes.data) 
+        ? productsRes.data.length 
+        : (productsRes.data?.total || productsRes.data?.items?.length || 0);
+      const customers = Array.isArray(customersRes.data) 
+        ? customersRes.data.length 
+        : (customersRes.data?.total || customersRes.data?.items?.length || 0);
+      
+      return { products, customers };
+    } catch (e) {
+      return { products: -1, customers: -1 }; // -1 indica erro
     }
   }
 
@@ -1155,7 +1267,7 @@ export class SyncManager {
             
             if (existing) {
               // Atualizar débito existente
-              this.dbManager.db.prepare(`
+              this.dbManager.prepare(`
                 UPDATE debts SET
                   customer_id = ?,
                   original_amount = ?,
@@ -1182,7 +1294,7 @@ export class SyncManager {
               console.log(`📝 Débito atualizado: ${item.id} (${item.status}, saldo: ${balance})`);
             } else {
               // Criar novo débito
-              this.dbManager.db.prepare(`
+              this.dbManager.prepare(`
                 INSERT INTO debts (id, debt_number, customer_id, original_amount, amount, paid_amount, balance, status, due_date, notes, created_by, synced, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
               `).run(
@@ -1205,12 +1317,12 @@ export class SyncManager {
             if (item.payments && Array.isArray(item.payments)) {
               for (const payment of item.payments) {
                 try {
-                  const existingPayment = this.dbManager.db.prepare(`
+                  const existingPayment = this.dbManager.prepare(`
                     SELECT id FROM debt_payments WHERE id = ?
                   `).get(payment.id);
                   
                   if (!existingPayment) {
-                    this.dbManager.db.prepare(`
+                    this.dbManager.prepare(`
                       INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, created_at)
                       VALUES (?, ?, ?, ?, ?, ?, ?)
                     `).run(
@@ -1248,7 +1360,7 @@ export class SyncManager {
             
             if (existing) {
               // Atualizar compra existente - especialmente o status
-              this.dbManager.db.prepare(`
+              this.dbManager.prepare(`
                 UPDATE purchases SET
                   supplier_id = ?,
                   status = ?,
@@ -1269,7 +1381,7 @@ export class SyncManager {
               console.log(`📦 Compra atualizada: ${item.id} (status: ${item.status})`);
             } else {
               // Criar nova compra
-              this.dbManager.db.prepare(`
+              this.dbManager.prepare(`
                 INSERT INTO purchases (id, purchase_number, branch_id, supplier_id, status, total, notes, created_by, synced, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
               `).run(
@@ -1289,12 +1401,12 @@ export class SyncManager {
             if (item.items && Array.isArray(item.items)) {
               for (const purchaseItem of item.items) {
                 try {
-                  const existingItem = this.dbManager.db.prepare(`
+                  const existingItem = this.dbManager.prepare(`
                     SELECT id FROM purchase_items WHERE id = ?
                   `).get(purchaseItem.id);
                   
                   if (!existingItem) {
-                    this.dbManager.db.prepare(`
+                    this.dbManager.prepare(`
                       INSERT INTO purchase_items (id, purchase_id, product_id, qty_units, qty_boxes, unit_cost, subtotal, total)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     `).run(
@@ -1339,7 +1451,7 @@ export class SyncManager {
               // Atualizar status se necessário
               const existingAny = existing as any;
               if (existingAny.status !== item.status || existingAny.synced === 0) {
-                this.dbManager.db.prepare(`
+                this.dbManager.prepare(`
                   UPDATE sales SET status = ?, synced = 1, updated_at = datetime('now')
                   WHERE id = ?
                 `).run(item.status, item.id);
@@ -1433,10 +1545,12 @@ export class SyncManager {
       case 'cash_box':
         // Caixa - sincronizar abertura/fechamento
         if (operation === 'create') {
-          // Abrir caixa no backend
+          // Abrir caixa no backend - usar o mesmo ID do Electron
           const openResponse = await this.apiClient.post('/cash-box/open', {
+            id: entity_id, // Enviar o ID do Electron para manter consistência
             branchId: data.branchId || data.branch_id || 'main-branch',
             openingAmount: data.openingCash || data.opening_cash || 0,
+            boxNumber: data.boxNumber || data.box_number,
             notes: data.notes || 'Aberto via Electron Desktop'
           });
           console.log('✅ Caixa aberto no backend:', openResponse.data?.id || entity_id);
@@ -1444,12 +1558,43 @@ export class SyncManager {
         } else if (operation === 'update') {
           // Verificar se é fechamento de caixa
           if (data.status === 'closed' || data.closingCash !== undefined || data.closing_cash !== undefined) {
-            const closeResponse = await this.apiClient.post(`/cash-box/${entity_id}/close`, {
-              closingAmount: data.closingCash || data.closing_cash || 0,
-              notes: data.notes || 'Fechado via Electron Desktop'
-            });
-            console.log('✅ Caixa fechado no backend:', entity_id);
-            return { success: true };
+            try {
+              const closeResponse = await this.apiClient.post(`/cash-box/${entity_id}/close`, {
+                closingAmount: data.closingCash || data.closing_cash || 0,
+                notes: data.notes || 'Fechado via Electron Desktop'
+              });
+              console.log('✅ Caixa fechado no backend:', entity_id);
+              return { success: true };
+            } catch (closeError: any) {
+              // Se o caixa não foi encontrado, pode ser que nunca foi sincronizado
+              // Tentar criar primeiro e depois fechar
+              if (closeError?.response?.status === 404) {
+                console.log('⚠️ Caixa não encontrado no backend, tentando criar primeiro...');
+                try {
+                  // Buscar dados completos do caixa local
+                  const localCashBox = this.dbManager.getCashBoxById(entity_id);
+                  if (localCashBox) {
+                    await this.apiClient.post('/cash-box/open', {
+                      id: entity_id,
+                      branchId: localCashBox.branch_id || 'main-branch',
+                      openingAmount: localCashBox.opening_cash || 0,
+                      boxNumber: localCashBox.box_number,
+                      notes: localCashBox.notes || 'Sincronizado via Electron Desktop'
+                    });
+                    // Agora fechar
+                    await this.apiClient.post(`/cash-box/${entity_id}/close`, {
+                      closingAmount: data.closingCash || data.closing_cash || 0,
+                      notes: data.notes || 'Fechado via Electron Desktop'
+                    });
+                    console.log('✅ Caixa criado e fechado no backend:', entity_id);
+                    return { success: true };
+                  }
+                } catch (createError) {
+                  console.error('❌ Erro ao criar caixa antes de fechar:', createError);
+                }
+              }
+              throw closeError;
+            }
           }
           // Outra atualização de caixa
           return { skip: true, success: false, reason: 'Atualização de caixa não suportada (apenas abertura/fechamento)' };
@@ -1469,24 +1614,87 @@ export class SyncManager {
           return { success: true };
         }
         return { skip: true, success: false, reason: 'Pagamento de dívida sem debtId' };
+      
+      case 'debt':
+        // Dívida - sincronizar criação e atualização
+        if (operation === 'create') {
+          // Criar dívida no backend com o mesmo ID do Electron
+          await this.apiClient.post('/debts', {
+            id: entity_id, // Usar o mesmo ID para manter consistência
+            customerId: data.customerId || data.customer_id,
+            saleId: data.saleId || data.sale_id,
+            branchId: data.branchId || data.branch_id,
+            amount: data.amount || data.originalAmount || data.original_amount,
+            notes: data.notes,
+          });
+          console.log('✅ Dívida criada no backend:', entity_id);
+          return { success: true };
+        } else if (operation === 'update') {
+          // Usar PATCH para atualizar parcialmente (status, valores pagos)
+          await this.apiClient.patch(`/debts/${entity_id}`, {
+            paidAmount: data.paidAmount || data.paid_amount,
+            balance: data.balance,
+            status: data.status,
+          });
+          console.log('✅ Dívida atualizada no backend:', entity_id, '- Status:', data.status);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de dívida não suportada' };
         
       case 'customer_loyalty':
         // Fidelidade - não existe endpoint separado
         return { skip: true, success: false, reason: 'Lealdade gerenciada via customer' };
         
       case 'purchase_item':
-        // Similar a sale_item
-        return { skip: true, success: false, reason: 'Itens de compra são incluídos na compra' };
+        // Itens de compra devem ser adicionados via POST /purchases/:purchaseId/items
+        if (operation === 'create' && data.purchaseId) {
+          // Verificar se a compra existe primeiro
+          try {
+            const purchaseCheck = await this.apiClient.get(`/purchases/${data.purchaseId}`);
+            // Se a compra está completed, tentar reabrir
+            if (purchaseCheck.data?.status === 'completed') {
+              console.log(`⚠️ Compra ${data.purchaseId} está completed, tentando reabrir...`);
+              await this.apiClient.put(`/purchases/${data.purchaseId}`, { status: 'pending' });
+            }
+          } catch (checkError: any) {
+            if (checkError.response?.status === 404) {
+              console.log(`⏳ Compra ${data.purchaseId} ainda não existe no servidor, adiando item...`);
+              throw new Error(`Compra ${data.purchaseId} não encontrada - aguardando sync`);
+            }
+            throw checkError;
+          }
+          
+          await this.apiClient.post(`/purchases/${data.purchaseId}/items`, {
+            productId: data.productId || data.product_id,
+            qtyUnits: data.qtyUnits || data.qty_units || 0,
+            qtyBoxes: data.qtyBoxes || data.qty_boxes || 0,
+            unitCost: data.unitCost || data.unit_cost || 0,
+          });
+          console.log('✅ Item de compra sincronizado:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Item de compra sem purchaseId' };
       
       case 'purchase':
         // Compra - sincronizar criação e atualização
         if (operation === 'create') {
+          // Verificar se já existe
+          try {
+            const existing = await this.apiClient.get(`/purchases/${entity_id}`);
+            if (existing.data) {
+              console.log('⚠️ Compra já existe no servidor:', entity_id);
+              return { success: true };
+            }
+          } catch (e: any) {
+            // 404 é esperado - compra não existe
+          }
+          
           await this.apiClient.post('/purchases', {
             id: entity_id,
             purchaseNumber: data.purchaseNumber || data.purchase_number,
             branchId: data.branchId || data.branch_id,
             supplierId: data.supplierId || data.supplier_id,
-            status: data.status || 'pending',
+            status: 'pending', // Criar como pending para permitir adicionar itens
             total: data.total || 0,
             notes: data.notes,
           });

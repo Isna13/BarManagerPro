@@ -74,6 +74,19 @@ export declare class SyncManager {
     syncNow(): Promise<void>;
     private pushLocalChanges;
     /**
+     * Verifica se o Railway está vazio mas o banco local tem dados
+     * Se sim, executa automaticamente um resync completo
+     */
+    private checkAndTriggerFullResyncIfNeeded;
+    /**
+     * Conta entidades no banco local
+     */
+    private getLocalEntityCounts;
+    /**
+     * Conta entidades no Railway
+     */
+    private getRailwayEntityCounts;
+    /**
      * Ordena itens de sincronização por dependência
      * Entidades base devem ser sincronizadas antes de entidades que dependem delas
      */

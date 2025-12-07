@@ -681,6 +681,14 @@ export declare class DatabaseManager {
      */
     seedSampleSales(): void;
     /**
+     * Obtém um valor de configuração genérico
+     */
+    getSetting(key: string): string | null;
+    /**
+     * Define um valor de configuração genérico
+     */
+    setSetting(key: string, value: string): void;
+    /**
      * Obtém a última data de sincronização
      */
     getLastSyncDate(): Date | null;
@@ -712,6 +720,26 @@ export declare class DatabaseManager {
      * Atualiza usuário a partir de dados do servidor (sem sobrescrever senha)
      */
     updateUserFromServer(id: string, data: any): unknown;
+    prepare(query: string): any;
+    exec(query: string): any;
+    /**
+     * Adiciona TODAS as entidades locais à fila de sincronização
+     * na ordem correta de dependência (entidades base primeiro)
+     * Use quando o Railway está vazio e precisa de uma sincronização completa
+     */
+    queueFullResync(): {
+        total: number;
+        byEntity: Record<string, number>;
+    };
+    /**
+     * Retorna estatísticas da fila de sincronização
+     */
+    getSyncQueueStats(): {
+        pending: number;
+        failed: number;
+        completed: number;
+        byEntity: any[];
+    };
     close(): void;
 }
 export {};

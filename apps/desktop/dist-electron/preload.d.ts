@@ -131,6 +131,8 @@ declare const api: {
         pushFullInitialSync: () => Promise<any>;
         checkConnection: () => Promise<any>;
         tryReauthenticate: () => Promise<any>;
+        queueFullResync: () => Promise<any>;
+        getQueueStats: () => Promise<any>;
         onSyncStart: (callback: () => void) => () => Electron.IpcRenderer;
         onSyncProgress: (callback: (data: any) => void) => () => Electron.IpcRenderer;
         onSyncComplete: (callback: (data: any) => void) => () => Electron.IpcRenderer;

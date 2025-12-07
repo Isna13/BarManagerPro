@@ -188,6 +188,8 @@ const api = {
     pushFullInitialSync: () => ipcRenderer.invoke('sync:pushFullInitialSync'),
     checkConnection: () => ipcRenderer.invoke('sync:checkConnection'),
     tryReauthenticate: () => ipcRenderer.invoke('sync:tryReauthenticate'),
+    queueFullResync: () => ipcRenderer.invoke('sync:queueFullResync'),
+    getQueueStats: () => ipcRenderer.invoke('sync:getQueueStats'),
     
     // Listeners
     onSyncStart: (callback: () => void) => {

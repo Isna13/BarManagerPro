@@ -7,6 +7,23 @@ export class CashBoxService {
   constructor(private prisma: PrismaService) {}
 
   async openCashBox(openDto: OpenCashBoxDto, userId: string) {
+    // Se um ID foi fornecido (sincronização do Electron), verificar se já existe
+    if (openDto.id) {
+      const existing = await this.prisma.cashBox.findUnique({
+        where: { id: openDto.id },
+      });
+      if (existing) {
+        // Já existe, retornar o existente (idempotência para sincronização)
+        return this.prisma.cashBox.findUnique({
+          where: { id: openDto.id },
+          include: {
+            openedByUser: true,
+            branch: true,
+          },
+        });
+      }
+    }
+
     // Verificar se já existe caixa aberto na filial
     const existingOpen = await this.prisma.cashBox.findFirst({
       where: {
@@ -16,12 +33,17 @@ export class CashBoxService {
     });
 
     if (existingOpen) {
+      // Se já existe um caixa aberto e estamos sincronizando, retornar o existente
+      if (openDto.id) {
+        return existingOpen;
+      }
       throw new BadRequestException('Já existe um caixa aberto nesta filial');
     }
 
     return this.prisma.cashBox.create({
       data: {
-        boxNumber: `BOX-${Date.now()}`,
+        ...(openDto.id && { id: openDto.id }), // Usar ID do Electron se fornecido
+        boxNumber: openDto.boxNumber || `BOX-${Date.now()}`,
         branch: { connect: { id: openDto.branchId } },
         openedByUser: { connect: { id: userId } },
         openingCash: openDto.openingAmount,
@@ -331,11 +353,14 @@ export class CashBoxService {
 
   async getHistoryAll(limit = 30) {
     const cashBoxes = await this.prisma.cashBox.findMany({
+      where: {
+        status: 'closed', // Apenas caixas fechados no histórico
+      },
       include: {
         openedByUser: true,
         branch: true,
       },
-      orderBy: { openedAt: 'desc' },
+      orderBy: { closedAt: 'desc' }, // Ordenar por fechamento
       take: limit,
     });
 

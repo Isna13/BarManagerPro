@@ -1,6 +1,10 @@
-import { IsString, IsInt, IsOptional, Min, IsEnum } from 'class-validator';
+import { IsString, IsInt, IsOptional, Min, IsEnum, IsUUID } from 'class-validator';
 
 export class OpenCashBoxDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string; // ID opcional para sincronização com Electron
+
   @IsString()
   branchId: string;
 
@@ -11,6 +15,10 @@ export class OpenCashBoxDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  boxNumber?: string; // Box number opcional para sincronização
 }
 
 export class CloseCashBoxDto {

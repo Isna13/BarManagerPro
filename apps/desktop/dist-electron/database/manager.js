@@ -2537,19 +2537,22 @@ class DatabaseManager {
       INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, received_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(paymentId, data.debtId, data.amount, data.method, data.reference || null, data.notes || null, data.receivedBy);
-        // Atualizar dívida
+        // Atualizar dívida - incluir synced = 0 para garantir sincronização
+        const newPaidAmount = debt.paid_amount + data.amount;
         this.db.prepare(`
       UPDATE debts 
-      SET paid_amount = paid_amount + ?,
+      SET paid_amount = ?,
           balance = ?,
           status = ?,
+          synced = 0,
           updated_at = datetime('now')
       WHERE id = ?
-    `).run(data.amount, newBalance, newStatus, data.debtId);
-        // Atualizar dívida atual do cliente
+    `).run(newPaidAmount, newBalance, newStatus, data.debtId);
+        // Atualizar dívida atual do cliente - incluir synced = 0
         this.db.prepare(`
       UPDATE customers 
       SET current_debt = current_debt - ?,
+          synced = 0,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(data.amount, debt.customer_id);
@@ -2567,6 +2570,16 @@ class DatabaseManager {
             reference: data.reference,
             notes: data.notes,
         }, 1); // Alta prioridade
+        // IMPORTANTE: Também sincronizar a atualização da dívida em si
+        this.addToSyncQueue('update', 'debt', data.debtId, {
+            paidAmount: newPaidAmount,
+            balance: newBalance,
+            status: newStatus,
+        }, 20); // Prioridade normal de dívidas
+        // Sincronizar atualização do current_debt do cliente
+        this.addToSyncQueue('update', 'customer', debt.customer_id, {
+            currentDebt: debt.current_debt - data.amount,
+        }, 10); // Prioridade de clientes
         return {
             paymentId,
             newBalance,
@@ -4641,6 +4654,33 @@ class DatabaseManager {
     // Sync Helper Methods (for Railway sync)
     // ============================================
     /**
+     * Obtém um valor de configuração genérico
+     */
+    getSetting(key) {
+        try {
+            const result = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+            return result?.value || null;
+        }
+        catch (error) {
+            console.error('Erro ao obter setting:', key, error);
+            return null;
+        }
+    }
+    /**
+     * Define um valor de configuração genérico
+     */
+    setSetting(key, value) {
+        try {
+            this.db.prepare(`
+        INSERT OR REPLACE INTO settings (key, value, updated_at)
+        VALUES (?, ?, datetime('now'))
+      `).run(key, value);
+        }
+        catch (error) {
+            console.error('Erro ao definir setting:', key, error);
+        }
+    }
+    /**
      * Obtém a última data de sincronização
      */
     getLastSyncDate() {
@@ -4825,6 +4865,85 @@ class DatabaseManager {
             console.error('Erro ao atualizar usuário do servidor:', error);
             throw error;
         }
+    }
+    // Métodos públicos para acesso ao banco de dados
+    prepare(query) {
+        return this.db.prepare(query);
+    }
+    exec(query) {
+        return this.db.exec(query);
+    }
+    /**
+     * Adiciona TODAS as entidades locais à fila de sincronização
+     * na ordem correta de dependência (entidades base primeiro)
+     * Use quando o Railway está vazio e precisa de uma sincronização completa
+     */
+    queueFullResync() {
+        console.log('🔄 Iniciando queue de ressincronização completa...');
+        // Ordem de sincronização (entidades base primeiro)
+        const SYNC_ORDER = [
+            { table: 'categories', entity: 'category', priority: 0 },
+            { table: 'suppliers', entity: 'supplier', priority: 5 },
+            { table: 'customers', entity: 'customer', priority: 10 },
+            { table: 'products', entity: 'product', priority: 15 },
+            { table: 'debts', entity: 'debt', priority: 20 },
+            { table: 'debt_payments', entity: 'debt_payment', priority: 30 },
+            { table: 'purchases', entity: 'purchase', priority: 25 },
+            { table: 'sales', entity: 'sale', priority: 35 },
+        ];
+        // Limpar fila atual para evitar duplicatas
+        console.log('🗑️ Limpando fila de sincronização atual...');
+        this.db.prepare('DELETE FROM sync_queue').run();
+        const insertQueue = this.db.prepare(`
+      INSERT INTO sync_queue (entity, entity_id, operation, data, status, priority, created_at)
+      VALUES (?, ?, 'create', ?, 'pending', ?, datetime('now'))
+    `);
+        let totalAdded = 0;
+        const byEntity = {};
+        for (const { table, entity, priority } of SYNC_ORDER) {
+            try {
+                const rows = this.db.prepare(`SELECT * FROM ${table}`).all();
+                for (const row of rows) {
+                    insertQueue.run(entity, row.id, JSON.stringify(row), priority);
+                    totalAdded++;
+                }
+                byEntity[entity] = rows.length;
+                console.log(`  ✅ ${entity}: ${rows.length} adicionados (prioridade ${priority})`);
+            }
+            catch (e) {
+                console.log(`  ⏭️ ${table}: ${e.message}`);
+                byEntity[entity] = 0;
+            }
+        }
+        console.log(`\n📋 Total de itens na fila: ${totalAdded}`);
+        return { total: totalAdded, byEntity };
+    }
+    /**
+     * Retorna estatísticas da fila de sincronização
+     */
+    getSyncQueueStats() {
+        const stats = this.db.prepare(`
+      SELECT 
+        status,
+        COUNT(*) as count
+      FROM sync_queue
+      GROUP BY status
+    `).all();
+        const byEntity = this.db.prepare(`
+      SELECT 
+        entity,
+        status,
+        COUNT(*) as count
+      FROM sync_queue
+      GROUP BY entity, status
+      ORDER BY entity
+    `).all();
+        return {
+            pending: stats.find(s => s.status === 'pending')?.count || 0,
+            failed: stats.find(s => s.status === 'failed')?.count || 0,
+            completed: stats.find(s => s.status === 'completed')?.count || 0,
+            byEntity,
+        };
     }
     close() {
         if (this.db) {

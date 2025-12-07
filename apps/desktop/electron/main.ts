@@ -562,6 +562,19 @@ ipcMain.handle('sync:fullPullFromServer', async () => {
   return await syncManager.fullPullFromServer();
 });
 
+// Adiciona TODAS as entidades locais à fila de sincronização (para Railway vazio)
+ipcMain.handle('sync:queueFullResync', async () => {
+  const result = dbManager.queueFullResync();
+  // Iniciar sincronização imediata após enfileirar
+  syncManager.syncNow();
+  return result;
+});
+
+// Obter estatísticas da fila de sincronização
+ipcMain.handle('sync:getQueueStats', async () => {
+  return dbManager.getSyncQueueStats();
+});
+
 // Verifica se banco local está vazio
 ipcMain.handle('sync:isLocalDatabaseEmpty', async () => {
   return syncManager.isLocalDatabaseEmpty();
