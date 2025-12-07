@@ -306,7 +306,8 @@ export class CashBoxService {
   }
 
   async getCurrentCashBoxForUser(userId: string) {
-    const cashBox = await this.prisma.cashBox.findFirst({
+    // Primeiro, tentar encontrar o caixa aberto pelo usuário
+    let cashBox = await this.prisma.cashBox.findFirst({
       where: {
         openedBy: userId,
         status: 'open',
@@ -316,6 +317,20 @@ export class CashBoxService {
         branch: true,
       },
     });
+
+    // Se não encontrou, buscar qualquer caixa aberto (para visualização)
+    if (!cashBox) {
+      cashBox = await this.prisma.cashBox.findFirst({
+        where: {
+          status: 'open',
+        },
+        include: {
+          openedByUser: true,
+          branch: true,
+        },
+        orderBy: { openedAt: 'desc' }, // Mais recente primeiro
+      });
+    }
 
     if (!cashBox) {
       return null;

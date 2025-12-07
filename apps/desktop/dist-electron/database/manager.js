@@ -2642,7 +2642,18 @@ class DatabaseManager {
       INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, opening_cash)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, data.boxNumber, data.branchId, data.openedBy, data.openingCash || 0);
-        this.addToSyncQueue('create', 'cash_box', id, data, 2);
+        // Garantir dados completos para sincronização
+        const syncData = {
+            ...data,
+            id,
+            boxNumber: data.boxNumber,
+            box_number: data.boxNumber,
+            branchId: data.branchId,
+            branch_id: data.branchId,
+            openingCash: data.openingCash || 0,
+            opening_cash: data.openingCash || 0,
+        };
+        this.addToSyncQueue('create', 'cash_box', id, syncData, 2);
         return { id, ...data };
     }
     closeCashBox(cashBoxId, closingData) {
@@ -2657,7 +2668,14 @@ class DatabaseManager {
           synced = 0
       WHERE id = ?
     `).run(closingData.closingCash, closingData.difference, closingData.closedBy, closingData.notes, cashBoxId);
-        this.addToSyncQueue('update', 'cash_box', cashBoxId, closingData, 1);
+        // Garantir que closingData tenha status: 'closed' para sincronização
+        const syncData = {
+            ...closingData,
+            status: 'closed',
+            closing_cash: closingData.closingCash,
+            closingCash: closingData.closingCash,
+        };
+        this.addToSyncQueue('update', 'cash_box', cashBoxId, syncData, 1);
     }
     getCurrentCashBox() {
         return this.db.prepare(`

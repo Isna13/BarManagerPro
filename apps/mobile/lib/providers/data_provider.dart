@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/models.dart' as models;
 import '../services/api_service.dart';
 
 class DataProvider extends ChangeNotifier {
   ApiService? _apiService;
+  Timer? _autoSyncTimer;
 
   // Loading states
   bool _isLoading = false;
@@ -54,6 +56,40 @@ class DataProvider extends ChangeNotifier {
   // Set API Service
   void setApiService(ApiService apiService) {
     _apiService = apiService;
+    _startAutoSync(); // Iniciar sync automático quando API estiver disponível
+  }
+
+  // Iniciar sync automático a cada 30 segundos para manter dados atualizados
+  void _startAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _silentRefreshCashBox(),
+    );
+  }
+
+  // Atualizar caixa silenciosamente sem afetar UI
+  Future<void> _silentRefreshCashBox() async {
+    if (_apiService == null) return;
+    try {
+      final newCashBox = await _apiService!.getCurrentCashBox();
+      if (_currentCashBox?.id != newCashBox?.id ||
+          _currentCashBox?.status != newCashBox?.status) {
+        _currentCashBox = newCashBox;
+        notifyListeners();
+        debugPrint(
+            '🔄 CashBox atualizado silenciosamente: ${newCashBox?.status ?? "null"}');
+      }
+    } catch (e) {
+      // Silenciar erros de sync automático
+      debugPrint('⚠️ Erro no sync automático de caixa: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoSyncTimer?.cancel();
+    super.dispose();
   }
 
   // Initialize

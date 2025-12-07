@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      sql.js:
-        specifier: ^1.13.0
-        version: 1.13.0
     devDependencies:
       '@types/node':
         specifier: ^20.10.5
@@ -24,6 +20,9 @@ importers:
       prettier:
         specifier: ^3.1.1
         version: 3.6.2
+      sql.js:
+        specifier: ^1.13.0
+        version: 1.13.0
       sqlite3:
         specifier: ^5.1.7
         version: 5.1.7

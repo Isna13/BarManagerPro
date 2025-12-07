@@ -21,7 +21,7 @@ class SyncProvider with ChangeNotifier {
   void _startAutoSync() {
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer.periodic(
-      const Duration(minutes: 5),
+      const Duration(minutes: 2), // Reduzir para 2 minutos para melhor UX
       (_) => startSync(silent: true),
     );
   }
@@ -35,11 +35,13 @@ class SyncProvider with ChangeNotifier {
     try {
       await _apiService.loadToken();
 
-      // Sincronizar dados principais
+      // Sincronizar dados principais incluindo caixa
       await Future.wait([
         _apiService.getDashboardStats(),
         _apiService.getProducts(),
         _apiService.getSales(),
+        _apiService.getCurrentCashBox(), // Sincronizar caixa atual
+        _apiService.getCashBoxHistory(limit: 30), // Sincronizar histórico
       ]);
 
       _pendingItems = 0;
