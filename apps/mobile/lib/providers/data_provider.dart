@@ -73,12 +73,18 @@ class DataProvider extends ChangeNotifier {
     if (_apiService == null) return;
     try {
       final newCashBox = await _apiService!.getCurrentCashBox();
-      if (_currentCashBox?.id != newCashBox?.id ||
-          _currentCashBox?.status != newCashBox?.status) {
+      
+      // Verificar se houve mudança (incluindo quando newCashBox é null)
+      final bool hasChanged = (_currentCashBox == null && newCashBox != null) ||
+          (_currentCashBox != null && newCashBox == null) ||
+          (_currentCashBox?.id != newCashBox?.id) ||
+          (_currentCashBox?.status != newCashBox?.status);
+      
+      if (hasChanged) {
         _currentCashBox = newCashBox;
         notifyListeners();
         debugPrint(
-            '🔄 CashBox atualizado silenciosamente: ${newCashBox?.status ?? "null"}');
+            '🔄 CashBox atualizado silenciosamente: ${newCashBox?.status ?? "FECHADO/NULL"}');
       }
     } catch (e) {
       // Silenciar erros de sync automático
