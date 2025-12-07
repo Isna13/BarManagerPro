@@ -1568,7 +1568,7 @@ export class SyncManager {
             } catch (closeError: any) {
               // Se o caixa não foi encontrado, pode ser que nunca foi sincronizado
               // Tentar criar primeiro e depois fechar
-              if (closeError?.response?.status === 404) {
+              if (closeError?.response?.status === 404 && entity_id) {
                 console.log('⚠️ Caixa não encontrado no backend, tentando criar primeiro...');
                 try {
                   // Buscar dados completos do caixa local
