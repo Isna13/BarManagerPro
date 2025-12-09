@@ -639,39 +639,62 @@ class Purchase {
     // O backend retorna supplier como objeto aninhado
     final supplier = json['supplier'] as Map<String, dynamic>?;
 
+    // Helper para converter valores numéricos com segurança
+    double safeDouble(dynamic value) {
+      if (value == null) return 0;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      return double.tryParse(value.toString()) ?? 0;
+    }
+
     return Purchase(
-      id: json['id'] ?? '',
-      supplierId: json['supplier_id'] ?? json['supplierId'] ?? '',
+      id: json['id']?.toString() ?? '',
+      supplierId: json['supplier_id']?.toString() ?? json['supplierId']?.toString() ?? '',
       supplierName:
           supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
       invoiceNumber: json['invoice_number'] ??
           json['invoiceNumber'] ??
           json['purchaseNumber'],
-      subtotal: (json['subtotal'] ?? json['totalCost'] ?? 0) / 100,
-      tax: (json['tax'] ?? 0) / 100,
-      discount: (json['discount'] ?? 0) / 100,
-      total: (json['total'] ?? json['totalCost'] ?? 0) / 100,
-      status: json['status'] ?? 'pending',
-      notes: json['notes'],
-      purchaseDate: DateTime.tryParse(json['purchase_date'] ??
-              json['purchaseDate'] ??
-              json['createdAt'] ??
-              json['created_at'] ??
+      subtotal: safeDouble(json['subtotal'] ?? json['totalCost']) / 100,
+      tax: safeDouble(json['tax']) / 100,
+      discount: safeDouble(json['discount']) / 100,
+      total: safeDouble(json['total'] ?? json['totalCost']) / 100,
+      status: json['status']?.toString() ?? 'pending',
+      notes: json['notes']?.toString(),
+      purchaseDate: DateTime.tryParse(json['purchase_date']?.toString() ??
+              json['purchaseDate']?.toString() ??
+              json['createdAt']?.toString() ??
+              json['created_at']?.toString() ??
               '') ??
           DateTime.now(),
       receivedAt: json['received_at'] != null ||
               json['receivedAt'] != null ||
               json['completedAt'] != null
-          ? DateTime.tryParse(json['received_at'] ??
-              json['receivedAt'] ??
-              json['completedAt'] ??
+          ? DateTime.tryParse(json['received_at']?.toString() ??
+              json['receivedAt']?.toString() ??
+              json['completedAt']?.toString() ??
               '')
           : null,
-      items: (json['items'] as List<dynamic>?)
-              ?.map((item) => PurchaseItem.fromJson(item))
-              .toList() ??
-          [],
+      items: _parseItems(json['items']),
     );
+  }
+
+  static List<PurchaseItem> _parseItems(dynamic itemsJson) {
+    if (itemsJson == null) return [];
+    if (itemsJson is! List) return [];
+    
+    final List<PurchaseItem> result = [];
+    for (final item in itemsJson) {
+      if (item is Map<String, dynamic>) {
+        try {
+          result.add(PurchaseItem.fromJson(item));
+        } catch (e) {
+          // Skip invalid items but log the error
+          print('Error parsing PurchaseItem: $e');
+        }
+      }
+    }
+    return result;
   }
 }
 
@@ -702,16 +725,27 @@ class PurchaseItem {
       productName = json['product']['name'];
     }
 
+    // Parse numéricos com segurança
+    final rawQty = json['qtyUnits'] ?? json['qty_units'] ?? json['quantity'] ?? 1;
+    final rawUnitCost = json['unit_cost'] ?? json['unitCost'] ?? 0;
+    final rawSubtotal = json['subtotal'] ?? 0;
+    
     return PurchaseItem(
-      id: json['id'] ?? '',
-      purchaseId: json['purchase_id'] ?? json['purchaseId'] ?? '',
-      productId: json['product_id'] ?? json['productId'] ?? '',
+      id: json['id']?.toString() ?? '',
+      purchaseId: json['purchase_id']?.toString() ?? json['purchaseId']?.toString() ?? '',
+      productId: json['product_id']?.toString() ?? json['productId']?.toString() ?? '',
       productName: productName,
-      // Backend retorna qtyUnits, mas também aceitar quantity para compatibilidade
-      quantity: json['qtyUnits'] ?? json['qty_units'] ?? json['quantity'] ?? 1,
-      unitCost: (json['unit_cost'] ?? json['unitCost'] ?? 0) / 100,
-      subtotal: (json['subtotal'] ?? 0) / 100,
+      quantity: (rawQty is int) ? rawQty : int.tryParse(rawQty.toString()) ?? 1,
+      unitCost: _toDouble(rawUnitCost) / 100,
+      subtotal: _toDouble(rawSubtotal) / 100,
     );
+  }
+  
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
   }
 }
 
