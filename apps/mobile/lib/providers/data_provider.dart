@@ -73,13 +73,13 @@ class DataProvider extends ChangeNotifier {
     if (_apiService == null) return;
     try {
       final newCashBox = await _apiService!.getCurrentCashBox();
-      
+
       // Verificar se houve mudança (incluindo quando newCashBox é null)
       final bool hasChanged = (_currentCashBox == null && newCashBox != null) ||
           (_currentCashBox != null && newCashBox == null) ||
           (_currentCashBox?.id != newCashBox?.id) ||
           (_currentCashBox?.status != newCashBox?.status);
-      
+
       if (hasChanged) {
         _currentCashBox = newCashBox;
         notifyListeners();

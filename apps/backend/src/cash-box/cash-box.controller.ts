@@ -56,8 +56,10 @@ export class CashBoxController {
 
   // Endpoint sem branchId (retorna o primeiro caixa aberto)
   @Get('current')
-  getCurrentCashBoxAny(@User() user: any) {
-    return this.cashBoxService.getCurrentCashBoxForUser(user.userId);
+  async getCurrentCashBoxAny(@User() user: any) {
+    const cashBox = await this.cashBoxService.getCurrentCashBoxForUser(user.userId);
+    // Retornar null explicitamente como JSON para que o cliente receba null, não string vazia
+    return cashBox ?? null;
   }
 
   @Get('current/:branchId')

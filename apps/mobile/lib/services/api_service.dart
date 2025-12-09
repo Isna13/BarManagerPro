@@ -395,7 +395,17 @@ class ApiService {
 
       final response =
           await _dio.get('/cash-box/current', queryParameters: queryParams);
-      if (response.data == null) return null;
+      
+      // Tratar null, string vazia, ou resposta vazia
+      if (response.data == null || response.data == '' || (response.data is String && response.data.isEmpty)) {
+        return null;
+      }
+      
+      // Se for um Map vazio, também retorna null
+      if (response.data is Map && (response.data as Map).isEmpty) {
+        return null;
+      }
+      
       return models.CashBox.fromJson(response.data);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
