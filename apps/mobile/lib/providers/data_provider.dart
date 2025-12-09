@@ -217,6 +217,13 @@ class DataProvider extends ChangeNotifier {
         status: status,
         supplierId: supplierId,
       );
+      // Debug: verificar se os items estão a ser carregados
+      for (final p in _purchases) {
+        print('Purchase ${p.id.substring(0, 8)}: ${p.items.length} items, total=${p.total}');
+        for (final item in p.items) {
+          print('  - ${item.productName}: qty=${item.quantity}, cost=${item.unitCost}');
+        }
+      }
       _error = null;
     } catch (e) {
       _error = e.toString();

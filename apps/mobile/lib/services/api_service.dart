@@ -224,8 +224,19 @@ class ApiService {
 
       final response =
           await _dio.get('/purchases', queryParameters: queryParams);
+      
+      // Debug: ver estrutura da resposta
+      print('Purchases API response type: ${response.data.runtimeType}');
+      
       final List<dynamic> data =
           response.data is List ? response.data : response.data['data'] ?? [];
+      
+      // Debug: verificar primeiro item
+      if (data.isNotEmpty) {
+        final first = data.first;
+        print('First purchase items: ${first['items']?.runtimeType} = ${first['items']?.length ?? 0} items');
+      }
+      
       return data.map((json) => models.Purchase.fromJson(json)).toList();
     } on DioException catch (e) {
       throw _handleError(e);
