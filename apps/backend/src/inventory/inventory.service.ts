@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto } from './dto';
+import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto, UpsertInventoryItemDto } from './dto';
 
 @Injectable()
 export class InventoryService {
@@ -327,6 +327,95 @@ export class InventoryService {
     });
 
     return items.filter(item => item.qtyUnits <= item.minStock);
+  }
+
+  // Método para criar ou atualizar item de inventário (sincronização)
+  async upsertInventoryItem(dto: UpsertInventoryItemDto) {
+    const { id, productId, branchId, ...data } = dto;
+
+    // Verificar se o produto existe
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Produto não encontrado: ${productId}`);
+    }
+
+    // Verificar se a filial existe
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+    });
+
+    if (!branch) {
+      throw new NotFoundException(`Filial não encontrada: ${branchId}`);
+    }
+
+    // Preparar dados para upsert
+    const inventoryData = {
+      qtyUnits: data.qtyUnits ?? 0,
+      qtyBoxes: data.qtyBoxes ?? 0,
+      closedBoxes: data.closedBoxes ?? 0,
+      openBoxUnits: data.openBoxUnits ?? 0,
+      minStock: data.minStock ?? 10,
+      batchNumber: data.batchNumber ?? null,
+      expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+      location: data.location ?? null,
+      consumptionAvg7d: data.consumptionAvg7d ?? 0,
+      consumptionAvg15d: data.consumptionAvg15d ?? 0,
+      consumptionAvg30d: data.consumptionAvg30d ?? 0,
+      daysUntilStockout: data.daysUntilStockout ?? null,
+      suggestedReorder: data.suggestedReorder ?? 0,
+      synced: true,
+      lastSync: new Date(),
+    };
+
+    // Se tem ID, usar upsert
+    if (id) {
+      return this.prisma.inventoryItem.upsert({
+        where: { id },
+        create: {
+          id,
+          productId,
+          branchId,
+          ...inventoryData,
+        },
+        update: inventoryData,
+        include: {
+          product: true,
+          branch: true,
+        },
+      });
+    }
+
+    // Se não tem ID, verificar se já existe item para esse produto/filial
+    const existing = await this.prisma.inventoryItem.findFirst({
+      where: { productId, branchId },
+    });
+
+    if (existing) {
+      return this.prisma.inventoryItem.update({
+        where: { id: existing.id },
+        data: inventoryData,
+        include: {
+          product: true,
+          branch: true,
+        },
+      });
+    }
+
+    // Criar novo
+    return this.prisma.inventoryItem.create({
+      data: {
+        productId,
+        branchId,
+        ...inventoryData,
+      },
+      include: {
+        product: true,
+        branch: true,
+      },
+    });
   }
 }
 

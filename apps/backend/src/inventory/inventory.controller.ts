@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto } from './dto';
+import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto, UpsertInventoryItemDto } from './dto';
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard)
@@ -24,6 +24,18 @@ export class InventoryController {
       movementType,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+  }
+
+  // Endpoint para criar/sincronizar item de inventário
+  @Post()
+  createOrUpdateItem(@Body() upsertDto: UpsertInventoryItemDto) {
+    return this.inventoryService.upsertInventoryItem(upsertDto);
+  }
+
+  // Endpoint para atualizar item de inventário por ID
+  @Put(':id')
+  updateItem(@Param('id') id: string, @Body() upsertDto: UpsertInventoryItemDto) {
+    return this.inventoryService.upsertInventoryItem({ ...upsertDto, id });
   }
 
   @Get(':id')

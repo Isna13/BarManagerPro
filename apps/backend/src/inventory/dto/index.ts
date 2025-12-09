@@ -74,3 +74,71 @@ export class AdjustStockByProductDto {
   @IsString()
   reason?: string;
 }
+
+export class UpsertInventoryItemDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsString()
+  productId: string;
+
+  @IsString()
+  branchId: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  qtyUnits?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  qtyBoxes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  closedBoxes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  openBoxUnits?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minStock?: number;
+
+  @IsOptional()
+  @IsString()
+  batchNumber?: string;
+
+  @IsOptional()
+  expiryDate?: Date | string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsNumber()
+  consumptionAvg7d?: number;
+
+  @IsOptional()
+  @IsNumber()
+  consumptionAvg15d?: number;
+
+  @IsOptional()
+  @IsNumber()
+  consumptionAvg30d?: number;
+
+  @IsOptional()
+  @IsInt()
+  daysUntilStockout?: number;
+
+  @IsOptional()
+  @IsInt()
+  suggestedReorder?: number;
+}
