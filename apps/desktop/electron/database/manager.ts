@@ -1922,6 +1922,16 @@ export class DatabaseManager {
       notes: boxesOpened > 0 ? `${boxesOpened} caixa(s) aberta(s) automaticamente` : undefined,
     });
 
+    // Adicionar à fila de sincronização para atualizar estoque no servidor
+    this.addToSyncQueue('update', 'inventory', inventory.id, {
+      productId,
+      branchId,
+      qtyUnits: inventoryAfter.qty_units,
+      adjustment: -unitsToDeduct,
+      reason: isMuntu ? 'Venda Muntu' : 'Venda',
+      saleId,
+    }, 2);
+
     return {
       success: true,
       deducted: unitsToDeduct,

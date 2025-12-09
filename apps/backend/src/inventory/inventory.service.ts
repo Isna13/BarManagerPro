@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AddStockDto, TransferStockDto, AdjustStockDto } from './dto';
+import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto } from './dto';
 
 @Injectable()
 export class InventoryService {
@@ -219,6 +219,47 @@ export class InventoryService {
     });
 
     return this.findOne(inventoryItemId);
+  }
+
+  async adjustStockByProduct(adjustDto: AdjustStockByProductDto) {
+    const { productId, branchId, adjustment, reason } = adjustDto;
+
+    // Buscar ou criar item de inventário
+    let item = await this.prisma.inventoryItem.findFirst({
+      where: { productId, branchId },
+    });
+
+    if (!item) {
+      // Criar item de inventário se não existir
+      item = await this.prisma.inventoryItem.create({
+        data: {
+          productId,
+          branchId,
+          qtyUnits: Math.max(0, adjustment), // Se adjustment for negativo, começar em 0
+          minStock: 0,
+        },
+      });
+    } else {
+      // Atualizar quantidade
+      const newQty = Math.max(0, item.qtyUnits + adjustment);
+      
+      await this.prisma.inventoryItem.update({
+        where: { id: item.id },
+        data: { qtyUnits: newQty },
+      });
+    }
+
+    // Registrar movimento
+    await this.prisma.inventoryMovement.create({
+      data: {
+        inventoryItemId: item.id,
+        type: adjustment >= 0 ? 'adjustment' : 'sale',
+        qtyUnits: adjustment,
+        reason: reason || 'Ajuste sincronizado do Electron',
+      },
+    });
+
+    return this.findByProduct(productId, branchId);
   }
 
   async getMovements(inventoryItemId: string) {

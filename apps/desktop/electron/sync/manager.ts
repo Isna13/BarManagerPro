@@ -1640,6 +1640,34 @@ export class SyncManager {
           return { success: true };
         }
         return { skip: true, success: false, reason: 'Operação de dívida não suportada' };
+      
+      case 'inventory':
+      case 'inventory_item':
+        // Inventário - sincronizar ajustes de estoque
+        if (operation === 'update') {
+          // Usar endpoint de ajuste de estoque por produto
+          await this.apiClient.put('/inventory/adjust-by-product', {
+            productId: data.productId || data.product_id,
+            branchId: data.branchId || data.branch_id,
+            adjustment: data.adjustment || 0,
+            reason: data.reason || 'Sincronização do Electron Desktop',
+          });
+          console.log('✅ Estoque sincronizado:', data.productId, 'Ajuste:', data.adjustment);
+          return { success: true };
+        }
+        // Para create, pode ser uma entrada de estoque
+        if (operation === 'create') {
+          await this.apiClient.post('/inventory/add-stock', {
+            productId: data.productId || data.product_id,
+            branchId: data.branchId || data.branch_id,
+            qtyUnits: data.qtyUnits || data.qty_units || 0,
+            qtyBoxes: data.qtyBoxes || data.qty_boxes || 0,
+            reason: data.reason || 'Entrada via Electron Desktop',
+          });
+          console.log('✅ Entrada de estoque sincronizada:', data.productId);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de inventário não suportada' };
         
       case 'customer_loyalty':
         // Fidelidade - não existe endpoint separado

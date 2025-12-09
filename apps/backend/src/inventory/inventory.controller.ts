@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { AddStockDto, TransferStockDto, AdjustStockDto } from './dto';
+import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto } from './dto';
 
 @Controller('inventory')
 @UseGuards(JwtAuthGuard)
@@ -52,6 +52,11 @@ export class InventoryController {
   @Put('adjust')
   adjustStock(@Body() adjustDto: AdjustStockDto) {
     return this.inventoryService.adjustStock(adjustDto);
+  }
+
+  @Put('adjust-by-product')
+  adjustStockByProduct(@Body() adjustDto: AdjustStockByProductDto) {
+    return this.inventoryService.adjustStockByProduct(adjustDto);
   }
 
   @Get('movements/:inventoryItemId')
