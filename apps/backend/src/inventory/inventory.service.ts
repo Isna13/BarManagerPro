@@ -417,6 +417,18 @@ export class InventoryService {
       },
     });
   }
+
+  async deleteItem(id: string) {
+    // Primeiro deletar movimentações relacionadas
+    await this.prisma.inventoryMovement.deleteMany({
+      where: { inventoryItemId: id },
+    });
+
+    // Deletar o item de inventário
+    return this.prisma.inventoryItem.delete({
+      where: { id },
+    });
+  }
 }
 
 

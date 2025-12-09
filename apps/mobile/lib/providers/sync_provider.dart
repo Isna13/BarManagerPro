@@ -35,11 +35,12 @@ class SyncProvider with ChangeNotifier {
     try {
       await _apiService.loadToken();
 
-      // Sincronizar dados principais incluindo caixa
+      // Sincronizar dados principais incluindo caixa e inventário
       await Future.wait([
         _apiService.getDashboardStats(),
         _apiService.getProducts(),
         _apiService.getSales(),
+        _apiService.getInventory(), // Sincronizar inventário
         _apiService.getCurrentCashBox(), // Sincronizar caixa atual
         _apiService.getCashBoxHistory(limit: 30), // Sincronizar histórico
       ]);

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AddStockDto, TransferStockDto, AdjustStockDto, AdjustStockByProductDto, UpsertInventoryItemDto } from './dto';
@@ -79,5 +79,10 @@ export class InventoryController {
   @Get('low-stock/:branchId')
   getLowStock(@Param('branchId') branchId: string) {
     return this.inventoryService.getLowStock(branchId);
+  }
+
+  @Delete(':id')
+  deleteItem(@Param('id') id: string) {
+    return this.inventoryService.deleteItem(id);
   }
 }
