@@ -128,18 +128,33 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
   Widget _buildOpenCashBoxView(CashBoxProvider cashBox) {
     final current = cashBox.currentCashBox!;
     final stats = current['stats'] as Map<String, dynamic>? ?? {};
-    
+
     // Valores do caixa
     final openingCash = current['opening_cash'] ?? current['openingCash'] ?? 0;
-    
-    // Totais por método de pagamento (ler de stats ou diretamente)
-    final totalCash = current['total_cash'] ?? current['totalCash'] ?? stats['cashPayments'] ?? 0;
-    final totalMobile = current['total_mobile_money'] ?? current['totalMobileMoney'] ?? stats['mobileMoneyPayments'] ?? 0;
-    final totalMixed = current['total_card'] ?? current['totalCard'] ?? stats['cardPayments'] ?? 0;
-    final totalDebt = current['total_debt'] ?? current['totalDebt'] ?? stats['debtPayments'] ?? 0;
-    final totalSales = current['total_sales'] ?? current['totalSales'] ?? stats['totalSales'] ?? 0;
+
+    // Totais por método de pagamento - PRIORIZAR stats pois são calculados em tempo real
+    final totalCash = stats['cashPayments'] ?? 
+        current['total_cash'] ?? 
+        current['totalCash'] ?? 
+        0;
+    final totalMobile = stats['mobileMoneyPayments'] ?? 
+        current['total_mobile_money'] ?? 
+        current['totalMobileMoney'] ?? 
+        0;
+    final totalMixed = stats['cardPayments'] ?? 
+        current['total_card'] ?? 
+        current['totalCard'] ?? 
+        0;
+    final totalDebt = stats['debtPayments'] ?? 
+        current['total_debt'] ?? 
+        current['totalDebt'] ??
+        0;
+    final totalSales = stats['totalSales'] ??
+        current['total_sales'] ??
+        current['totalSales'] ??
+        0;
     final salesCount = stats['salesCount'] ?? current['sales_count'] ?? 0;
-    
+
     // Dinheiro esperado = abertura + vendas em dinheiro
     final expectedCash = openingCash + totalCash;
 
@@ -184,7 +199,8 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.lock_open_rounded, color: Colors.white, size: 28),
+                      child: const Icon(Icons.lock_open_rounded,
+                          color: Colors.white, size: 28),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -200,7 +216,9 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
                             ),
                           ),
                           Text(
-                            current['box_number'] ?? current['boxNumber'] ?? '-',
+                            current['box_number'] ??
+                                current['boxNumber'] ??
+                                '-',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.9),
                               fontSize: context.responsiveFontSize(13),
@@ -236,15 +254,28 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: _buildHeaderStat('Valor Inicial', CurrencyHelper.format(openingCash), Colors.white),
+                      child: _buildHeaderStat('Valor Inicial',
+                          CurrencyHelper.format(openingCash), Colors.white),
                     ),
-                    Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
+                    Container(
+                        width: 1,
+                        height: 40,
+                        color: Colors.white.withOpacity(0.3)),
                     Expanded(
-                      child: _buildHeaderStat('Total de Vendas', '$salesCount venda${salesCount != 1 ? 's' : ''}', Colors.white, isBlue: true),
+                      child: _buildHeaderStat(
+                          'Total de Vendas',
+                          '$salesCount venda${salesCount != 1 ? 's' : ''}',
+                          Colors.white,
+                          isBlue: true),
                     ),
-                    Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
+                    Container(
+                        width: 1,
+                        height: 40,
+                        color: Colors.white.withOpacity(0.3)),
                     Expanded(
-                      child: _buildHeaderStat('Faturamento Total', CurrencyHelper.format(totalSales), Colors.white, isGreen: true),
+                      child: _buildHeaderStat('Faturamento Total',
+                          CurrencyHelper.format(totalSales), Colors.white,
+                          isGreen: true),
                     ),
                   ],
                 ),
@@ -279,7 +310,8 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
     );
   }
 
-  Widget _buildHeaderStat(String label, String value, Color textColor, {bool isBlue = false, bool isGreen = false}) {
+  Widget _buildHeaderStat(String label, String value, Color textColor,
+      {bool isBlue = false, bool isGreen = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
@@ -296,7 +328,9 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
           Text(
             value,
             style: TextStyle(
-              color: isBlue ? const Color(0xFF2196F3) : (isGreen ? const Color(0xFF4CAF50) : textColor),
+              color: isBlue
+                  ? const Color(0xFF2196F3)
+                  : (isGreen ? const Color(0xFF4CAF50) : textColor),
               fontSize: context.responsiveFontSize(14),
               fontWeight: FontWeight.bold,
             ),

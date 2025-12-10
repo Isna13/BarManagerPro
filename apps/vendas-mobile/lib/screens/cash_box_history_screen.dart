@@ -86,11 +86,18 @@ class _CashBoxHistoryScreenState extends State<CashBoxHistoryScreen> {
     final openingCash = item['opening_cash'] ?? item['openingCash'] ?? 0;
     // Ler de stats se existir, ou diretamente do objeto
     final stats = item['stats'] as Map<String, dynamic>? ?? {};
-    final totalSales = item['total_sales'] ?? item['totalSales'] ?? stats['totalSales'] ?? 0;
-    final totalCash = item['total_cash'] ?? item['totalCash'] ?? stats['cashPayments'] ?? 0;
-    final totalMobile = item['total_mobile_money'] ?? item['totalMobileMoney'] ?? stats['mobileMoneyPayments'] ?? 0;
-    final totalMixed = item['total_card'] ?? item['totalCard'] ?? stats['cardPayments'] ?? 0;
-    final totalDebt = item['total_debt'] ?? item['totalDebt'] ?? stats['debtPayments'] ?? 0;
+    final totalSales =
+        item['total_sales'] ?? item['totalSales'] ?? stats['totalSales'] ?? 0;
+    final totalCash =
+        item['total_cash'] ?? item['totalCash'] ?? stats['cashPayments'] ?? 0;
+    final totalMobile = item['total_mobile_money'] ??
+        item['totalMobileMoney'] ??
+        stats['mobileMoneyPayments'] ??
+        0;
+    final totalMixed =
+        item['total_card'] ?? item['totalCard'] ?? stats['cardPayments'] ?? 0;
+    final totalDebt =
+        item['total_debt'] ?? item['totalDebt'] ?? stats['debtPayments'] ?? 0;
     final salesCount = stats['salesCount'] ?? item['sales_count'] ?? 0;
     final closingCash = item['closing_cash'] ?? item['closingCash'] ?? 0;
     final difference = item['difference'] ?? 0;
@@ -203,8 +210,10 @@ class _CashBoxHistoryScreenState extends State<CashBoxHistoryScreen> {
                 _buildDetailRow('Fechado em', closedAt),
                 _buildDetailRow('Duração', duration),
                 const Divider(),
-                _buildDetailRow('Valor Inicial', CurrencyHelper.format(openingCash)),
-                _buildDetailRow('Total de Vendas', '$salesCount venda${salesCount != 1 ? 's' : ''}'),
+                _buildDetailRow(
+                    'Valor Inicial', CurrencyHelper.format(openingCash)),
+                _buildDetailRow('Total de Vendas',
+                    '$salesCount venda${salesCount != 1 ? 's' : ''}'),
                 _buildDetailRow(
                   'Faturamento Total',
                   CurrencyHelper.format(totalSales),

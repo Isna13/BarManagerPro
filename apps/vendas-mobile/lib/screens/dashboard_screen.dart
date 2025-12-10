@@ -54,8 +54,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final hasOpenCashBox = cashBox.hasOpenCashBox;
         // Ler de stats se existir, ou diretamente do objeto
         final stats = current?['stats'] as Map<String, dynamic>? ?? {};
-        final totalSales =
-            current?['total_sales'] ?? current?['totalSales'] ?? stats['totalSales'] ?? 0;
+        final totalSales = current?['total_sales'] ??
+            current?['totalSales'] ??
+            stats['totalSales'] ??
+            0;
 
         return StatusCard(
           icon: hasOpenCashBox ? Icons.lock_open_rounded : Icons.lock_rounded,
@@ -109,10 +111,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final stats = current?['stats'] as Map<String, dynamic>? ?? {};
         final openingCash =
             current?['opening_cash'] ?? current?['openingCash'] ?? 0;
-        final totalCash = current?['total_cash'] ?? current?['totalCash'] ?? stats['cashPayments'] ?? 0;
-        final totalCard = current?['total_card'] ?? current?['totalCard'] ?? stats['cardPayments'] ?? 0;
-        final totalMobileMoney =
-            current?['total_mobile_money'] ?? current?['totalMobileMoney'] ?? stats['mobileMoneyPayments'] ?? 0;
+        final totalCash = current?['total_cash'] ??
+            current?['totalCash'] ??
+            stats['cashPayments'] ??
+            0;
+        final totalCard = current?['total_card'] ??
+            current?['totalCard'] ??
+            stats['cardPayments'] ??
+            0;
+        final totalMobileMoney = current?['total_mobile_money'] ??
+            current?['totalMobileMoney'] ??
+            stats['mobileMoneyPayments'] ??
+            0;
 
         return LayoutBuilder(
           builder: (context, constraints) {

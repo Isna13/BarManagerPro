@@ -206,7 +206,7 @@ class SyncService {
   Map<String, dynamic> _mapCashBoxToLocal(Map<String, dynamic> serverData) {
     // Os totais podem vir diretamente ou dentro do objeto 'stats'
     final stats = serverData['stats'] as Map<String, dynamic>? ?? {};
-    
+
     return {
       'id': serverData['id'],
       'box_number': serverData['boxNumber'] ?? serverData['box_number'],
@@ -216,13 +216,26 @@ class SyncService {
       'status': serverData['status'],
       'opening_cash':
           serverData['openingCash'] ?? serverData['opening_cash'] ?? 0,
-      'total_sales': serverData['totalSales'] ?? serverData['total_sales'] ?? stats['totalSales'] ?? 0,
-      'total_cash': serverData['totalCash'] ?? serverData['total_cash'] ?? stats['cashPayments'] ?? 0,
-      'total_card': serverData['totalCard'] ?? serverData['total_card'] ?? stats['cardPayments'] ?? 0,
-      'total_mobile_money': serverData['totalMobileMoney'] ??
-          serverData['total_mobile_money'] ?? stats['mobileMoneyPayments'] ??
+      'total_sales': serverData['totalSales'] ??
+          serverData['total_sales'] ??
+          stats['totalSales'] ??
           0,
-      'total_debt': serverData['totalDebt'] ?? serverData['total_debt'] ?? stats['debtPayments'] ?? 0,
+      'total_cash': serverData['totalCash'] ??
+          serverData['total_cash'] ??
+          stats['cashPayments'] ??
+          0,
+      'total_card': serverData['totalCard'] ??
+          serverData['total_card'] ??
+          stats['cardPayments'] ??
+          0,
+      'total_mobile_money': serverData['totalMobileMoney'] ??
+          serverData['total_mobile_money'] ??
+          stats['mobileMoneyPayments'] ??
+          0,
+      'total_debt': serverData['totalDebt'] ??
+          serverData['total_debt'] ??
+          stats['debtPayments'] ??
+          0,
       'closing_cash': serverData['closingCash'] ?? serverData['closing_cash'],
       'difference': serverData['difference'],
       'notes': serverData['notes'],
