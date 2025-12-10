@@ -385,6 +385,24 @@ class ApiService {
     }
   }
 
+  // ==================== FIDELIDADE ====================
+  Future<Map<String, dynamic>> addLoyaltyPoints({
+    required String customerId,
+    required int points,
+    String? reason,
+  }) async {
+    try {
+      final response = await _dio.post('/loyalty/points', data: {
+        'customerId': customerId,
+        'points': points,
+        'reason': reason ?? 'Pontos de compra',
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // ==================== SYNC ====================
   Future<Map<String, dynamic>> syncData(Map<String, dynamic> data) async {
     try {

@@ -133,20 +133,20 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
     final openingCash = current['opening_cash'] ?? current['openingCash'] ?? 0;
 
     // Totais por método de pagamento - PRIORIZAR stats pois são calculados em tempo real
-    final totalCash = stats['cashPayments'] ?? 
-        current['total_cash'] ?? 
-        current['totalCash'] ?? 
+    final totalCash = stats['cashPayments'] ??
+        current['total_cash'] ??
+        current['totalCash'] ??
         0;
-    final totalMobile = stats['mobileMoneyPayments'] ?? 
-        current['total_mobile_money'] ?? 
-        current['totalMobileMoney'] ?? 
+    final totalMobile = stats['mobileMoneyPayments'] ??
+        current['total_mobile_money'] ??
+        current['totalMobileMoney'] ??
         0;
-    final totalMixed = stats['cardPayments'] ?? 
-        current['total_card'] ?? 
-        current['totalCard'] ?? 
+    final totalMixed = stats['cardPayments'] ??
+        current['total_card'] ??
+        current['totalCard'] ??
         0;
-    final totalDebt = stats['debtPayments'] ?? 
-        current['total_debt'] ?? 
+    final totalDebt = stats['debtPayments'] ??
+        current['total_debt'] ??
         current['totalDebt'] ??
         0;
     final totalSales = stats['totalSales'] ??

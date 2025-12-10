@@ -8,6 +8,7 @@ import 'providers/products_provider.dart';
 import 'providers/tables_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/cart_provider.dart';
+import 'providers/customers_provider.dart';
 import 'services/database_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
@@ -53,6 +54,7 @@ class VendasManagerApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TablesProvider()),
         ChangeNotifierProvider(create: (_) => SyncProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(create: (_) => CustomersProvider()),
       ],
       child: MaterialApp(
         title: 'Vendas Manager Pro',

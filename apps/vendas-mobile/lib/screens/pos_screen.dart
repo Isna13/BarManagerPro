@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cash_box_provider.dart';
 import '../providers/products_provider.dart';
+import '../providers/customers_provider.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
+import '../services/api_service.dart';
 import '../utils/currency_helper.dart';
 import '../utils/responsive_helper.dart';
 import '../utils/app_theme.dart';
@@ -24,6 +26,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
   List<Map<String, dynamic>> _cart = [];
   String? _selectedPaymentMethod;
+  Map<String, dynamic>? _selectedCustomer;
+  bool _showValeConfirmModal = false;
+  Map<String, dynamic>? _valeConfirmData;
 
   @override
   void initState() {
@@ -32,6 +37,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+    // Carregar clientes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CustomersProvider>().loadCustomers();
+    });
   }
 
   @override
@@ -47,6 +56,23 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
   int get _cartItemCount {
     return _cart.fold(0, (sum, item) => sum + (item['quantity'] as int? ?? 0));
+  }
+
+  /// Calcula a economia total com vendas Muntu
+  int get _muntuSavings {
+    return _cart.fold(0, (sum, item) {
+      if (item['isMuntu'] == true) {
+        final normalPrice = (item['normalUnitPrice'] as int? ?? 0) * (item['quantity'] as int? ?? 0);
+        final muntuPrice = item['total'] as int? ?? 0;
+        return sum + (normalPrice - muntuPrice);
+      }
+      return sum;
+    });
+  }
+
+  /// Verifica se há itens Muntu no carrinho
+  bool get _hasMuntuItems {
+    return _cart.any((item) => item['isMuntu'] == true);
   }
 
   @override
@@ -460,21 +486,37 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     final stock = products.getProductStock(productId);
     final isMuntuEligible =
         product['is_muntu_eligible'] == 1 || product['isMuntuEligible'] == true;
+    final muntuQuantity = product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
+    final muntuPrice = product['muntu_price'] ?? product['muntuPrice'] ?? 0;
 
-    final inCart = _cart.any((item) => item['productId'] == productId);
-    final cartItem = _cart.firstWhere(
-      (item) => item['productId'] == productId,
+    // Verificar itens no carrinho (separando unitário e Muntu)
+    final unitCartItem = _cart.firstWhere(
+      (item) => item['productId'] == productId && item['isMuntu'] != true,
       orElse: () => {},
     );
-    final cartQty = cartItem.isNotEmpty ? (cartItem['quantity'] ?? 0) : 0;
+    final muntuCartItem = _cart.firstWhere(
+      (item) => item['productId'] == productId && item['isMuntu'] == true,
+      orElse: () => {},
+    );
+    final totalCartQty = (unitCartItem.isNotEmpty ? (unitCartItem['quantity'] ?? 0) : 0) +
+                         (muntuCartItem.isNotEmpty ? (muntuCartItem['quantity'] ?? 0) : 0);
+    final inCart = totalCartQty > 0;
+
+    final outOfStock = stock <= 0;
+    final lowStock = stock > 0 && stock <= 10;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: outOfStock ? Colors.grey.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border:
-            inCart ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
+        border: inCart 
+            ? Border.all(color: AppTheme.primaryColor, width: 2) 
+            : outOfStock
+            ? Border.all(color: Colors.red.shade200, width: 1)
+            : lowStock 
+            ? Border.all(color: Colors.orange.shade200, width: 1)
+            : null,
         boxShadow: [
           BoxShadow(
             color: inCart
@@ -485,183 +527,189 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: stock > 0 ? () => _addToCart(product, products) : null,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header com nome e estoque
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Ícone ou imagem com badge de quantidade
-                Stack(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: stock > 0
-                            ? AppTheme.primaryGradient
-                            : LinearGradient(
-                                colors: [
-                                  Colors.grey.shade300,
-                                  Colors.grey.shade400,
-                                ],
-                              ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: stock > 0
-                                ? AppTheme.primaryColor.withOpacity(0.3)
-                                : Colors.grey.withOpacity(0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.local_drink_rounded,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                    if (inCart)
-                      Positioned(
-                        right: -4,
-                        top: -4,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            gradient: AppTheme.successGradient,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.green.withOpacity(0.4),
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: Text(
-                            '$cartQty',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Nome
                 Expanded(
-                  child: Text(
-                    name,
-                    style: AppTheme.bodyMedium.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-
-                // Preço e estoque
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        CurrencyHelper.format(price),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.successColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: stock > 0
-                            ? LinearGradient(
-                                colors: [
-                                  Colors.green.shade50,
-                                  Colors.green.shade100,
-                                ],
-                              )
-                            : LinearGradient(
-                                colors: [
-                                  Colors.red.shade50,
-                                  Colors.red.shade100,
-                                ],
-                              ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        stock > 0 ? '$stock' : 'Sem estoque',
-                        style: TextStyle(
-                          fontSize: 11,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: AppTheme.bodyMedium.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: stock > 0 ? Colors.green.shade700 : Colors.red,
+                          color: outOfStock ? Colors.grey : Colors.black87,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
-                ),
-
-                if (isMuntuEligible) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.orange.shade100,
-                          Colors.orange.shade200,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(
-                          Icons.star_rounded,
-                          size: 12,
-                          color: Colors.orange,
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: outOfStock 
+                              ? Colors.red.shade100
+                              : lowStock
+                              ? Colors.orange.shade100
+                              : Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Muntu',
+                        child: Text(
+                          outOfStock ? 'SEM ESTOQUE' : lowStock ? 'Baixo: $stock' : '$stock un',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: Colors.orange,
+                            color: outOfStock 
+                                ? Colors.red.shade700
+                                : lowStock
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (inCart)
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.successGradient,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$totalCartQty',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            
+            const Spacer(),
+            
+            // Botão Unitário
+            SizedBox(
+              width: double.infinity,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: outOfStock ? null : () => _addToCart(product, products, isMuntu: false),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: outOfStock ? null : AppTheme.primaryGradient,
+                      color: outOfStock ? Colors.grey.shade300 : null,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Unitário',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: outOfStock ? Colors.grey.shade600 : Colors.white70,
+                          ),
+                        ),
+                        Text(
+                          CurrencyHelper.format(price),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: outOfStock ? Colors.grey.shade600 : Colors.white,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ],
+                ),
+              ),
             ),
-          ),
+            
+            // Botão Muntu (se elegível)
+            if (isMuntuEligible && muntuPrice > 0 && muntuQuantity > 0) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: (outOfStock || stock < muntuQuantity) 
+                        ? null 
+                        : () => _addToCart(product, products, isMuntu: true),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: (outOfStock || stock < muntuQuantity) 
+                            ? null 
+                            : AppTheme.successGradient,
+                        color: (outOfStock || stock < muntuQuantity) 
+                            ? Colors.grey.shade300 
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.star_rounded,
+                                size: 12,
+                                color: (outOfStock || stock < muntuQuantity) 
+                                    ? Colors.grey.shade600 
+                                    : Colors.white70,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Muntu ($muntuQuantity un)',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: (outOfStock || stock < muntuQuantity) 
+                                      ? Colors.grey.shade600 
+                                      : Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            CurrencyHelper.format(muntuPrice),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: (outOfStock || stock < muntuQuantity) 
+                                  ? Colors.grey.shade600 
+                                  : Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
   }
 
   Widget _buildCart() {
+    final customersProvider = context.watch<CustomersProvider>();
+    
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
@@ -707,7 +755,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 ),
                 if (_cart.isNotEmpty)
                   TextButton.icon(
-                    onPressed: () => setState(() => _cart.clear()),
+                    onPressed: () => setState(() {
+                      _cart.clear();
+                      _selectedCustomer = null;
+                    }),
                     icon: const Icon(
                       Icons.delete_outline_rounded,
                       color: Colors.white70,
@@ -721,6 +772,143 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
+
+          // Seleção de Cliente
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 18, color: Colors.grey.shade600),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Cliente (opcional)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => _showCustomerSelector(customersProvider),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: _selectedCustomer != null
+                          ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _selectedCustomer != null ? Icons.person : Icons.shopping_cart,
+                          size: 20,
+                          color: _selectedCustomer != null 
+                              ? AppTheme.primaryColor 
+                              : Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _selectedCustomer != null
+                                ? _selectedCustomer!['name'] ?? 'Cliente'
+                                : 'Venda sem cliente',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: _selectedCustomer != null 
+                                  ? FontWeight.w600 
+                                  : FontWeight.normal,
+                              color: _selectedCustomer != null 
+                                  ? Colors.black87 
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                        if (_selectedCustomer != null) ...[
+                          // Mostrar crédito disponível
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              CurrencyHelper.format(
+                                customersProvider.getAvailableCredit(_selectedCustomer!['id'])
+                              ),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.green.shade700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () => setState(() => _selectedCustomer = null),
+                            child: Icon(Icons.close, size: 18, color: Colors.grey.shade500),
+                          ),
+                        ] else
+                          Icon(Icons.arrow_drop_down, color: Colors.grey.shade500),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Economia Muntu
+          if (_hasMuntuItems && _muntuSavings > 0)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green.shade50, Colors.green.shade100],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.savings_rounded, color: Colors.green.shade700, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Economia Muntu',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.green.shade800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    CurrencyHelper.format(_muntuSavings),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           // Itens do carrinho
           Expanded(
@@ -873,12 +1061,15 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     final quantity = item['quantity'] as int? ?? 1;
     final unitPrice = item['unitPrice'] as int? ?? 0;
     final total = item['total'] as int? ?? 0;
+    final isMuntu = item['isMuntu'] == true;
+    final muntuQuantity = item['muntuQuantity'] as int? ?? 1;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isMuntu ? Colors.green.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: isMuntu ? Border.all(color: Colors.green.shade200) : null,
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withOpacity(0.1),
@@ -895,11 +1086,41 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    name,
-                    style: AppTheme.bodyMedium.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: AppTheme.bodyMedium.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (isMuntu) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.successGradient,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Pack Muntu (${quantity ~/ muntuQuantity}x$muntuQuantity)',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 IconButton(
@@ -925,7 +1146,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             Row(
               children: [
                 Text(
-                  CurrencyHelper.format(unitPrice),
+                  isMuntu 
+                      ? '${CurrencyHelper.format(item['muntuPrice'] ?? 0)}/pack'
+                      : CurrencyHelper.format(unitPrice),
                   style: AppTheme.bodySmall.copyWith(
                     color: Colors.grey.shade500,
                   ),
@@ -934,7 +1157,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 // Controle de quantidade moderno
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: isMuntu ? Colors.green.shade100 : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -943,7 +1166,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () => _updateQuantity(index, quantity - 1),
+                          onTap: () {
+                            final decrement = isMuntu ? muntuQuantity : 1;
+                            _updateQuantity(index, quantity - decrement);
+                          },
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
                             padding: const EdgeInsets.all(8),
@@ -968,12 +1194,15 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () => _updateQuantity(index, quantity + 1),
+                          onTap: () {
+                            final increment = isMuntu ? muntuQuantity : 1;
+                            _updateQuantity(index, quantity + increment);
+                          },
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
+                              gradient: isMuntu ? AppTheme.successGradient : AppTheme.primaryGradient,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -1075,21 +1304,51 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _addToCart(Map<String, dynamic> product, ProductsProvider products) {
+  void _addToCart(Map<String, dynamic> product, ProductsProvider products, {bool isMuntu = false}) {
     final productId = product['id'];
     final name = product['name'] ?? '';
-    final price = product['price_unit'] ?? product['priceUnit'] ?? 0;
+    final normalPrice = product['price_unit'] ?? product['priceUnit'] ?? 0;
     final stock = products.getProductStock(productId);
+    
+    // Dados Muntu
+    final isMuntuEligible = product['is_muntu_eligible'] == 1 || product['isMuntuEligible'] == true;
+    final muntuQuantity = product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
+    final muntuPrice = product['muntu_price'] ?? product['muntuPrice'] ?? 0;
 
-    final existingIndex =
-        _cart.indexWhere((item) => item['productId'] == productId);
+    // Se é venda Muntu, verificar se tem estoque suficiente para o pack
+    if (isMuntu && isMuntuEligible) {
+      if (stock < muntuQuantity) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Estoque insuficiente para Pack Muntu ($muntuQuantity unidades)'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Verificar item existente (separar Muntu de unitário)
+    final existingIndex = _cart.indexWhere((item) => 
+        item['productId'] == productId && 
+        item['isMuntu'] == isMuntu
+    );
 
     setState(() {
       if (existingIndex >= 0) {
-        final currentQty = _cart[existingIndex]['quantity'] as int? ?? 1;
-        if (currentQty < stock) {
-          _cart[existingIndex]['quantity'] = currentQty + 1;
-          _cart[existingIndex]['total'] = price * (currentQty + 1);
+        final currentQty = _cart[existingIndex]['quantity'] as int? ?? 0;
+        final increment = isMuntu ? muntuQuantity : 1;
+        final newQty = currentQty + increment;
+        
+        if (newQty <= stock) {
+          _cart[existingIndex]['quantity'] = newQty;
+          if (isMuntu) {
+            // Para Muntu, preço é por pack
+            final packCount = newQty ~/ muntuQuantity;
+            _cart[existingIndex]['total'] = muntuPrice * packCount;
+          } else {
+            _cart[existingIndex]['total'] = normalPrice * newQty;
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1099,14 +1358,33 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
           );
         }
       } else {
-        _cart.add({
-          'id': _uuid.v4(),
-          'productId': productId,
-          'name': name,
-          'quantity': 1,
-          'unitPrice': price,
-          'total': price,
-        });
+        if (isMuntu && isMuntuEligible) {
+          // Adicionar pack Muntu
+          _cart.add({
+            'id': _uuid.v4(),
+            'productId': productId,
+            'name': name,
+            'quantity': muntuQuantity,
+            'unitPrice': muntuPrice ~/ muntuQuantity, // Preço por unidade no pack
+            'normalUnitPrice': normalPrice, // Preço normal para calcular economia
+            'muntuQuantity': muntuQuantity,
+            'muntuPrice': muntuPrice,
+            'total': muntuPrice,
+            'isMuntu': true,
+          });
+        } else {
+          // Adicionar unidade normal
+          _cart.add({
+            'id': _uuid.v4(),
+            'productId': productId,
+            'name': name,
+            'quantity': 1,
+            'unitPrice': normalPrice,
+            'normalUnitPrice': normalPrice,
+            'total': normalPrice,
+            'isMuntu': false,
+          });
+        }
       }
     });
   }
@@ -1116,11 +1394,27 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       setState(() => _cart.removeAt(index));
       return;
     }
-
+    
+    final item = _cart[index];
+    final isMuntu = item['isMuntu'] == true;
+    
     setState(() {
-      final unitPrice = _cart[index]['unitPrice'] as int? ?? 0;
-      _cart[index]['quantity'] = newQuantity;
-      _cart[index]['total'] = unitPrice * newQuantity;
+      if (isMuntu) {
+        // Para Muntu, quantidade deve ser múltiplo do pack
+        final muntuQty = item['muntuQuantity'] as int? ?? 1;
+        final muntuPrice = item['muntuPrice'] as int? ?? 0;
+        final packCount = newQuantity ~/ muntuQty;
+        if (packCount > 0) {
+          _cart[index]['quantity'] = packCount * muntuQty;
+          _cart[index]['total'] = muntuPrice * packCount;
+        } else {
+          _cart.removeAt(index);
+        }
+      } else {
+        final unitPrice = _cart[index]['unitPrice'] as int? ?? 0;
+        _cart[index]['quantity'] = newQuantity;
+        _cart[index]['total'] = unitPrice * newQuantity;
+      }
     });
   }
 
@@ -1162,188 +1456,258 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
   Future<void> _showPaymentDialog() async {
     _selectedPaymentMethod = null;
+    final customersProvider = context.read<CustomersProvider>();
 
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.payment_rounded,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Forma de Pagamento',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Total
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.green.shade50,
-                        Colors.green.shade100,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total',
-                        style: AppTheme.bodyLarge.copyWith(
-                          color: Colors.green.shade700,
-                        ),
-                      ),
-                      Text(
-                        CurrencyHelper.format(_cartTotal),
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.successColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Opções de pagamento
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  alignment: WrapAlignment.center,
+        builder: (context, setDialogState) {
+          // Verificar se Vale é permitido
+          final canUseVale = _selectedCustomer != null && 
+              customersProvider.canUseVale(_selectedCustomer!['id'], _cartTotal);
+          final availableCredit = _selectedCustomer != null 
+              ? customersProvider.getAvailableCredit(_selectedCustomer!['id'])
+              : 0;
+          
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 420),
+              padding: const EdgeInsets.all(24),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildPaymentOption(
-                        'cash', 'Dinheiro', Icons.money, setDialogState),
-                    _buildPaymentOption('card', 'Cartão',
-                        Icons.credit_card_rounded, setDialogState),
-                    _buildPaymentOption('mobile_money', 'Mobile\nMoney',
-                        Icons.phone_android_rounded, setDialogState),
-                    _buildPaymentOption('debt', 'Fiado',
-                        Icons.receipt_long_rounded, setDialogState),
-                  ],
-                ),
-                const SizedBox(height: 32),
-
-                // Botões
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                    // Header
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.primaryGradient,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.payment_rounded, color: Colors.white, size: 28),
+                          SizedBox(width: 12),
+                          Text(
+                            'Forma de Pagamento',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        child: Text(
-                          'Cancelar',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 16,
-                          ),
-                        ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      flex: 2,
-                      child: Container(
+                    const SizedBox(height: 20),
+
+                    // Cliente selecionado
+                    if (_selectedCustomer != null)
+                      Container(
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          gradient: _selectedPaymentMethod != null
-                              ? AppTheme.successGradient
-                              : LinearGradient(
-                                  colors: [
-                                    Colors.grey.shade300,
-                                    Colors.grey.shade400,
-                                  ],
-                                ),
+                          color: Colors.blue.shade50,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: _selectedPaymentMethod != null
-                              ? [
-                                  BoxShadow(
-                                    color: Colors.green.withOpacity(0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ]
-                              : null,
+                          border: Border.all(color: Colors.blue.shade200),
                         ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _selectedPaymentMethod != null
-                                ? () =>
-                                    Navigator.pop(ctx, _selectedPaymentMethod)
-                                : null,
-                            borderRadius: BorderRadius.circular(12),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  Icon(
-                                    Icons.check_circle_rounded,
-                                    color: Colors.white,
-                                  ),
-                                  SizedBox(width: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person, color: Colors.blue.shade700, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    'Confirmar',
+                                    _selectedCustomer!['name'] ?? 'Cliente',
                                     style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade900,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Crédito: ${CurrencyHelper.format(availableCredit)}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue.shade700,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
+                    if (_selectedCustomer != null) const SizedBox(height: 16),
+
+                    // Total e economia
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.green.shade50, Colors.green.shade100],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Total', style: AppTheme.bodyLarge.copyWith(color: Colors.green.shade700)),
+                              Text(
+                                CurrencyHelper.format(_cartTotal),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.successColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_muntuSavings > 0) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.savings_rounded, size: 16, color: Colors.green),
+                                    const SizedBox(width: 6),
+                                    Text('Economia Muntu', style: TextStyle(fontSize: 12, color: Colors.green.shade700)),
+                                  ],
+                                ),
+                                Text(
+                                  CurrencyHelper.format(_muntuSavings),
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Opções de pagamento
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _buildPaymentOption('cash', 'Dinheiro', Icons.money, setDialogState),
+                        _buildPaymentOption('orange', 'Orange\nMoney', Icons.phone_android_rounded, setDialogState, color: Colors.orange),
+                        _buildPaymentOption('teletaku', 'TeleTaku', Icons.phone_android_rounded, setDialogState, color: Colors.purple),
+                        _buildPaymentOption(
+                          'vale', 
+                          'Vale\n(Crédito)', 
+                          Icons.receipt_long_rounded, 
+                          setDialogState, 
+                          color: Colors.amber,
+                          enabled: _selectedCustomer != null,
+                          subtitle: _selectedCustomer == null ? 'Selecione cliente' : null,
+                        ),
+                        _buildPaymentOption('mixed', 'Misto', Icons.credit_card_rounded, setDialogState, color: Colors.teal),
+                      ],
+                    ),
+                    
+                    // Aviso de crédito insuficiente para Vale
+                    if (_selectedPaymentMethod == 'vale' && _selectedCustomer != null && !canUseVale)
+                      Container(
+                        margin: const EdgeInsets.only(top: 16),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_rounded, color: Colors.red.shade700, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Crédito insuficiente!\nDisponível: ${CurrencyHelper.format(availableCredit)}',
+                                style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    
+                    const SizedBox(height: 24),
+
+                    // Botões
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text('Cancelar', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: (_selectedPaymentMethod != null && 
+                                        !(_selectedPaymentMethod == 'vale' && !canUseVale))
+                                  ? AppTheme.successGradient
+                                  : LinearGradient(colors: [Colors.grey.shade300, Colors.grey.shade400]),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: (_selectedPaymentMethod != null && 
+                                         !(_selectedPaymentMethod == 'vale' && !canUseVale))
+                                  ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                                  : null,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: (_selectedPaymentMethod != null && 
+                                       !(_selectedPaymentMethod == 'vale' && !canUseVale))
+                                    ? () {
+                                        // Se é Vale, mostrar confirmação
+                                        if (_selectedPaymentMethod == 'vale') {
+                                          Navigator.pop(ctx);
+                                          _showValeConfirmation();
+                                        } else {
+                                          Navigator.pop(ctx, _selectedPaymentMethod);
+                                        }
+                                      }
+                                    : null,
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      Icon(Icons.check_circle_rounded, color: Colors.white),
+                                      SizedBox(width: 8),
+                                      Text('Confirmar', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
 
@@ -1353,32 +1717,26 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPaymentOption(
-      String value, String label, IconData icon, StateSetter setDialogState) {
+      String value, String label, IconData icon, StateSetter setDialogState, 
+      {Color? color, bool enabled = true, String? subtitle}) {
     final isSelected = _selectedPaymentMethod == value;
+    final effectiveColor = color ?? AppTheme.primaryColor;
 
     return GestureDetector(
-      onTap: () => setDialogState(() => _selectedPaymentMethod = value),
+      onTap: enabled ? () => setDialogState(() => _selectedPaymentMethod = value) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 100,
-        padding: const EdgeInsets.all(16),
+        width: 90,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          gradient: isSelected ? AppTheme.primaryGradient : null,
-          color: isSelected ? null : Colors.grey.shade100,
+          gradient: isSelected ? LinearGradient(colors: [effectiveColor, effectiveColor.withOpacity(0.8)]) : null,
+          color: isSelected ? null : (enabled ? Colors.grey.shade100 : Colors.grey.shade200),
           border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade200,
+            color: isSelected ? effectiveColor : Colors.grey.shade300,
             width: isSelected ? 2 : 1,
           ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: isSelected ? [BoxShadow(color: effectiveColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
         ),
         child: Column(
           children: [
@@ -1403,11 +1761,373 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _showCustomerSelector(CustomersProvider customersProvider) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Selecionar Cliente',
+                        style: AppTheme.headlineMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Buscar cliente...',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                        ),
+                        onChanged: (value) {
+                          customersProvider.setSearchQuery(value);
+                          setSheetState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                // Opção sem cliente
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.shopping_cart, color: Colors.grey.shade600),
+                  ),
+                  title: const Text('Venda sem cliente'),
+                  subtitle: const Text('Não associar a um cliente'),
+                  trailing: _selectedCustomer == null
+                      ? Icon(Icons.check_circle, color: AppTheme.primaryColor)
+                      : null,
+                  onTap: () {
+                    setState(() => _selectedCustomer = null);
+                    Navigator.pop(ctx);
+                  },
+                ),
+                const Divider(),
+                Expanded(
+                  child: customersProvider.isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : customersProvider.filteredCustomers.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.people_outline, size: 48, color: Colors.grey.shade400),
+                                  const SizedBox(height: 16),
+                                  Text('Nenhum cliente encontrado', style: TextStyle(color: Colors.grey.shade500)),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              itemCount: customersProvider.filteredCustomers.length,
+                              itemBuilder: (context, index) {
+                                final customer = customersProvider.filteredCustomers[index];
+                                final isSelected = _selectedCustomer?['id'] == customer['id'];
+                                final availableCredit = customersProvider.getAvailableCredit(customer['id']);
+                                
+                                return ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      gradient: isSelected ? AppTheme.primaryGradient : null,
+                                      color: isSelected ? null : Colors.blue.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.person,
+                                      color: isSelected ? Colors.white : Colors.blue.shade700,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    customer['name'] ?? 'Cliente',
+                                    style: TextStyle(
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                  subtitle: Row(
+                                    children: [
+                                      if (customer['phone'] != null && customer['phone'].toString().isNotEmpty)
+                                        Text(customer['phone'], style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.shade100,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'Crédito: ${CurrencyHelper.format(availableCredit)}',
+                                          style: TextStyle(fontSize: 10, color: Colors.green.shade700, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: isSelected
+                                      ? Icon(Icons.check_circle, color: AppTheme.primaryColor)
+                                      : null,
+                                  onTap: () {
+                                    setState(() => _selectedCustomer = customer);
+                                    Navigator.pop(ctx);
+                                  },
+                                );
+                              },
+                            ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showValeConfirmation() {
+    if (_selectedCustomer == null) return;
+    
+    final customersProvider = context.read<CustomersProvider>();
+    final availableCredit = customersProvider.getAvailableCredit(_selectedCustomer!['id']);
+    final remainingAfter = availableCredit - _cartTotal;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [Colors.amber.shade500, Colors.amber.shade600]),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.receipt_long_rounded, color: Colors.white, size: 28),
+                    SizedBox(width: 12),
+                    Text('Confirmar Vale', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Informações do cliente
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person, color: Colors.blue.shade700),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Cliente', style: TextStyle(fontSize: 12, color: Colors.blue.shade600)),
+                          Text(
+                            _selectedCustomer!['name'] ?? 'Cliente',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Valor do Vale
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Valor do Vale', style: TextStyle(color: Colors.green.shade700)),
+                    Text(
+                      CurrencyHelper.format(_cartTotal),
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Crédito disponível e restante
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          Text('Crédito Atual', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                          const SizedBox(height: 4),
+                          Text(
+                            CurrencyHelper.format(availableCredit),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          Text('Restante Após', style: TextStyle(fontSize: 11, color: Colors.amber.shade700)),
+                          const SizedBox(height: 4),
+                          Text(
+                            CurrencyHelper.format(remainingAfter),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber.shade800),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              // Aviso
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_rounded, color: Colors.orange.shade700, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Esta operação criará uma dívida registrada. O cliente deverá quitar o valor.',
+                        style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Botões
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [Colors.amber.shade500, Colors.amber.shade600]),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _processSale('vale');
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text('Confirmar Vale', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _processSale(String paymentMethod) async {
     final auth = context.read<AuthProvider>();
     final cashBox = context.read<CashBoxProvider>();
+    final customersProvider = context.read<CustomersProvider>();
     final db = DatabaseService.instance;
     final sync = SyncService.instance;
+
+    // Salvar valores antes de limpar o carrinho
+    final saleTotal = _cartTotal;
+    final savings = _muntuSavings;
+    final customerId = _selectedCustomer?['id'];
 
     try {
       final saleId = _uuid.v4();
@@ -1422,11 +2142,12 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
         'branch_id': auth.branchId ?? '',
         'type': 'counter',
         'cashier_id': auth.userId ?? '',
+        'customer_id': customerId,
         'status': 'completed',
-        'subtotal': _cartTotal,
-        'total': _cartTotal,
+        'subtotal': saleTotal,
+        'total': saleTotal,
         'payment_method': paymentMethod,
-        'payment_status': paymentMethod == 'debt' ? 'pending' : 'paid',
+        'payment_status': (paymentMethod == 'vale' || paymentMethod == 'debt') ? 'pending' : 'paid',
         'created_at': now,
         'synced': 0,
       });
@@ -1440,20 +2161,32 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
           'qty_units': item['quantity'],
           'unit_price': item['unitPrice'],
           'total': item['total'],
+          'is_muntu': item['isMuntu'] == true ? 1 : 0,
           'created_at': now,
           'synced': 0,
         });
       }
 
-      // Atualizar totais do caixa
+      // Atualizar totais do caixa baseado no método de pagamento
       if (paymentMethod == 'cash') {
-        await cashBox.updateCashBoxTotals(cashAmount: _cartTotal);
-      } else if (paymentMethod == 'card') {
-        await cashBox.updateCashBoxTotals(cardAmount: _cartTotal);
-      } else if (paymentMethod == 'mobile_money') {
-        await cashBox.updateCashBoxTotals(mobileMoneyAmount: _cartTotal);
-      } else if (paymentMethod == 'debt') {
-        await cashBox.updateCashBoxTotals(debtAmount: _cartTotal);
+        await cashBox.updateCashBoxTotals(cashAmount: saleTotal);
+      } else if (paymentMethod == 'orange' || paymentMethod == 'teletaku') {
+        await cashBox.updateCashBoxTotals(mobileMoneyAmount: saleTotal);
+      } else if (paymentMethod == 'mixed') {
+        await cashBox.updateCashBoxTotals(cardAmount: saleTotal);
+      } else if (paymentMethod == 'vale' || paymentMethod == 'debt') {
+        await cashBox.updateCashBoxTotals(debtAmount: saleTotal);
+        
+        // Se é Vale, atualizar dívida do cliente
+        if (paymentMethod == 'vale' && customerId != null) {
+          await customersProvider.updateCustomerDebt(customerId, saleTotal);
+        }
+      }
+
+      // Adicionar pontos de fidelidade (se há cliente e não é Vale/Fiado)
+      Map<String, int>? loyaltyResult;
+      if (customerId != null && paymentMethod != 'vale' && paymentMethod != 'debt') {
+        loyaltyResult = await customersProvider.addLoyaltyPoints(customerId, saleTotal);
       }
 
       // Marcar para sincronização
@@ -1463,14 +2196,29 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
         action: 'create',
       );
 
-      // Limpar carrinho
-      setState(() => _cart.clear());
+      // Limpar carrinho e cliente selecionado
+      setState(() {
+        _cart.clear();
+        _selectedCustomer = null;
+      });
+
+      // Construir mensagem de sucesso
+      String message = 'Venda $saleNumber realizada com sucesso!';
+      if (savings > 0) {
+        message += '\nEconomia Muntu: ${CurrencyHelper.format(savings)}';
+      }
+      if (loyaltyResult != null) {
+        final pointsAdded = loyaltyResult['added'] ?? 0;
+        final totalPoints = loyaltyResult['total'] ?? 0;
+        message += '\n🎉 +$pointsAdded ponto${pointsAdded > 1 ? 's' : ''} fidelidade! Total: $totalPoints';
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Venda $saleNumber realizada com sucesso!'),
+            content: Text(message),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
           ),
         );
 
