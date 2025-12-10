@@ -1643,28 +1643,19 @@ export class SyncManager {
       
       case 'inventory':
       case 'inventory_item':
-        // Inventário - sincronizar ajustes de estoque
-        if (operation === 'update') {
-          // Usar endpoint de ajuste de estoque por produto
-          await this.apiClient.put('/inventory/adjust-by-product', {
+        // Inventário - sincronizar usando valores absolutos via POST /inventory (upsert)
+        if (operation === 'update' || operation === 'create') {
+          // Usar POST /inventory que faz upsert com valores absolutos
+          await this.apiClient.post('/inventory', {
             productId: data.productId || data.product_id,
             branchId: data.branchId || data.branch_id,
-            adjustment: data.adjustment || 0,
-            reason: data.reason || 'Sincronização do Electron Desktop',
+            qtyUnits: data.qtyUnits ?? data.qty_units ?? 0,
+            closedBoxes: data.closedBoxes ?? data.closed_boxes ?? 0,
+            openBoxUnits: data.openBoxUnits ?? data.open_box_units ?? 0,
+            minStock: 10,
+            synced: true,
           });
-          console.log('✅ Estoque sincronizado:', data.productId, 'Ajuste:', data.adjustment);
-          return { success: true };
-        }
-        // Para create, pode ser uma entrada de estoque
-        if (operation === 'create') {
-          await this.apiClient.post('/inventory/add-stock', {
-            productId: data.productId || data.product_id,
-            branchId: data.branchId || data.branch_id,
-            qtyUnits: data.qtyUnits || data.qty_units || 0,
-            qtyBoxes: data.qtyBoxes || data.qty_boxes || 0,
-            reason: data.reason || 'Entrada via Electron Desktop',
-          });
-          console.log('✅ Entrada de estoque sincronizada:', data.productId);
+          console.log('✅ Estoque sincronizado (upsert):', data.productId, 'Qty:', data.qtyUnits ?? data.qty_units ?? 0);
           return { success: true };
         }
         return { skip: true, success: false, reason: 'Operação de inventário não suportada' };
@@ -1729,11 +1720,13 @@ export class SyncManager {
           console.log('✅ Compra sincronizada:', entity_id);
           return { success: true };
         } else if (operation === 'update') {
-          await this.apiClient.put(`/purchases/${entity_id}`, {
-            status: data.status,
-            total: data.total,
-            notes: data.notes,
-          });
+          // Construir payload apenas com campos definidos
+          const updatePayload: any = {};
+          if (data.status) updatePayload.status = data.status;
+          if (data.total !== undefined && data.total !== null) updatePayload.total = data.total;
+          if (data.notes !== undefined) updatePayload.notes = data.notes;
+          
+          await this.apiClient.put(`/purchases/${entity_id}`, updatePayload);
           console.log('✅ Compra atualizada no backend:', entity_id, '- Status:', data.status);
           return { success: true };
         }

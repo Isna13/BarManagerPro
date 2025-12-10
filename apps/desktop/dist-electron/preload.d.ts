@@ -119,6 +119,7 @@ declare const api: {
     tablePayments: {
         processCustomer: (data: any) => Promise<any>;
         processSession: (data: any) => Promise<any>;
+        clearPaidOrders: (data: any) => Promise<any>;
     };
     database: {
         fixUnitCost: () => Promise<any>;

@@ -603,6 +603,20 @@ export declare class DatabaseManager {
         itemsCount: number;
     };
     /**
+     * Limpar pedidos pagos de um cliente
+     * Remove pedidos com status 'paid' do histórico da mesa, mantendo apenas pendentes
+     */
+    clearPaidOrders(data: {
+        sessionId: string;
+        tableCustomerId: string;
+        clearedBy: string;
+    }): {
+        success: boolean;
+        ordersCleared: any;
+        totalCleared: any;
+        remainingTotal: any;
+    };
+    /**
      * Fechar sessão de mesa
      */
     closeTableSession(data: {

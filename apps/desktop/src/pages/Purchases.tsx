@@ -50,6 +50,7 @@ interface PurchaseDetail extends Purchase {
     product_name: string;
     product_sku: string;
     qty_units: number;
+    units_per_box: number;
     unit_cost: number;
     total: number;
     batch_number?: string;
@@ -822,11 +823,15 @@ const Purchases: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {purchaseDetails.items.map((item) => (
+                      {purchaseDetails.items.map((item) => {
+                        // Calcular quantidade de caixas a partir das unidades
+                        const unitsPerBox = item.units_per_box || 24;
+                        const qtyBoxes = Math.floor(item.qty_units / unitsPerBox);
+                        return (
                         <tr key={item.id}>
                           <td className="px-4 py-3 text-sm">{item.product_name}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{item.product_sku}</td>
-                          <td className="px-4 py-3 text-sm font-medium">{item.qty_units}</td>
+                          <td className="px-4 py-3 text-sm font-medium">{qtyBoxes}</td>
                           <td className="px-4 py-3 text-sm">{(item.unit_cost / 100).toFixed(2)} FCFA</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{item.batch_number || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">
@@ -836,7 +841,8 @@ const Purchases: React.FC = () => {
                             {(item.total / 100).toFixed(2)} FCFA
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                     <tfoot className="bg-gray-50">
                       <tr>

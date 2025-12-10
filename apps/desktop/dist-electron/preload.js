@@ -141,6 +141,7 @@ const api = {
     tablePayments: {
         processCustomer: (data) => electron_1.ipcRenderer.invoke('tablePayments:processCustomer', data),
         processSession: (data) => electron_1.ipcRenderer.invoke('tablePayments:processSession', data),
+        clearPaidOrders: (data) => electron_1.ipcRenderer.invoke('tablePayments:clearPaidOrders', data),
     },
     // Database Migrations
     database: {

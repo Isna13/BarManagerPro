@@ -1309,12 +1309,44 @@ export default function TablesPage() {
                     {/* Pedidos do Cliente */}
                     {customer.orders.length > 0 && (
                       <div className="space-y-1">
+                        {/* Botão de limpar pedidos pagos */}
+                        {customer.orders.some(o => o.status === 'paid') && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const result = await electronAPI.tablePayments.clearPaidOrders({
+                                  sessionId: selectedSession?.id,
+                                  tableCustomerId: customer.id,
+                                  clearedBy: localStorage.getItem('userId') || 'default-user',
+                                });
+                                toast?.success(`✅ ${result.ordersCleared} pedidos pagos limpos!`);
+                                if (selectedSession) {
+                                  await loadSession(selectedSession.id);
+                                }
+                                await loadTables();
+                              } catch (error: any) {
+                                toast?.error(error.message || 'Erro ao limpar pedidos');
+                              }
+                            }}
+                            className="w-full px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 flex items-center justify-center gap-1 mb-2"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Limpar pedidos já pagos ({customer.orders.filter(o => o.status === 'paid').length})
+                          </button>
+                        )}
                         {customer.orders.map((order) => (
-                          <div key={order.id} className={`flex justify-between items-center text-sm rounded p-2 ${order.is_muntu ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
+                          <div key={order.id} className={`flex justify-between items-center text-sm rounded p-2 ${
+                            order.status === 'paid' 
+                              ? 'bg-green-100 border border-green-300 opacity-60' 
+                              : order.is_muntu 
+                                ? 'bg-green-50 border border-green-200' 
+                                : 'bg-gray-50'
+                          }`}>
                             <div className="flex-1">
                               <div className="font-medium">
                                 {order.product_name}
                                 {order.is_muntu && <span className="ml-1 text-xs text-green-600">🎁 Muntu</span>}
+                                {order.status === 'paid' && <span className="ml-1 text-xs text-green-700 font-semibold">✓ Pago</span>}
                               </div>
                               <div className="text-xs text-gray-500">
                                 {order.qty_units}x {formatCurrency(order.unit_price)}

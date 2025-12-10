@@ -1406,9 +1406,9 @@ export class DatabaseManager {
       WHERE id = ?
     `).get(purchase.supplier_id);
 
-    // Buscar itens da compra
+    // Buscar itens da compra (incluindo units_per_box para calcular quantidade de caixas)
     const items = this.db.prepare(`
-      SELECT pi.*, p.name as product_name, p.sku as product_sku
+      SELECT pi.*, p.name as product_name, p.sku as product_sku, p.units_per_box
       FROM purchase_items pi
       LEFT JOIN products p ON pi.product_id = p.id
       WHERE pi.purchase_id = ?
@@ -1445,7 +1445,8 @@ export class DatabaseManager {
       purchaseData.receivedBy || null
     );
 
-    this.addToSyncQueue('create', 'purchase', id, purchaseData);
+    // Incluir purchaseNumber nos dados do sync
+    this.addToSyncQueue('create', 'purchase', id, { ...purchaseData, purchaseNumber });
     return { id, purchaseNumber };
   }
 
@@ -1475,8 +1476,8 @@ export class DatabaseManager {
     // Atualizar totais da compra
     this.updatePurchaseTotals(purchaseId);
 
-    // Adicionar à fila de sincronização
-    this.addToSyncQueue('create', 'purchase_item', id, itemData, 1);
+    // Adicionar à fila de sincronização - incluir purchaseId nos dados!
+    this.addToSyncQueue('create', 'purchase_item', id, { ...itemData, purchaseId }, 1);
 
     return { id, ...itemData };
   }
@@ -1655,16 +1656,30 @@ export class DatabaseManager {
         const closedBoxes = Math.floor(qtyUnits / unitsPerBox);
         const openBoxUnits = qtyUnits % unitsPerBox;
 
+        const newQtyUnits = (existing as any).qty_units + qtyUnits;
+        const newClosedBoxes = (existing as any).closed_boxes + closedBoxes;
+        const newOpenBoxUnits = (existing as any).open_box_units + openBoxUnits;
+
         this.db.prepare(`
           UPDATE inventory_items 
-          SET qty_units = qty_units + ?,
-              closed_boxes = closed_boxes + ?,
-              open_box_units = open_box_units + ?,
+          SET qty_units = ?,
+              closed_boxes = ?,
+              open_box_units = ?,
               expiry_date = COALESCE(?, expiry_date),
               updated_at = datetime('now'),
               synced = 0
           WHERE id = ?
-        `).run(qtyUnits, closedBoxes, openBoxUnits, expiryDate, (existing as any).id);
+        `).run(newQtyUnits, newClosedBoxes, newOpenBoxUnits, expiryDate, (existing as any).id);
+
+        // Sincronizar estoque com lote - usar valores absolutos
+        this.addToSyncQueue('update', 'inventory', productId, {
+          productId,
+          branchId,
+          qtyUnits: newQtyUnits,
+          closedBoxes: newClosedBoxes,
+          openBoxUnits: newOpenBoxUnits,
+          reason: `Compra recebida - Lote ${batchNumber}`,
+        }, 2);
       } else {
         const id = this.generateUUID();
         const closedBoxes = Math.floor(qtyUnits / unitsPerBox);
@@ -1677,6 +1692,15 @@ export class DatabaseManager {
           )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `).run(id, productId, branchId, qtyUnits, closedBoxes, openBoxUnits, batchNumber, expiryDate);
+
+        // Sincronizar novo registro de estoque com lote
+        this.addToSyncQueue('create', 'inventory', productId, {
+          productId,
+          branchId,
+          qtyUnits,
+          qtyBoxes: closedBoxes,
+          reason: `Compra inicial - Lote ${batchNumber}`,
+        }, 2);
       }
     } else {
       // Adicionar ao estoque geral (sem lote) usando sistema de caixas
@@ -1704,6 +1728,10 @@ export class DatabaseManager {
           WHERE id = ?
         `).run(qtyUnits, closedBoxes, openBoxUnits, (existing as any).id);
 
+        const newQtyAfter = qtyBefore + qtyUnits;
+        const newClosedBoxesAfter = closedBoxesBefore + closedBoxes;
+        const newOpenBoxAfter = openBoxBefore + openBoxUnits;
+
         // Registrar movimento
         this.registerStockMovement({
           productId,
@@ -1711,15 +1739,25 @@ export class DatabaseManager {
           movementType: 'purchase',
           quantity: qtyUnits,
           quantityBefore: qtyBefore,
-          quantityAfter: qtyBefore + qtyUnits,
+          quantityAfter: newQtyAfter,
           closedBoxesBefore,
-          closedBoxesAfter: closedBoxesBefore + closedBoxes,
+          closedBoxesAfter: newClosedBoxesAfter,
           openBoxBefore,
-          openBoxAfter: openBoxBefore + openBoxUnits,
+          openBoxAfter: newOpenBoxAfter,
           boxOpenedAutomatically: false,
           reason: 'Compra recebida',
           responsible: 'system',
         });
+
+        // Sincronizar estoque com o servidor - usar valores absolutos
+        this.addToSyncQueue('update', 'inventory', productId, {
+          productId,
+          branchId,
+          qtyUnits: newQtyAfter,
+          closedBoxes: newClosedBoxesAfter,
+          openBoxUnits: newOpenBoxAfter,
+          reason: 'Compra recebida',
+        }, 2);
       } else {
         const id = this.generateUUID();
 
@@ -1747,6 +1785,15 @@ export class DatabaseManager {
           reason: 'Compra inicial',
           responsible: 'system',
         });
+
+        // Sincronizar estoque com o servidor (criar entrada)
+        this.addToSyncQueue('create', 'inventory', productId, {
+          productId,
+          branchId,
+          qtyUnits,
+          qtyBoxes: closedBoxes,
+          reason: 'Compra inicial',
+        }, 2);
       }
     }
   }
@@ -4829,24 +4876,27 @@ export class DatabaseManager {
       throw new Error('Cliente não encontrado');
     }
 
-    // Buscar pedidos do cliente
+    // Buscar apenas pedidos PENDENTES do cliente (não cancelados E não pagos)
     const orders = this.db.prepare(`
       SELECT o.*, p.name as product_name
       FROM table_orders o
       LEFT JOIN products p ON o.product_id = p.id
-      WHERE o.table_customer_id = ? AND o.status != 'cancelled'
+      WHERE o.table_customer_id = ? AND o.status NOT IN ('cancelled', 'paid')
     `).all(data.tableCustomerId) as any[];
 
     if (orders.length === 0) {
-      throw new Error('Cliente não possui pedidos');
+      throw new Error('Cliente não possui pedidos pendentes');
     }
+
+    // Calcular total dos pedidos PENDENTES (não usar customer.total que inclui pagos)
+    const pendingTotal = orders.reduce((sum, o) => sum + (o.total || 0), 0);
 
     // Gerar número de venda único
     const lastSale: any = this.db.prepare('SELECT sale_number FROM sales ORDER BY created_at DESC LIMIT 1').get();
     const lastNumber = lastSale?.sale_number ? parseInt(lastSale.sale_number.split('-')[1]) : 0;
     const saleNumber = `SALE-${String(lastNumber + 1).padStart(6, '0')}`;
 
-    // Criar venda (SALE)
+    // Criar venda (SALE) - usar pendingTotal em vez de customer.total
     const saleId = this.generateUUID();
     this.db.prepare(`
       INSERT INTO sales (
@@ -4861,8 +4911,8 @@ export class DatabaseManager {
       session.table_id,
       customer.customer_id || null, // ID do cliente cadastrado (se houver)
       data.processedBy,
-      customer.total,
-      customer.total,
+      pendingTotal,
+      pendingTotal,
       0 // muntu_savings será calculado pelos itens
     );
 
@@ -5020,8 +5070,8 @@ export class DatabaseManager {
       customerName: customer.customer_name,
       cashierId: data.processedBy,
       status: 'paid',
-      subtotal: customer.total,
-      total: customer.total,
+      subtotal: pendingTotal,
+      total: pendingTotal,
       muntuSavings: totalMuntuSavings,
       paymentMethod: data.method,
       ...saleData
@@ -5306,6 +5356,101 @@ export class DatabaseManager {
       amount: data.amount,
       muntuSavings: totalMuntuSavings,
       itemsCount: orders.length
+    };
+  }
+
+  /**
+   * Limpar pedidos pagos de um cliente
+   * Remove pedidos com status 'paid' do histórico da mesa, mantendo apenas pendentes
+   */
+  clearPaidOrders(data: {
+    sessionId: string;
+    tableCustomerId: string;
+    clearedBy: string;
+  }) {
+    const session = this.getTableSessionById(data.sessionId);
+    if (!session) {
+      throw new Error('Sessão não encontrada');
+    }
+
+    const customer = this.db.prepare('SELECT * FROM table_customers WHERE id = ?').get(data.tableCustomerId) as any;
+    if (!customer) {
+      throw new Error('Cliente não encontrado');
+    }
+
+    // Contar pedidos pagos antes de deletar
+    const paidOrders = this.db.prepare(`
+      SELECT COUNT(*) as count, SUM(total) as total
+      FROM table_orders 
+      WHERE table_customer_id = ? AND status = 'paid'
+    `).get(data.tableCustomerId) as any;
+
+    if (paidOrders.count === 0) {
+      throw new Error('Cliente não possui pedidos pagos para limpar');
+    }
+
+    // Deletar pedidos pagos
+    this.db.prepare(`
+      DELETE FROM table_orders 
+      WHERE table_customer_id = ? AND status = 'paid'
+    `).run(data.tableCustomerId);
+
+    // Recalcular totais do cliente baseado nos pedidos restantes (pendentes)
+    const remainingOrders = this.db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total, COALESCE(SUM(subtotal), 0) as subtotal
+      FROM table_orders 
+      WHERE table_customer_id = ? AND status NOT IN ('cancelled', 'paid')
+    `).get(data.tableCustomerId) as any;
+
+    // Atualizar totais do cliente
+    this.db.prepare(`
+      UPDATE table_customers 
+      SET subtotal = ?,
+          total = ?,
+          paid_amount = 0,
+          payment_status = CASE WHEN ? > 0 THEN 'pending' ELSE 'pending' END,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      remainingOrders.subtotal || 0,
+      remainingOrders.total || 0,
+      remainingOrders.total || 0,
+      data.tableCustomerId
+    );
+
+    // Recalcular totais da sessão
+    const sessionTotals = this.db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total, COALESCE(SUM(paid_amount), 0) as paid
+      FROM table_customers 
+      WHERE session_id = ?
+    `).get(data.sessionId) as any;
+
+    this.db.prepare(`
+      UPDATE table_sessions 
+      SET total_amount = ?,
+          paid_amount = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(sessionTotals.total || 0, sessionTotals.paid || 0, data.sessionId);
+
+    // Registrar ação
+    this.logTableAction({
+      sessionId: data.sessionId,
+      actionType: 'clear_paid_orders',
+      performedBy: data.clearedBy,
+      description: `Limpeza de ${paidOrders.count} pedidos pagos (${paidOrders.total / 100} FCFA) - ${customer.customer_name}`,
+      metadata: JSON.stringify({ 
+        customerId: data.tableCustomerId,
+        ordersCleared: paidOrders.count,
+        totalCleared: paidOrders.total
+      }),
+    });
+
+    return {
+      success: true,
+      ordersCleared: paidOrders.count,
+      totalCleared: paidOrders.total,
+      remainingTotal: remainingOrders.total || 0
     };
   }
 

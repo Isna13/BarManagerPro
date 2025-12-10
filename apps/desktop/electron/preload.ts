@@ -172,6 +172,7 @@ const api = {
   tablePayments: {
     processCustomer: (data: any) => ipcRenderer.invoke('tablePayments:processCustomer', data),
     processSession: (data: any) => ipcRenderer.invoke('tablePayments:processSession', data),
+    clearPaidOrders: (data: any) => ipcRenderer.invoke('tablePayments:clearPaidOrders', data),
   },
   
   // Database Migrations

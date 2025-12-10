@@ -431,6 +431,9 @@ electron_1.ipcMain.handle('tablePayments:processCustomer', async (_, data) => {
 electron_1.ipcMain.handle('tablePayments:processSession', async (_, data) => {
     return dbManager.processTableSessionPayment(data);
 });
+electron_1.ipcMain.handle('tablePayments:clearPaidOrders', async (_, data) => {
+    return dbManager.clearPaidOrders(data);
+});
 electron_1.ipcMain.handle('cashbox:getById', async (_, id) => {
     return dbManager.getCashBoxById(id);
 });

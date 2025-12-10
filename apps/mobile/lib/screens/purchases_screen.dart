@@ -527,7 +527,7 @@ class _ItemRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 Text(
-                  '${item.quantity}x ${currencyFormat.format(item.unitCost)}',
+                  '${item.quantityBoxes}x ${currencyFormat.format(item.unitCost)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

@@ -609,10 +609,10 @@ class Purchase {
   final String supplierId;
   final String? supplierName;
   final String? invoiceNumber;
-  final double subtotal;
+  final double _subtotal;
   final double tax;
   final double discount;
-  final double total;
+  final double _total;
   final String status;
   final String? notes;
   final DateTime purchaseDate;
@@ -624,16 +624,35 @@ class Purchase {
     required this.supplierId,
     this.supplierName,
     this.invoiceNumber,
-    required this.subtotal,
+    required double subtotal,
     this.tax = 0,
     this.discount = 0,
-    required this.total,
+    required double total,
     required this.status,
     this.notes,
     required this.purchaseDate,
     this.receivedAt,
     this.items = const [],
-  });
+  })  : _subtotal = subtotal,
+        _total = total;
+
+  // Calcular subtotal a partir dos itens se houver itens
+  // Os itens têm os valores corretos (subtotal = boxes × unitCost)
+  double get subtotal {
+    if (items.isNotEmpty) {
+      return items.fold(0.0, (sum, item) => sum + item.subtotal);
+    }
+    return _subtotal;
+  }
+
+  // Calcular total a partir dos itens + impostos - descontos
+  double get total {
+    if (items.isNotEmpty) {
+      final itemsTotal = items.fold(0.0, (sum, item) => sum + item.subtotal);
+      return itemsTotal + tax - discount;
+    }
+    return _total;
+  }
 
   factory Purchase.fromJson(Map<String, dynamic> json) {
     // O backend retorna supplier como objeto aninhado
@@ -647,18 +666,29 @@ class Purchase {
       return double.tryParse(value.toString()) ?? 0;
     }
 
+    // Calcular subtotal e total - usar totalCost se total/subtotal for 0
+    final rawSubtotal = safeDouble(json['subtotal']);
+    final rawTotal = safeDouble(json['total']);
+    final rawTotalCost = safeDouble(json['totalCost']);
+
+    // Se subtotal/total forem 0 mas totalCost existir, usar totalCost
+    final effectiveSubtotal = rawSubtotal > 0 ? rawSubtotal : rawTotalCost;
+    final effectiveTotal = rawTotal > 0 ? rawTotal : rawTotalCost;
+
     return Purchase(
       id: json['id']?.toString() ?? '',
-      supplierId: json['supplier_id']?.toString() ?? json['supplierId']?.toString() ?? '',
+      supplierId: json['supplier_id']?.toString() ??
+          json['supplierId']?.toString() ??
+          '',
       supplierName:
           supplier?['name'] ?? json['supplier_name'] ?? json['supplierName'],
       invoiceNumber: json['invoice_number'] ??
           json['invoiceNumber'] ??
           json['purchaseNumber'],
-      subtotal: safeDouble(json['subtotal'] ?? json['totalCost']) / 100,
+      subtotal: effectiveSubtotal / 100,
       tax: safeDouble(json['tax']) / 100,
       discount: safeDouble(json['discount']) / 100,
-      total: safeDouble(json['total'] ?? json['totalCost']) / 100,
+      total: effectiveTotal / 100,
       status: json['status']?.toString() ?? 'pending',
       notes: json['notes']?.toString(),
       purchaseDate: DateTime.tryParse(json['purchase_date']?.toString() ??
@@ -682,7 +712,7 @@ class Purchase {
   static List<PurchaseItem> _parseItems(dynamic itemsJson) {
     if (itemsJson == null) return [];
     if (itemsJson is! List) return [];
-    
+
     final List<PurchaseItem> result = [];
     for (final item in itemsJson) {
       if (item is Map<String, dynamic>) {
@@ -704,9 +734,26 @@ class PurchaseItem {
   final String purchaseId;
   final String productId;
   final String? productName;
-  final int quantity;
+  final int quantity; // Quantidade em unidades
+  final int unitsPerBox; // Unidades por caixa do produto
   final double unitCost;
-  final double subtotal;
+  final double _rawSubtotal;
+
+  // Quantidade de caixas calculada
+  int get quantityBoxes =>
+      unitsPerBox > 0 ? (quantity / unitsPerBox).floor() : quantity;
+
+  // Subtotal calculado: caixas × custo unitário por caixa
+  // Se o valor raw for muito diferente do esperado, recalcular
+  double get subtotal {
+    final expected = quantityBoxes * unitCost;
+    // Se o raw subtotal for muito diferente (mais de 2x ou menos que metade), usar o calculado
+    if (_rawSubtotal > 0 &&
+        (_rawSubtotal > expected * 2 || _rawSubtotal < expected / 2)) {
+      return expected;
+    }
+    return _rawSubtotal > 0 ? _rawSubtotal : expected;
+  }
 
   PurchaseItem({
     required this.id,
@@ -714,9 +761,10 @@ class PurchaseItem {
     required this.productId,
     this.productName,
     required this.quantity,
+    this.unitsPerBox = 24,
     required this.unitCost,
-    required this.subtotal,
-  });
+    required double subtotal,
+  }) : _rawSubtotal = subtotal;
 
   factory PurchaseItem.fromJson(Map<String, dynamic> json) {
     // productName pode vir direto ou dentro do objeto 'product'
@@ -726,21 +774,48 @@ class PurchaseItem {
     }
 
     // Parse numéricos com segurança
-    final rawQty = json['qtyUnits'] ?? json['qty_units'] ?? json['quantity'] ?? 1;
+    final rawQty =
+        json['qtyUnits'] ?? json['qty_units'] ?? json['quantity'] ?? 1;
     final rawUnitCost = json['unit_cost'] ?? json['unitCost'] ?? 0;
     final rawSubtotal = json['subtotal'] ?? 0;
-    
+
+    // unitsPerBox pode vir do item ou do produto aninhado
+    int unitsPerBox = 24; // default
+    if (json['units_per_box'] != null) {
+      unitsPerBox = json['units_per_box'] is int
+          ? json['units_per_box']
+          : int.tryParse(json['units_per_box'].toString()) ?? 24;
+    } else if (json['unitsPerBox'] != null) {
+      unitsPerBox = json['unitsPerBox'] is int
+          ? json['unitsPerBox']
+          : int.tryParse(json['unitsPerBox'].toString()) ?? 24;
+    } else if (json['product'] != null &&
+        json['product']['unitsPerBox'] != null) {
+      unitsPerBox = json['product']['unitsPerBox'] is int
+          ? json['product']['unitsPerBox']
+          : int.tryParse(json['product']['unitsPerBox'].toString()) ?? 24;
+    } else if (json['product'] != null &&
+        json['product']['units_per_box'] != null) {
+      unitsPerBox = json['product']['units_per_box'] is int
+          ? json['product']['units_per_box']
+          : int.tryParse(json['product']['units_per_box'].toString()) ?? 24;
+    }
+
     return PurchaseItem(
       id: json['id']?.toString() ?? '',
-      purchaseId: json['purchase_id']?.toString() ?? json['purchaseId']?.toString() ?? '',
-      productId: json['product_id']?.toString() ?? json['productId']?.toString() ?? '',
+      purchaseId: json['purchase_id']?.toString() ??
+          json['purchaseId']?.toString() ??
+          '',
+      productId:
+          json['product_id']?.toString() ?? json['productId']?.toString() ?? '',
       productName: productName,
       quantity: (rawQty is int) ? rawQty : int.tryParse(rawQty.toString()) ?? 1,
+      unitsPerBox: unitsPerBox,
       unitCost: _toDouble(rawUnitCost) / 100,
       subtotal: _toDouble(rawSubtotal) / 100,
     );
   }
-  
+
   static double _toDouble(dynamic value) {
     if (value == null) return 0;
     if (value is double) return value;

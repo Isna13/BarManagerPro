@@ -493,6 +493,9 @@ ipcMain.handle('tablePayments:processSession', async (_, data) => {
   return dbManager.processTableSessionPayment(data);
 });
 
+ipcMain.handle('tablePayments:clearPaidOrders', async (_, data) => {
+  return dbManager.clearPaidOrders(data);
+});
 ipcMain.handle('cashbox:getById', async (_, id) => {
   return dbManager.getCashBoxById(id);
 });
