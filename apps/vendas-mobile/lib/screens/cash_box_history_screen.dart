@@ -87,6 +87,11 @@ class _CashBoxHistoryScreenState extends State<CashBoxHistoryScreen> {
     // Ler de stats se existir, ou diretamente do objeto
     final stats = item['stats'] as Map<String, dynamic>? ?? {};
     final totalSales = item['total_sales'] ?? item['totalSales'] ?? stats['totalSales'] ?? 0;
+    final totalCash = item['total_cash'] ?? item['totalCash'] ?? stats['cashPayments'] ?? 0;
+    final totalMobile = item['total_mobile_money'] ?? item['totalMobileMoney'] ?? stats['mobileMoneyPayments'] ?? 0;
+    final totalMixed = item['total_card'] ?? item['totalCard'] ?? stats['cardPayments'] ?? 0;
+    final totalDebt = item['total_debt'] ?? item['totalDebt'] ?? stats['debtPayments'] ?? 0;
+    final salesCount = stats['salesCount'] ?? item['sales_count'] ?? 0;
     final closingCash = item['closing_cash'] ?? item['closingCash'] ?? 0;
     final difference = item['difference'] ?? 0;
     final notes = item['notes'];
@@ -198,37 +203,51 @@ class _CashBoxHistoryScreenState extends State<CashBoxHistoryScreen> {
                 _buildDetailRow('Fechado em', closedAt),
                 _buildDetailRow('Duração', duration),
                 const Divider(),
-                _buildDetailRow('Abertura', CurrencyHelper.format(openingCash)),
+                _buildDetailRow('Valor Inicial', CurrencyHelper.format(openingCash)),
+                _buildDetailRow('Total de Vendas', '$salesCount venda${salesCount != 1 ? 's' : ''}'),
                 _buildDetailRow(
-                  'Vendas em Dinheiro',
-                  CurrencyHelper.format(
-                      item['total_cash'] ?? item['totalCash'] ?? 0),
-                ),
-                _buildDetailRow(
-                  'Vendas em Cartão',
-                  CurrencyHelper.format(
-                      item['total_card'] ?? item['totalCard'] ?? 0),
-                ),
-                _buildDetailRow(
-                  'Mobile Money',
-                  CurrencyHelper.format(item['total_mobile_money'] ??
-                      item['totalMobileMoney'] ??
-                      0),
-                ),
-                _buildDetailRow(
-                  'Vendas a Prazo',
-                  CurrencyHelper.format(
-                      item['total_debt'] ?? item['totalDebt'] ?? 0),
-                ),
-                const Divider(),
-                _buildDetailRow(
-                  'Total de Vendas',
+                  'Faturamento Total',
                   CurrencyHelper.format(totalSales),
                   valueStyle: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.green,
                   ),
                 ),
+                const Divider(),
+                // Métodos de pagamento (igual ao Electron)
+                _buildDetailRow(
+                  'Dinheiro',
+                  CurrencyHelper.format(totalCash),
+                  valueStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green,
+                  ),
+                ),
+                _buildDetailRow(
+                  'Orange & TeleTaku',
+                  CurrencyHelper.format(totalMobile),
+                  valueStyle: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.purple.shade600,
+                  ),
+                ),
+                _buildDetailRow(
+                  'Misto',
+                  CurrencyHelper.format(totalMixed),
+                  valueStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue,
+                  ),
+                ),
+                _buildDetailRow(
+                  'Vale',
+                  CurrencyHelper.format(totalDebt),
+                  valueStyle: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.amber.shade700,
+                  ),
+                ),
+                const Divider(),
                 _buildDetailRow(
                   'Valor no Fechamento',
                   CurrencyHelper.format(closingCash),

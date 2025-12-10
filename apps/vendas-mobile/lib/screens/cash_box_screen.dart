@@ -127,13 +127,20 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
 
   Widget _buildOpenCashBoxView(CashBoxProvider cashBox) {
     final current = cashBox.currentCashBox!;
+    final stats = current['stats'] as Map<String, dynamic>? ?? {};
+    
+    // Valores do caixa
     final openingCash = current['opening_cash'] ?? current['openingCash'] ?? 0;
-    final totalCash = current['total_cash'] ?? current['totalCash'] ?? 0;
-    final totalCard = current['total_card'] ?? current['totalCard'] ?? 0;
-    final totalMobileMoney =
-        current['total_mobile_money'] ?? current['totalMobileMoney'] ?? 0;
-    final totalDebt = current['total_debt'] ?? current['totalDebt'] ?? 0;
-    final totalSales = current['total_sales'] ?? current['totalSales'] ?? 0;
+    
+    // Totais por método de pagamento (ler de stats ou diretamente)
+    final totalCash = current['total_cash'] ?? current['totalCash'] ?? stats['cashPayments'] ?? 0;
+    final totalMobile = current['total_mobile_money'] ?? current['totalMobileMoney'] ?? stats['mobileMoneyPayments'] ?? 0;
+    final totalMixed = current['total_card'] ?? current['totalCard'] ?? stats['cardPayments'] ?? 0;
+    final totalDebt = current['total_debt'] ?? current['totalDebt'] ?? stats['debtPayments'] ?? 0;
+    final totalSales = current['total_sales'] ?? current['totalSales'] ?? stats['totalSales'] ?? 0;
+    final salesCount = stats['salesCount'] ?? current['sales_count'] ?? 0;
+    
+    // Dinheiro esperado = abertura + vendas em dinheiro
     final expectedCash = openingCash + totalCash;
 
     final openedAt = current['opened_at'] ?? current['openedAt'];
@@ -141,7 +148,7 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
     if (openedAt != null) {
       try {
         final date = DateTime.parse(openedAt);
-        openedAtFormatted = DateFormat('dd/MM/yyyy HH:mm').format(date);
+        openedAtFormatted = DateFormat('dd/MM/yyyy, HH:mm').format(date);
       } catch (_) {}
     }
 
@@ -152,96 +159,108 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header com status
-          StatusCard(
-            icon: Icons.lock_open_rounded,
-            color: AppTheme.successColor,
-            title: 'Caixa Aberto',
-            subtitle: 'Aberto em: $openedAtFormatted',
-          ),
-          SizedBox(height: context.responsiveSpacing()),
-
-          // Resumo de valores
-          ModernCard(
-            padding: EdgeInsets.all(context.responsiveSpacing(base: 18)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Resumo do Caixa',
-                  style: TextStyle(
-                    fontSize: context.responsiveFontSize(17),
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                SizedBox(height: context.responsiveSpacing(base: 16)),
-                DetailRow(
-                  label: 'Valor de Abertura',
-                  value: CurrencyHelper.format(openingCash),
-                  valueColor: AppTheme.infoColor,
-                ),
-                Divider(height: 1, color: Colors.grey.shade100),
-                DetailRow(
-                  label: 'Vendas em Dinheiro',
-                  value: CurrencyHelper.format(totalCash),
-                  valueColor: AppTheme.successColor,
-                ),
-                DetailRow(
-                  label: 'Vendas em Cartão',
-                  value: CurrencyHelper.format(totalCard),
-                  valueColor: Colors.purple,
-                ),
-                DetailRow(
-                  label: 'Mobile Money',
-                  value: CurrencyHelper.format(totalMobileMoney),
-                  valueColor: Colors.orange,
-                ),
-                DetailRow(
-                  label: 'Vendas a Prazo',
-                  value: CurrencyHelper.format(totalDebt),
-                  valueColor: AppTheme.errorColor,
-                ),
-                Divider(height: 1, color: Colors.grey.shade100),
-                DetailRow(
-                  label: 'Total de Vendas',
-                  value: CurrencyHelper.format(totalSales),
-                  valueFontWeight: FontWeight.bold,
-                ),
-                SizedBox(height: context.responsiveSpacing(base: 12)),
-                Container(
-                  padding: EdgeInsets.all(context.responsiveSpacing(base: 14)),
-                  decoration: BoxDecoration(
-                    color: AppTheme.infoLight,
-                    borderRadius: AppTheme.borderRadiusMedium,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          'Dinheiro Esperado',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: context.responsiveFontSize(14),
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        CurrencyHelper.format(expectedCash),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: context.responsiveFontSize(16),
-                          color: AppTheme.infoColor,
-                        ),
-                      ),
-                    ],
-                  ),
+          // Header com status do caixa (igual ao Electron)
+          Container(
+            padding: EdgeInsets.all(context.responsiveSpacing(base: 20)),
+            decoration: BoxDecoration(
+              gradient: AppTheme.successGradient,
+              borderRadius: AppTheme.borderRadiusMedium,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.successColor.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.lock_open_rounded, color: Colors.white, size: 28),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Caixa Aberto',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: context.responsiveFontSize(20),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            current['box_number'] ?? current['boxNumber'] ?? '-',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: context.responsiveFontSize(13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Abertura',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: context.responsiveFontSize(11),
+                          ),
+                        ),
+                        Text(
+                          openedAtFormatted,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: context.responsiveFontSize(13),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // Linha com Valor Inicial, Total de Vendas, Faturamento Total
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildHeaderStat('Valor Inicial', CurrencyHelper.format(openingCash), Colors.white),
+                    ),
+                    Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
+                    Expanded(
+                      child: _buildHeaderStat('Total de Vendas', '$salesCount venda${salesCount != 1 ? 's' : ''}', Colors.white, isBlue: true),
+                    ),
+                    Container(width: 1, height: 40, color: Colors.white.withOpacity(0.3)),
+                    Expanded(
+                      child: _buildHeaderStat('Faturamento Total', CurrencyHelper.format(totalSales), Colors.white, isGreen: true),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: context.responsiveSpacing(base: 20)),
+
+          // Cards de métodos de pagamento (igual ao Electron)
+          _buildPaymentMethodsGrid(
+            totalCash: totalCash,
+            totalMobile: totalMobile,
+            totalMixed: totalMixed,
+            totalDebt: totalDebt,
+            totalSales: totalSales,
+            expectedCash: expectedCash,
           ),
           SizedBox(height: context.responsiveSpacing(base: 24)),
 
@@ -255,6 +274,169 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
             onPressed: () => _showCloseCashBoxDialog(cashBox, expectedCash),
           ),
           SizedBox(height: context.responsiveSpacing(base: 20)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderStat(String label, String value, Color textColor, {bool isBlue = false, bool isGreen = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: textColor.withOpacity(0.8),
+              fontSize: context.responsiveFontSize(11),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: isBlue ? const Color(0xFF2196F3) : (isGreen ? const Color(0xFF4CAF50) : textColor),
+              fontSize: context.responsiveFontSize(14),
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodsGrid({
+    required int totalCash,
+    required int totalMobile,
+    required int totalMixed,
+    required int totalDebt,
+    required int totalSales,
+    required int expectedCash,
+  }) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildPaymentCard(
+                icon: Icons.attach_money_rounded,
+                iconColor: Colors.green,
+                iconBgColor: Colors.green.shade100,
+                title: 'Dinheiro',
+                value: totalCash,
+                subtitle: 'Esperado: ${CurrencyHelper.format(expectedCash)}',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildPaymentCard(
+                icon: Icons.smartphone_rounded,
+                iconColor: Colors.purple,
+                iconBgColor: Colors.purple.shade100,
+                title: 'Orange & TeleTaku',
+                value: totalMobile,
+                subtitle: 'Mobile Money',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPaymentCard(
+                icon: Icons.credit_card_rounded,
+                iconColor: Colors.blue,
+                iconBgColor: Colors.blue.shade100,
+                title: 'Misto',
+                value: totalMixed,
+                subtitle: 'Pagamento Combinado',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildPaymentCard(
+                icon: Icons.receipt_long_rounded,
+                iconColor: Colors.amber.shade700,
+                iconBgColor: Colors.amber.shade100,
+                title: 'Vale',
+                value: totalDebt,
+                subtitle: 'Crédito Concedido',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildPaymentCard(
+          icon: Icons.trending_up_rounded,
+          iconColor: Colors.orange,
+          iconBgColor: Colors.orange.shade100,
+          title: 'Total Geral',
+          value: totalSales,
+          isFullWidth: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentCard({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBgColor,
+    required String title,
+    required int value,
+    String? subtitle,
+    bool isFullWidth = false,
+  }) {
+    return ModernCard(
+      padding: EdgeInsets.all(context.responsiveSpacing(base: 16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: context.responsiveFontSize(14),
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            CurrencyHelper.format(value),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: context.responsiveFontSize(isFullWidth ? 22 : 18),
+              color: iconColor,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: context.responsiveFontSize(11),
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );
