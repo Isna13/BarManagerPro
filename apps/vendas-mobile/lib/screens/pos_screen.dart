@@ -2473,7 +2473,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                           : FontWeight.normal,
                                     ),
                                   ),
-                                  subtitle: Row(
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       if (customer['phone'] != null &&
                                           customer['phone']
@@ -2483,19 +2484,19 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                             style: TextStyle(
                                                 fontSize: 12,
                                                 color: Colors.grey.shade600)),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(height: 4),
                                       Container(
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
+                                            horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
                                           color: Colors.green.shade100,
                                           borderRadius:
-                                              BorderRadius.circular(6),
+                                              BorderRadius.circular(8),
                                         ),
                                         child: Text(
                                           'Crédito: ${CurrencyHelper.format(availableCredit)}',
                                           style: TextStyle(
-                                              fontSize: 10,
+                                              fontSize: 11,
                                               color: Colors.green.shade700,
                                               fontWeight: FontWeight.w600),
                                         ),

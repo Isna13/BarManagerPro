@@ -76,7 +76,7 @@ class CustomersProvider extends ChangeNotifier {
 
       if (localCustomers.isNotEmpty) {
         _customers = localCustomers.map((c) => _normalizeCustomer(c)).toList();
-        
+
         // Remover duplicatas baseado no ID
         final seen = <String>{};
         _customers = _customers.where((c) {
