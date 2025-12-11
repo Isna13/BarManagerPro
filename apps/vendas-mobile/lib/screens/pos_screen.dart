@@ -389,7 +389,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 padding: EdgeInsets.all(padding),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: Responsive.gridCrossAxisCount(context),
-                  childAspectRatio: Responsive.isTablet(context) ? 0.9 : 0.85,
+                  childAspectRatio: Responsive.isTablet(context) ? 0.75 : 0.65,
                   crossAxisSpacing: Responsive.spacing(context),
                   mainAxisSpacing: Responsive.spacing(context),
                 ),
@@ -1170,6 +1170,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
               ],
             ),
             const SizedBox(height: 8),
+            // Preço unitário e controles
             Row(
               children: [
                 Text(
@@ -1246,16 +1247,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                Text(
-                  CurrencyHelper.format(total),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.successColor,
-                    fontSize: 15,
-                  ),
-                ),
               ],
+            ),
+            // Total em linha separada
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                CurrencyHelper.format(total),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.successColor,
+                  fontSize: 18,
+                ),
+              ),
             ),
           ],
         ),
@@ -1848,16 +1853,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                               ],
                                             ),
                                           ),
-                                          const SizedBox(width: 16),
-                                          Text(
-                                            CurrencyHelper.format(total),
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.successColor,
-                                            ),
-                                          ),
                                         ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      // Total em linha separada
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          CurrencyHelper.format(total),
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.successColor,
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
