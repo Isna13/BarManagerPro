@@ -62,7 +62,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
   int get _muntuSavings {
     return _cart.fold(0, (sum, item) {
       if (item['isMuntu'] == true) {
-        final normalPrice = (item['normalUnitPrice'] as int? ?? 0) * (item['quantity'] as int? ?? 0);
+        final normalPrice = (item['normalUnitPrice'] as int? ?? 0) *
+            (item['quantity'] as int? ?? 0);
         final muntuPrice = item['total'] as int? ?? 0;
         return sum + (normalPrice - muntuPrice);
       }
@@ -486,7 +487,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     final stock = products.getProductStock(productId);
     final isMuntuEligible =
         product['is_muntu_eligible'] == 1 || product['isMuntuEligible'] == true;
-    final muntuQuantity = product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
+    final muntuQuantity =
+        product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
     final muntuPrice = product['muntu_price'] ?? product['muntuPrice'] ?? 0;
 
     // Verificar itens no carrinho (separando unitário e Muntu)
@@ -498,8 +500,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       (item) => item['productId'] == productId && item['isMuntu'] == true,
       orElse: () => {},
     );
-    final totalCartQty = (unitCartItem.isNotEmpty ? (unitCartItem['quantity'] ?? 0) : 0) +
-                         (muntuCartItem.isNotEmpty ? (muntuCartItem['quantity'] ?? 0) : 0);
+    final totalCartQty =
+        (unitCartItem.isNotEmpty ? (unitCartItem['quantity'] ?? 0) : 0) +
+            (muntuCartItem.isNotEmpty ? (muntuCartItem['quantity'] ?? 0) : 0);
     final inCart = totalCartQty > 0;
 
     final outOfStock = stock <= 0;
@@ -510,13 +513,13 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: outOfStock ? Colors.grey.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: inCart 
-            ? Border.all(color: AppTheme.primaryColor, width: 2) 
+        border: inCart
+            ? Border.all(color: AppTheme.primaryColor, width: 2)
             : outOfStock
-            ? Border.all(color: Colors.red.shade200, width: 1)
-            : lowStock 
-            ? Border.all(color: Colors.orange.shade200, width: 1)
-            : null,
+                ? Border.all(color: Colors.red.shade200, width: 1)
+                : lowStock
+                    ? Border.all(color: Colors.orange.shade200, width: 1)
+                    : null,
         boxShadow: [
           BoxShadow(
             color: inCart
@@ -551,25 +554,30 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: outOfStock 
+                          color: outOfStock
                               ? Colors.red.shade100
                               : lowStock
-                              ? Colors.orange.shade100
-                              : Colors.green.shade100,
+                                  ? Colors.orange.shade100
+                                  : Colors.green.shade100,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          outOfStock ? 'SEM ESTOQUE' : lowStock ? 'Baixo: $stock' : '$stock un',
+                          outOfStock
+                              ? 'SEM ESTOQUE'
+                              : lowStock
+                                  ? 'Baixo: $stock'
+                                  : '$stock un',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: outOfStock 
+                            color: outOfStock
                                 ? Colors.red.shade700
                                 : lowStock
-                                ? Colors.orange.shade700
-                                : Colors.green.shade700,
+                                    ? Colors.orange.shade700
+                                    : Colors.green.shade700,
                           ),
                         ),
                       ),
@@ -594,16 +602,18 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                   ),
               ],
             ),
-            
+
             const Spacer(),
-            
+
             // Botão Unitário
             SizedBox(
               width: double.infinity,
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: outOfStock ? null : () => _addToCart(product, products, isMuntu: false),
+                  onTap: outOfStock
+                      ? null
+                      : () => _addToCart(product, products, isMuntu: false),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -618,7 +628,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           'Unitário',
                           style: TextStyle(
                             fontSize: 10,
-                            color: outOfStock ? Colors.grey.shade600 : Colors.white70,
+                            color: outOfStock
+                                ? Colors.grey.shade600
+                                : Colors.white70,
                           ),
                         ),
                         Text(
@@ -626,7 +638,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: outOfStock ? Colors.grey.shade600 : Colors.white,
+                            color: outOfStock
+                                ? Colors.grey.shade600
+                                : Colors.white,
                           ),
                         ),
                       ],
@@ -635,7 +649,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            
+
             // Botão Muntu (se elegível)
             if (isMuntuEligible && muntuPrice > 0 && muntuQuantity > 0) ...[
               const SizedBox(height: 6),
@@ -644,18 +658,18 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: (outOfStock || stock < muntuQuantity) 
-                        ? null 
+                    onTap: (outOfStock || stock < muntuQuantity)
+                        ? null
                         : () => _addToCart(product, products, isMuntu: true),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        gradient: (outOfStock || stock < muntuQuantity) 
-                            ? null 
+                        gradient: (outOfStock || stock < muntuQuantity)
+                            ? null
                             : AppTheme.successGradient,
-                        color: (outOfStock || stock < muntuQuantity) 
-                            ? Colors.grey.shade300 
+                        color: (outOfStock || stock < muntuQuantity)
+                            ? Colors.grey.shade300
                             : null,
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -668,8 +682,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               Icon(
                                 Icons.star_rounded,
                                 size: 12,
-                                color: (outOfStock || stock < muntuQuantity) 
-                                    ? Colors.grey.shade600 
+                                color: (outOfStock || stock < muntuQuantity)
+                                    ? Colors.grey.shade600
                                     : Colors.white70,
                               ),
                               const SizedBox(width: 4),
@@ -677,8 +691,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                 'Muntu ($muntuQuantity un)',
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: (outOfStock || stock < muntuQuantity) 
-                                      ? Colors.grey.shade600 
+                                  color: (outOfStock || stock < muntuQuantity)
+                                      ? Colors.grey.shade600
                                       : Colors.white70,
                                 ),
                               ),
@@ -689,8 +703,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: (outOfStock || stock < muntuQuantity) 
-                                  ? Colors.grey.shade600 
+                              color: (outOfStock || stock < muntuQuantity)
+                                  ? Colors.grey.shade600
                                   : Colors.white,
                             ),
                           ),
@@ -709,7 +723,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
   Widget _buildCart() {
     final customersProvider = context.watch<CustomersProvider>();
-    
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
@@ -787,7 +801,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.person_outline, size: 18, color: Colors.grey.shade600),
+                    Icon(Icons.person_outline,
+                        size: 18, color: Colors.grey.shade600),
                     const SizedBox(width: 8),
                     Text(
                       'Cliente (opcional)',
@@ -804,7 +819,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                   onTap: () => _showCustomerSelector(customersProvider),
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(12),
@@ -815,25 +831,27 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                     child: Row(
                       children: [
                         Icon(
-                          _selectedCustomer != null ? Icons.person : Icons.shopping_cart,
+                          _selectedCustomer != null
+                              ? Icons.person
+                              : Icons.shopping_cart,
                           size: 20,
-                          color: _selectedCustomer != null 
-                              ? AppTheme.primaryColor 
+                          color: _selectedCustomer != null
+                              ? AppTheme.primaryColor
                               : Colors.grey.shade500,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             _selectedCustomer != null
-                                ? _selectedCustomer!['name'] ?? 'Cliente'
+                                ? (_selectedCustomer!['name'] ?? _selectedCustomer!['fullName'] ?? 'Cliente')
                                 : 'Venda sem cliente',
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: _selectedCustomer != null 
-                                  ? FontWeight.w600 
+                              fontWeight: _selectedCustomer != null
+                                  ? FontWeight.w600
                                   : FontWeight.normal,
-                              color: _selectedCustomer != null 
-                                  ? Colors.black87 
+                              color: _selectedCustomer != null
+                                  ? Colors.black87
                                   : Colors.grey.shade600,
                             ),
                           ),
@@ -841,15 +859,16 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                         if (_selectedCustomer != null) ...[
                           // Mostrar crédito disponível
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.green.shade100,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               CurrencyHelper.format(
-                                customersProvider.getAvailableCredit(_selectedCustomer!['id'])
-                              ),
+                                  customersProvider.getAvailableCredit(
+                                      _selectedCustomer!['id'])),
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -859,11 +878,14 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           ),
                           const SizedBox(width: 8),
                           GestureDetector(
-                            onTap: () => setState(() => _selectedCustomer = null),
-                            child: Icon(Icons.close, size: 18, color: Colors.grey.shade500),
+                            onTap: () =>
+                                setState(() => _selectedCustomer = null),
+                            child: Icon(Icons.close,
+                                size: 18, color: Colors.grey.shade500),
                           ),
                         ] else
-                          Icon(Icons.arrow_drop_down, color: Colors.grey.shade500),
+                          Icon(Icons.arrow_drop_down,
+                              color: Colors.grey.shade500),
                       ],
                     ),
                   ),
@@ -886,7 +908,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.savings_rounded, color: Colors.green.shade700, size: 20),
+                  Icon(Icons.savings_rounded,
+                      color: Colors.green.shade700, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -1098,7 +1121,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       if (isMuntu) ...[
                         const SizedBox(height: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             gradient: AppTheme.successGradient,
                             borderRadius: BorderRadius.circular(8),
@@ -1106,7 +1130,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                              const Icon(Icons.star_rounded,
+                                  size: 12, color: Colors.white),
                               const SizedBox(width: 4),
                               Text(
                                 'Pack Muntu (${quantity ~/ muntuQuantity}x$muntuQuantity)',
@@ -1146,7 +1171,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             Row(
               children: [
                 Text(
-                  isMuntu 
+                  isMuntu
                       ? '${CurrencyHelper.format(item['muntuPrice'] ?? 0)}/pack'
                       : CurrencyHelper.format(unitPrice),
                   style: AppTheme.bodySmall.copyWith(
@@ -1157,7 +1182,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 // Controle de quantidade moderno
                 Container(
                   decoration: BoxDecoration(
-                    color: isMuntu ? Colors.green.shade100 : Colors.grey.shade100,
+                    color:
+                        isMuntu ? Colors.green.shade100 : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -1202,7 +1228,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              gradient: isMuntu ? AppTheme.successGradient : AppTheme.primaryGradient,
+                              gradient: isMuntu
+                                  ? AppTheme.successGradient
+                                  : AppTheme.primaryGradient,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -1304,15 +1332,18 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _addToCart(Map<String, dynamic> product, ProductsProvider products, {bool isMuntu = false}) {
+  void _addToCart(Map<String, dynamic> product, ProductsProvider products,
+      {bool isMuntu = false}) {
     final productId = product['id'];
     final name = product['name'] ?? '';
     final normalPrice = product['price_unit'] ?? product['priceUnit'] ?? 0;
     final stock = products.getProductStock(productId);
-    
+
     // Dados Muntu
-    final isMuntuEligible = product['is_muntu_eligible'] == 1 || product['isMuntuEligible'] == true;
-    final muntuQuantity = product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
+    final isMuntuEligible =
+        product['is_muntu_eligible'] == 1 || product['isMuntuEligible'] == true;
+    final muntuQuantity =
+        product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
     final muntuPrice = product['muntu_price'] ?? product['muntuPrice'] ?? 0;
 
     // Se é venda Muntu, verificar se tem estoque suficiente para o pack
@@ -1320,7 +1351,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       if (stock < muntuQuantity) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Estoque insuficiente para Pack Muntu ($muntuQuantity unidades)'),
+            content: Text(
+                'Estoque insuficiente para Pack Muntu ($muntuQuantity unidades)'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -1329,17 +1361,15 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     }
 
     // Verificar item existente (separar Muntu de unitário)
-    final existingIndex = _cart.indexWhere((item) => 
-        item['productId'] == productId && 
-        item['isMuntu'] == isMuntu
-    );
+    final existingIndex = _cart.indexWhere(
+        (item) => item['productId'] == productId && item['isMuntu'] == isMuntu);
 
     setState(() {
       if (existingIndex >= 0) {
         final currentQty = _cart[existingIndex]['quantity'] as int? ?? 0;
         final increment = isMuntu ? muntuQuantity : 1;
         final newQty = currentQty + increment;
-        
+
         if (newQty <= stock) {
           _cart[existingIndex]['quantity'] = newQty;
           if (isMuntu) {
@@ -1365,8 +1395,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             'productId': productId,
             'name': name,
             'quantity': muntuQuantity,
-            'unitPrice': muntuPrice ~/ muntuQuantity, // Preço por unidade no pack
-            'normalUnitPrice': normalPrice, // Preço normal para calcular economia
+            'unitPrice':
+                muntuPrice ~/ muntuQuantity, // Preço por unidade no pack
+            'normalUnitPrice':
+                normalPrice, // Preço normal para calcular economia
             'muntuQuantity': muntuQuantity,
             'muntuPrice': muntuPrice,
             'total': muntuPrice,
@@ -1394,10 +1426,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       setState(() => _cart.removeAt(index));
       return;
     }
-    
+
     final item = _cart[index];
     final isMuntu = item['isMuntu'] == true;
-    
+
     setState(() {
       if (isMuntu) {
         // Para Muntu, quantidade deve ser múltiplo do pack
@@ -1423,32 +1455,391 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
+      builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.75,
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
         builder: (context, scrollController) => StatefulBuilder(
-          builder: (context, setModalState) => Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 48,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(3),
+          builder: (context, setModalState) {
+            final customersProvider = this.context.watch<CustomersProvider>();
+            
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    width: 48,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
-                ),
-                Expanded(child: _buildCart()),
-              ],
-            ),
-          ),
+                  // Header do carrinho
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.primaryGradient,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.shopping_cart, color: Colors.white),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Carrinho',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (_cart.isNotEmpty)
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() => _cart.clear());
+                              setModalState(() {});
+                            },
+                            icon: const Icon(Icons.delete_outline, color: Colors.white70, size: 18),
+                            label: const Text('Limpar', style: TextStyle(color: Colors.white70)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Seletor de cliente
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showCustomerSelector(customersProvider);
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: _selectedCustomer != null
+                              ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _selectedCustomer != null ? Icons.person : Icons.shopping_cart,
+                              size: 20,
+                              color: _selectedCustomer != null ? AppTheme.primaryColor : Colors.grey.shade500,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _selectedCustomer != null
+                                    ? (_selectedCustomer!['name'] ?? _selectedCustomer!['fullName'] ?? 'Cliente')
+                                    : 'Venda sem cliente',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: _selectedCustomer != null ? FontWeight.w600 : FontWeight.normal,
+                                  color: _selectedCustomer != null ? Colors.black87 : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.arrow_drop_down, color: Colors.grey.shade500),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  // Itens do carrinho
+                  Expanded(
+                    child: _cart.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.shopping_cart_outlined, size: 48, color: Colors.grey.shade400),
+                                const SizedBox(height: 16),
+                                Text('Carrinho vazio', style: TextStyle(color: Colors.grey.shade500)),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.all(12),
+                            itemCount: _cart.length,
+                            itemBuilder: (context, index) {
+                              final item = _cart[index];
+                              final name = item['name'] ?? '';
+                              final quantity = item['quantity'] as int? ?? 1;
+                              final unitPrice = item['unitPrice'] as int? ?? 0;
+                              final total = item['total'] as int? ?? 0;
+                              final isMuntu = item['isMuntu'] == true;
+                              final muntuQuantity = item['muntuQuantity'] as int? ?? 1;
+
+                              return Container(
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: isMuntu ? Colors.green.shade50 : Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: isMuntu ? Border.all(color: Colors.green.shade200) : null,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  name,
+                                                  style: AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+                                                ),
+                                                if (isMuntu) ...[
+                                                  const SizedBox(height: 4),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      gradient: AppTheme.successGradient,
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          'Pack Muntu (${quantity ~/ muntuQuantity}x$muntuQuantity)',
+                                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.shade50,
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400, size: 18),
+                                            ),
+                                            onPressed: () {
+                                              setState(() => _cart.removeAt(index));
+                                              setModalState(() {});
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            isMuntu
+                                                ? '${CurrencyHelper.format(item['muntuPrice'] ?? 0)}/pack'
+                                                : CurrencyHelper.format(unitPrice),
+                                            style: AppTheme.bodySmall.copyWith(color: Colors.grey.shade500),
+                                          ),
+                                          const Spacer(),
+                                          // Controle de quantidade
+                                          Container(
+                                            decoration: BoxDecoration(
+                                              color: isMuntu ? Colors.green.shade100 : Colors.grey.shade100,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: () {
+                                                      final decrement = isMuntu ? muntuQuantity : 1;
+                                                      final newQty = quantity - decrement;
+                                                      if (newQty <= 0) {
+                                                        setState(() => _cart.removeAt(index));
+                                                      } else {
+                                                        setState(() {
+                                                          _cart[index]['quantity'] = newQty;
+                                                          _cart[index]['total'] = isMuntu
+                                                              ? (newQty ~/ muntuQuantity) * (item['muntuPrice'] as int? ?? 0)
+                                                              : newQty * unitPrice;
+                                                        });
+                                                      }
+                                                      setModalState(() {});
+                                                    },
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(8),
+                                                      child: Icon(Icons.remove_rounded, size: 18, color: Colors.grey.shade700),
+                                                    ),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  constraints: const BoxConstraints(minWidth: 40),
+                                                  alignment: Alignment.center,
+                                                  child: Text(
+                                                    quantity.toString(),
+                                                    style: AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                                                  ),
+                                                ),
+                                                Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: () {
+                                                      final increment = isMuntu ? muntuQuantity : 1;
+                                                      final newQty = quantity + increment;
+                                                      setState(() {
+                                                        _cart[index]['quantity'] = newQty;
+                                                        _cart[index]['total'] = isMuntu
+                                                            ? (newQty ~/ muntuQuantity) * (item['muntuPrice'] as int? ?? 0)
+                                                            : newQty * unitPrice;
+                                                      });
+                                                      setModalState(() {});
+                                                    },
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(8),
+                                                      decoration: BoxDecoration(
+                                                        gradient: isMuntu ? AppTheme.successGradient : AppTheme.primaryGradient,
+                                                        borderRadius: BorderRadius.circular(12),
+                                                      ),
+                                                      child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Text(
+                                            CurrencyHelper.format(total),
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.successColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  
+                  // Total e botão de pagamento
+                  if (_cart.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.15),
+                            blurRadius: 20,
+                            offset: const Offset(0, -5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Total', style: AppTheme.bodyMedium.copyWith(color: Colors.grey.shade500)),
+                                  Text('$_cartItemCount itens', style: AppTheme.bodySmall.copyWith(color: Colors.grey.shade400)),
+                                ],
+                              ),
+                              Text(
+                                CurrencyHelper.format(_cartTotal),
+                                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.successColor),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: AppTheme.successGradient,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.green.withOpacity(0.4),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    _showPaymentDialog();
+                                  },
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 18),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.payment_rounded, color: Colors.white),
+                                        SizedBox(width: 12),
+                                        Text(
+                                          'Finalizar Venda',
+                                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1463,12 +1854,13 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           // Verificar se Vale é permitido
-          final canUseVale = _selectedCustomer != null && 
-              customersProvider.canUseVale(_selectedCustomer!['id'], _cartTotal);
-          final availableCredit = _selectedCustomer != null 
+          final canUseVale = _selectedCustomer != null &&
+              customersProvider.canUseVale(
+                  _selectedCustomer!['id'], _cartTotal);
+          final availableCredit = _selectedCustomer != null
               ? customersProvider.getAvailableCredit(_selectedCustomer!['id'])
               : 0;
-          
+
           return Dialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
@@ -1490,7 +1882,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
-                          Icon(Icons.payment_rounded, color: Colors.white, size: 28),
+                          Icon(Icons.payment_rounded,
+                              color: Colors.white, size: 28),
                           SizedBox(width: 12),
                           Text(
                             'Forma de Pagamento',
@@ -1516,7 +1909,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.person, color: Colors.blue.shade700, size: 20),
+                            Icon(Icons.person,
+                                color: Colors.blue.shade700, size: 20),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Column(
@@ -1558,7 +1952,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Total', style: AppTheme.bodyLarge.copyWith(color: Colors.green.shade700)),
+                              Text('Total',
+                                  style: AppTheme.bodyLarge
+                                      .copyWith(color: Colors.green.shade700)),
                               Text(
                                 CurrencyHelper.format(_cartTotal),
                                 style: TextStyle(
@@ -1576,14 +1972,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(Icons.savings_rounded, size: 16, color: Colors.green),
+                                    const Icon(Icons.savings_rounded,
+                                        size: 16, color: Colors.green),
                                     const SizedBox(width: 6),
-                                    Text('Economia Muntu', style: TextStyle(fontSize: 12, color: Colors.green.shade700)),
+                                    Text('Economia Muntu',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.green.shade700)),
                                   ],
                                 ),
                                 Text(
                                   CurrencyHelper.format(_muntuSavings),
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green.shade700),
                                 ),
                               ],
                             ),
@@ -1599,24 +2001,35 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       runSpacing: 10,
                       alignment: WrapAlignment.center,
                       children: [
-                        _buildPaymentOption('cash', 'Dinheiro', Icons.money, setDialogState),
-                        _buildPaymentOption('orange', 'Orange\nMoney', Icons.phone_android_rounded, setDialogState, color: Colors.orange),
-                        _buildPaymentOption('teletaku', 'TeleTaku', Icons.phone_android_rounded, setDialogState, color: Colors.purple),
                         _buildPaymentOption(
-                          'vale', 
-                          'Vale\n(Crédito)', 
-                          Icons.receipt_long_rounded, 
-                          setDialogState, 
+                            'cash', 'Dinheiro', Icons.money, setDialogState),
+                        _buildPaymentOption('orange', 'Orange\nMoney',
+                            Icons.phone_android_rounded, setDialogState,
+                            color: Colors.orange),
+                        _buildPaymentOption('teletaku', 'TeleTaku',
+                            Icons.phone_android_rounded, setDialogState,
+                            color: Colors.purple),
+                        _buildPaymentOption(
+                          'vale',
+                          'Vale\n(Crédito)',
+                          Icons.receipt_long_rounded,
+                          setDialogState,
                           color: Colors.amber,
                           enabled: _selectedCustomer != null,
-                          subtitle: _selectedCustomer == null ? 'Selecione cliente' : null,
+                          subtitle: _selectedCustomer == null
+                              ? 'Selecione cliente'
+                              : null,
                         ),
-                        _buildPaymentOption('mixed', 'Misto', Icons.credit_card_rounded, setDialogState, color: Colors.teal),
+                        _buildPaymentOption('mixed', 'Misto',
+                            Icons.credit_card_rounded, setDialogState,
+                            color: Colors.teal),
                       ],
                     ),
-                    
+
                     // Aviso de crédito insuficiente para Vale
-                    if (_selectedPaymentMethod == 'vale' && _selectedCustomer != null && !canUseVale)
+                    if (_selectedPaymentMethod == 'vale' &&
+                        _selectedCustomer != null &&
+                        !canUseVale)
                       Container(
                         margin: const EdgeInsets.only(top: 16),
                         padding: const EdgeInsets.all(12),
@@ -1627,18 +2040,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.warning_rounded, color: Colors.red.shade700, size: 20),
+                            Icon(Icons.warning_rounded,
+                                color: Colors.red.shade700, size: 20),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 'Crédito insuficiente!\nDisponível: ${CurrencyHelper.format(availableCredit)}',
-                                style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.red.shade700),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    
+
                     const SizedBox(height: 24),
 
                     // Botões
@@ -1649,9 +2064,12 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                             onPressed: () => Navigator.pop(ctx),
                             style: TextButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
                             ),
-                            child: Text('Cancelar', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                            child: Text('Cancelar',
+                                style: TextStyle(
+                                    color: Colors.grey.shade600, fontSize: 16)),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -1659,40 +2077,58 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                           flex: 2,
                           child: Container(
                             decoration: BoxDecoration(
-                              gradient: (_selectedPaymentMethod != null && 
-                                        !(_selectedPaymentMethod == 'vale' && !canUseVale))
+                              gradient: (_selectedPaymentMethod != null &&
+                                      !(_selectedPaymentMethod == 'vale' &&
+                                          !canUseVale))
                                   ? AppTheme.successGradient
-                                  : LinearGradient(colors: [Colors.grey.shade300, Colors.grey.shade400]),
+                                  : LinearGradient(colors: [
+                                      Colors.grey.shade300,
+                                      Colors.grey.shade400
+                                    ]),
                               borderRadius: BorderRadius.circular(12),
-                              boxShadow: (_selectedPaymentMethod != null && 
-                                         !(_selectedPaymentMethod == 'vale' && !canUseVale))
-                                  ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                              boxShadow: (_selectedPaymentMethod != null &&
+                                      !(_selectedPaymentMethod == 'vale' &&
+                                          !canUseVale))
+                                  ? [
+                                      BoxShadow(
+                                          color: Colors.green.withOpacity(0.3),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4))
+                                    ]
                                   : null,
                             ),
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: (_selectedPaymentMethod != null && 
-                                       !(_selectedPaymentMethod == 'vale' && !canUseVale))
+                                onTap: (_selectedPaymentMethod != null &&
+                                        !(_selectedPaymentMethod == 'vale' &&
+                                            !canUseVale))
                                     ? () {
                                         // Se é Vale, mostrar confirmação
                                         if (_selectedPaymentMethod == 'vale') {
                                           Navigator.pop(ctx);
                                           _showValeConfirmation();
                                         } else {
-                                          Navigator.pop(ctx, _selectedPaymentMethod);
+                                          Navigator.pop(
+                                              ctx, _selectedPaymentMethod);
                                         }
                                       }
                                     : null,
                                 borderRadius: BorderRadius.circular(12),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: const [
-                                      Icon(Icons.check_circle_rounded, color: Colors.white),
+                                      Icon(Icons.check_circle_rounded,
+                                          color: Colors.white),
                                       SizedBox(width: 8),
-                                      Text('Confirmar', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                      Text('Confirmar',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold)),
                                     ],
                                   ),
                                 ),
@@ -1717,26 +2153,40 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPaymentOption(
-      String value, String label, IconData icon, StateSetter setDialogState, 
+      String value, String label, IconData icon, StateSetter setDialogState,
       {Color? color, bool enabled = true, String? subtitle}) {
     final isSelected = _selectedPaymentMethod == value;
     final effectiveColor = color ?? AppTheme.primaryColor;
 
     return GestureDetector(
-      onTap: enabled ? () => setDialogState(() => _selectedPaymentMethod = value) : null,
+      onTap: enabled
+          ? () => setDialogState(() => _selectedPaymentMethod = value)
+          : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 90,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          gradient: isSelected ? LinearGradient(colors: [effectiveColor, effectiveColor.withOpacity(0.8)]) : null,
-          color: isSelected ? null : (enabled ? Colors.grey.shade100 : Colors.grey.shade200),
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [effectiveColor, effectiveColor.withOpacity(0.8)])
+              : null,
+          color: isSelected
+              ? null
+              : (enabled ? Colors.grey.shade100 : Colors.grey.shade200),
           border: Border.all(
             color: isSelected ? effectiveColor : Colors.grey.shade300,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(14),
-          boxShadow: isSelected ? [BoxShadow(color: effectiveColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                      color: effectiveColor.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4))
+                ]
+              : null,
         ),
         child: Column(
           children: [
@@ -1823,7 +2273,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       color: Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(Icons.shopping_cart, color: Colors.grey.shade600),
+                    child:
+                        Icon(Icons.shopping_cart, color: Colors.grey.shade600),
                   ),
                   title: const Text('Venda sem cliente'),
                   subtitle: const Text('Não associar a um cliente'),
@@ -1844,62 +2295,90 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.people_outline, size: 48, color: Colors.grey.shade400),
+                                  Icon(Icons.people_outline,
+                                      size: 48, color: Colors.grey.shade400),
                                   const SizedBox(height: 16),
-                                  Text('Nenhum cliente encontrado', style: TextStyle(color: Colors.grey.shade500)),
+                                  Text('Nenhum cliente encontrado',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade500)),
                                 ],
                               ),
                             )
                           : ListView.builder(
                               controller: scrollController,
-                              itemCount: customersProvider.filteredCustomers.length,
+                              itemCount:
+                                  customersProvider.filteredCustomers.length,
                               itemBuilder: (context, index) {
-                                final customer = customersProvider.filteredCustomers[index];
-                                final isSelected = _selectedCustomer?['id'] == customer['id'];
-                                final availableCredit = customersProvider.getAvailableCredit(customer['id']);
-                                
+                                final customer =
+                                    customersProvider.filteredCustomers[index];
+                                final isSelected =
+                                    _selectedCustomer?['id'] == customer['id'];
+                                final availableCredit = customersProvider
+                                    .getAvailableCredit(customer['id']);
+
                                 return ListTile(
                                   leading: Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      gradient: isSelected ? AppTheme.primaryGradient : null,
-                                      color: isSelected ? null : Colors.blue.shade100,
+                                      gradient: isSelected
+                                          ? AppTheme.primaryGradient
+                                          : null,
+                                      color: isSelected
+                                          ? null
+                                          : Colors.blue.shade100,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Icon(
                                       Icons.person,
-                                      color: isSelected ? Colors.white : Colors.blue.shade700,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.blue.shade700,
                                     ),
                                   ),
                                   title: Text(
                                     customer['name'] ?? 'Cliente',
                                     style: TextStyle(
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
                                     ),
                                   ),
                                   subtitle: Row(
                                     children: [
-                                      if (customer['phone'] != null && customer['phone'].toString().isNotEmpty)
-                                        Text(customer['phone'], style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                      if (customer['phone'] != null &&
+                                          customer['phone']
+                                              .toString()
+                                              .isNotEmpty)
+                                        Text(customer['phone'],
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600)),
                                       const SizedBox(width: 8),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
                                           color: Colors.green.shade100,
-                                          borderRadius: BorderRadius.circular(6),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
                                         ),
                                         child: Text(
                                           'Crédito: ${CurrencyHelper.format(availableCredit)}',
-                                          style: TextStyle(fontSize: 10, color: Colors.green.shade700, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.green.shade700,
+                                              fontWeight: FontWeight.w600),
                                         ),
                                       ),
                                     ],
                                   ),
                                   trailing: isSelected
-                                      ? Icon(Icons.check_circle, color: AppTheme.primaryColor)
+                                      ? Icon(Icons.check_circle,
+                                          color: AppTheme.primaryColor)
                                       : null,
                                   onTap: () {
-                                    setState(() => _selectedCustomer = customer);
+                                    setState(
+                                        () => _selectedCustomer = customer);
                                     Navigator.pop(ctx);
                                   },
                                 );
@@ -1916,9 +2395,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
   void _showValeConfirmation() {
     if (_selectedCustomer == null) return;
-    
+
     final customersProvider = context.read<CustomersProvider>();
-    final availableCredit = customersProvider.getAvailableCredit(_selectedCustomer!['id']);
+    final availableCredit =
+        customersProvider.getAvailableCredit(_selectedCustomer!['id']);
     final remainingAfter = availableCredit - _cartTotal;
 
     showDialog(
@@ -1934,20 +2414,26 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [Colors.amber.shade500, Colors.amber.shade600]),
+                  gradient: LinearGradient(
+                      colors: [Colors.amber.shade500, Colors.amber.shade600]),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: const [
-                    Icon(Icons.receipt_long_rounded, color: Colors.white, size: 28),
+                    Icon(Icons.receipt_long_rounded,
+                        color: Colors.white, size: 28),
                     SizedBox(width: 12),
-                    Text('Confirmar Vale', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text('Confirmar Vale',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Informações do cliente
               Container(
                 padding: const EdgeInsets.all(16),
@@ -1964,10 +2450,14 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Cliente', style: TextStyle(fontSize: 12, color: Colors.blue.shade600)),
+                          Text('Cliente',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.blue.shade600)),
                           Text(
                             _selectedCustomer!['name'] ?? 'Cliente',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900),
                           ),
                         ],
                       ),
@@ -1976,7 +2466,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               // Valor do Vale
               Container(
                 padding: const EdgeInsets.all(16),
@@ -1988,16 +2478,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Valor do Vale', style: TextStyle(color: Colors.green.shade700)),
+                    Text('Valor do Vale',
+                        style: TextStyle(color: Colors.green.shade700)),
                     Text(
                       CurrencyHelper.format(_cartTotal),
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               // Crédito disponível e restante
               Row(
                 children: [
@@ -2010,7 +2504,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       ),
                       child: Column(
                         children: [
-                          Text('Crédito Atual', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                          Text('Crédito Atual',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey.shade600)),
                           const SizedBox(height: 4),
                           Text(
                             CurrencyHelper.format(availableCredit),
@@ -2031,11 +2527,15 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       ),
                       child: Column(
                         children: [
-                          Text('Restante Após', style: TextStyle(fontSize: 11, color: Colors.amber.shade700)),
+                          Text('Restante Após',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.amber.shade700)),
                           const SizedBox(height: 4),
                           Text(
                             CurrencyHelper.format(remainingAfter),
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber.shade800),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade800),
                           ),
                         ],
                       ),
@@ -2044,7 +2544,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 ],
               ),
               const SizedBox(height: 16),
-              
+
               // Aviso
               Container(
                 padding: const EdgeInsets.all(12),
@@ -2055,19 +2555,21 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning_rounded, color: Colors.orange.shade700, size: 20),
+                    Icon(Icons.warning_rounded,
+                        color: Colors.orange.shade700, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Esta operação criará uma dívida registrada. O cliente deverá quitar o valor.',
-                        style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.orange.shade800),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Botões
               Row(
                 children: [
@@ -2082,7 +2584,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                     flex: 2,
                     child: Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [Colors.amber.shade500, Colors.amber.shade600]),
+                        gradient: LinearGradient(colors: [
+                          Colors.amber.shade500,
+                          Colors.amber.shade600
+                        ]),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Material(
@@ -2100,7 +2605,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               children: [
                                 Icon(Icons.check_circle, color: Colors.white),
                                 SizedBox(width: 8),
-                                Text('Confirmar Vale', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                Text('Confirmar Vale',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
@@ -2147,7 +2655,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
         'subtotal': saleTotal,
         'total': saleTotal,
         'payment_method': paymentMethod,
-        'payment_status': (paymentMethod == 'vale' || paymentMethod == 'debt') ? 'pending' : 'paid',
+        'payment_status': (paymentMethod == 'vale' || paymentMethod == 'debt')
+            ? 'pending'
+            : 'paid',
         'created_at': now,
         'synced': 0,
       });
@@ -2176,7 +2686,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
         await cashBox.updateCashBoxTotals(cardAmount: saleTotal);
       } else if (paymentMethod == 'vale' || paymentMethod == 'debt') {
         await cashBox.updateCashBoxTotals(debtAmount: saleTotal);
-        
+
         // Se é Vale, atualizar dívida do cliente
         if (paymentMethod == 'vale' && customerId != null) {
           await customersProvider.updateCustomerDebt(customerId, saleTotal);
@@ -2185,8 +2695,11 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
       // Adicionar pontos de fidelidade (se há cliente e não é Vale/Fiado)
       Map<String, int>? loyaltyResult;
-      if (customerId != null && paymentMethod != 'vale' && paymentMethod != 'debt') {
-        loyaltyResult = await customersProvider.addLoyaltyPoints(customerId, saleTotal);
+      if (customerId != null &&
+          paymentMethod != 'vale' &&
+          paymentMethod != 'debt') {
+        loyaltyResult =
+            await customersProvider.addLoyaltyPoints(customerId, saleTotal);
       }
 
       // Marcar para sincronização
@@ -2210,7 +2723,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       if (loyaltyResult != null) {
         final pointsAdded = loyaltyResult['added'] ?? 0;
         final totalPoints = loyaltyResult['total'] ?? 0;
-        message += '\n🎉 +$pointsAdded ponto${pointsAdded > 1 ? 's' : ''} fidelidade! Total: $totalPoints';
+        message +=
+            '\n🎉 +$pointsAdded ponto${pointsAdded > 1 ? 's' : ''} fidelidade! Total: $totalPoints';
       }
 
       if (mounted) {

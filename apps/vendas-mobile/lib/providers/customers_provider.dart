@@ -44,7 +44,7 @@ class CustomersProvider extends ChangeNotifier {
         final apiCustomers = await _api.getCustomers();
         if (apiCustomers.isNotEmpty) {
           _customers = apiCustomers.map((c) => _normalizeCustomer(c)).toList();
-          
+
           // Salvar no banco local
           for (final customer in _customers) {
             try {
@@ -73,7 +73,7 @@ class CustomersProvider extends ChangeNotifier {
       // Carregar do banco local
       final localCustomers = await _db.query('customers',
           where: 'is_active = ?', whereArgs: [1], orderBy: 'name ASC');
-      
+
       if (localCustomers.isNotEmpty) {
         _customers = localCustomers.map((c) => _normalizeCustomer(c)).toList();
       }
@@ -86,16 +86,18 @@ class CustomersProvider extends ChangeNotifier {
   }
 
   Map<String, dynamic> _normalizeCustomer(Map<String, dynamic> c) {
+    final name = c['name'] ?? c['fullName'] ?? c['full_name'] ?? '';
     return {
       'id': c['id'] ?? '',
-      'name': c['name'] ?? c['full_name'] ?? '',
-      'fullName': c['full_name'] ?? c['name'] ?? '',
+      'name': name,
+      'fullName': name,
       'phone': c['phone'] ?? '',
       'email': c['email'] ?? '',
       'address': c['address'] ?? '',
       'creditLimit': _parseToInt(c['credit_limit'] ?? c['creditLimit'] ?? 0),
       'currentDebt': _parseToInt(c['current_debt'] ?? c['currentDebt'] ?? 0),
-      'loyaltyPoints': _parseToInt(c['loyalty_points'] ?? c['loyaltyPoints'] ?? 0),
+      'loyaltyPoints':
+          _parseToInt(c['loyalty_points'] ?? c['loyaltyPoints'] ?? 0),
       'isActive': c['is_active'] == 1 || c['isActive'] == true,
       'code': c['code'] ?? '',
     };
@@ -138,7 +140,7 @@ class CustomersProvider extends ChangeNotifier {
     if (index >= 0) {
       final currentDebt = _customers[index]['currentDebt'] as int? ?? 0;
       _customers[index]['currentDebt'] = currentDebt + addedDebt;
-      
+
       // Atualizar no banco local
       await _db.update(
         'customers',
@@ -146,14 +148,15 @@ class CustomersProvider extends ChangeNotifier {
         where: 'id = ?',
         whereArgs: [customerId],
       );
-      
+
       notifyListeners();
     }
   }
 
   /// Adiciona pontos de fidelidade ao cliente após uma venda
   /// Retorna o número de pontos adicionados e o total atualizado
-  Future<Map<String, int>?> addLoyaltyPoints(String customerId, int saleAmount) async {
+  Future<Map<String, int>?> addLoyaltyPoints(
+      String customerId, int saleAmount) async {
     final customer = getCustomerById(customerId);
     if (customer == null) return null;
 
@@ -166,7 +169,7 @@ class CustomersProvider extends ChangeNotifier {
       final currentPoints = _customers[index]['loyaltyPoints'] as int? ?? 0;
       final newTotal = currentPoints + pointsToAdd;
       _customers[index]['loyaltyPoints'] = newTotal;
-      
+
       // Atualizar no banco local
       await _db.update(
         'customers',
@@ -174,7 +177,7 @@ class CustomersProvider extends ChangeNotifier {
         where: 'id = ?',
         whereArgs: [customerId],
       );
-      
+
       // Tentar enviar para o servidor
       try {
         await _api.addLoyaltyPoints(
@@ -186,7 +189,7 @@ class CustomersProvider extends ChangeNotifier {
         debugPrint('Erro ao sincronizar pontos de fidelidade: $e');
         // Não bloqueia - será sincronizado depois
       }
-      
+
       notifyListeners();
       return {'added': pointsToAdd, 'total': newTotal};
     }
