@@ -76,6 +76,25 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isMuntuEligible?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  muntuQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  muntuPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  maxDiscountMuntu?: number;
 }
 
 export class UpdateProductDto {
@@ -151,4 +170,23 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isMuntuEligible?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  muntuQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  muntuPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  maxDiscountMuntu?: number;
 }

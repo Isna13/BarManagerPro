@@ -843,7 +843,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                         Expanded(
                           child: Text(
                             _selectedCustomer != null
-                                ? (_selectedCustomer!['name'] ?? _selectedCustomer!['fullName'] ?? 'Cliente')
+                                ? (_selectedCustomer!['name'] ??
+                                    _selectedCustomer!['fullName'] ??
+                                    'Cliente')
                                 : 'Venda sem cliente',
                             style: TextStyle(
                               fontSize: 14,
@@ -1463,7 +1465,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
         builder: (context, scrollController) => StatefulBuilder(
           builder: (context, setModalState) {
             final customersProvider = this.context.watch<CustomersProvider>();
-            
+
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -1494,7 +1496,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                             color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.shopping_cart, color: Colors.white),
+                          child: const Icon(Icons.shopping_cart,
+                              color: Colors.white),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
@@ -1513,13 +1516,15 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               setState(() => _cart.clear());
                               setModalState(() {});
                             },
-                            icon: const Icon(Icons.delete_outline, color: Colors.white70, size: 18),
-                            label: const Text('Limpar', style: TextStyle(color: Colors.white70)),
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.white70, size: 18),
+                            label: const Text('Limpar',
+                                style: TextStyle(color: Colors.white70)),
                           ),
                       ],
                     ),
                   ),
-                  
+
                   // Seletor de cliente
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -1530,41 +1535,54 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(
                           color: Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12),
                           border: _selectedCustomer != null
-                              ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+                              ? Border.all(
+                                  color: AppTheme.primaryColor, width: 1.5)
                               : null,
                         ),
                         child: Row(
                           children: [
                             Icon(
-                              _selectedCustomer != null ? Icons.person : Icons.shopping_cart,
+                              _selectedCustomer != null
+                                  ? Icons.person
+                                  : Icons.shopping_cart,
                               size: 20,
-                              color: _selectedCustomer != null ? AppTheme.primaryColor : Colors.grey.shade500,
+                              color: _selectedCustomer != null
+                                  ? AppTheme.primaryColor
+                                  : Colors.grey.shade500,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _selectedCustomer != null
-                                    ? (_selectedCustomer!['name'] ?? _selectedCustomer!['fullName'] ?? 'Cliente')
+                                    ? (_selectedCustomer!['name'] ??
+                                        _selectedCustomer!['fullName'] ??
+                                        'Cliente')
                                     : 'Venda sem cliente',
                                 style: TextStyle(
                                   fontSize: 14,
-                                  fontWeight: _selectedCustomer != null ? FontWeight.w600 : FontWeight.normal,
-                                  color: _selectedCustomer != null ? Colors.black87 : Colors.grey.shade600,
+                                  fontWeight: _selectedCustomer != null
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                  color: _selectedCustomer != null
+                                      ? Colors.black87
+                                      : Colors.grey.shade600,
                                 ),
                               ),
                             ),
-                            Icon(Icons.arrow_drop_down, color: Colors.grey.shade500),
+                            Icon(Icons.arrow_drop_down,
+                                color: Colors.grey.shade500),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  
+
                   // Itens do carrinho
                   Expanded(
                     child: _cart.isEmpty
@@ -1572,9 +1590,12 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.shopping_cart_outlined, size: 48, color: Colors.grey.shade400),
+                                Icon(Icons.shopping_cart_outlined,
+                                    size: 48, color: Colors.grey.shade400),
                                 const SizedBox(height: 16),
-                                Text('Carrinho vazio', style: TextStyle(color: Colors.grey.shade500)),
+                                Text('Carrinho vazio',
+                                    style:
+                                        TextStyle(color: Colors.grey.shade500)),
                               ],
                             ),
                           )
@@ -1589,14 +1610,19 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               final unitPrice = item['unitPrice'] as int? ?? 0;
                               final total = item['total'] as int? ?? 0;
                               final isMuntu = item['isMuntu'] == true;
-                              final muntuQuantity = item['muntuQuantity'] as int? ?? 1;
+                              final muntuQuantity =
+                                  item['muntuQuantity'] as int? ?? 1;
 
                               return Container(
                                 margin: const EdgeInsets.symmetric(vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: isMuntu ? Colors.green.shade50 : Colors.white,
+                                  color: isMuntu
+                                      ? Colors.green.shade50
+                                      : Colors.white,
                                   borderRadius: BorderRadius.circular(16),
-                                  border: isMuntu ? Border.all(color: Colors.green.shade200) : null,
+                                  border: isMuntu
+                                      ? Border.all(color: Colors.green.shade200)
+                                      : null,
                                   boxShadow: [
                                     BoxShadow(
                                       color: Colors.grey.withOpacity(0.1),
@@ -1608,34 +1634,58 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                 child: Padding(
                                   padding: const EdgeInsets.all(16),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
                                         children: [
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   name,
-                                                  style: AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+                                                  style: AppTheme.bodyMedium
+                                                      .copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w600),
                                                 ),
                                                 if (isMuntu) ...[
                                                   const SizedBox(height: 4),
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2),
                                                     decoration: BoxDecoration(
-                                                      gradient: AppTheme.successGradient,
-                                                      borderRadius: BorderRadius.circular(8),
+                                                      gradient: AppTheme
+                                                          .successGradient,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
                                                     ),
                                                     child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
                                                       children: [
-                                                        const Icon(Icons.star_rounded, size: 12, color: Colors.white),
-                                                        const SizedBox(width: 4),
+                                                        const Icon(
+                                                            Icons.star_rounded,
+                                                            size: 12,
+                                                            color:
+                                                                Colors.white),
+                                                        const SizedBox(
+                                                            width: 4),
                                                         Text(
                                                           'Pack Muntu (${quantity ~/ muntuQuantity}x$muntuQuantity)',
-                                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontSize: 10,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                  color: Colors
+                                                                      .white),
                                                         ),
                                                       ],
                                                     ),
@@ -1649,12 +1699,17 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                               padding: const EdgeInsets.all(6),
                                               decoration: BoxDecoration(
                                                 color: Colors.red.shade50,
-                                                borderRadius: BorderRadius.circular(8),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
-                                              child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400, size: 18),
+                                              child: Icon(
+                                                  Icons.delete_outline_rounded,
+                                                  color: Colors.red.shade400,
+                                                  size: 18),
                                             ),
                                             onPressed: () {
-                                              setState(() => _cart.removeAt(index));
+                                              setState(
+                                                  () => _cart.removeAt(index));
                                               setModalState(() {});
                                             },
                                           ),
@@ -1666,15 +1721,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                           Text(
                                             isMuntu
                                                 ? '${CurrencyHelper.format(item['muntuPrice'] ?? 0)}/pack'
-                                                : CurrencyHelper.format(unitPrice),
-                                            style: AppTheme.bodySmall.copyWith(color: Colors.grey.shade500),
+                                                : CurrencyHelper.format(
+                                                    unitPrice),
+                                            style: AppTheme.bodySmall.copyWith(
+                                                color: Colors.grey.shade500),
                                           ),
                                           const Spacer(),
                                           // Controle de quantidade
                                           Container(
                                             decoration: BoxDecoration(
-                                              color: isMuntu ? Colors.green.shade100 : Colors.grey.shade100,
-                                              borderRadius: BorderRadius.circular(12),
+                                              color: isMuntu
+                                                  ? Colors.green.shade100
+                                                  : Colors.grey.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
@@ -1683,57 +1743,105 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                                   color: Colors.transparent,
                                                   child: InkWell(
                                                     onTap: () {
-                                                      final decrement = isMuntu ? muntuQuantity : 1;
-                                                      final newQty = quantity - decrement;
+                                                      final decrement = isMuntu
+                                                          ? muntuQuantity
+                                                          : 1;
+                                                      final newQty =
+                                                          quantity - decrement;
                                                       if (newQty <= 0) {
-                                                        setState(() => _cart.removeAt(index));
+                                                        setState(() => _cart
+                                                            .removeAt(index));
                                                       } else {
                                                         setState(() {
-                                                          _cart[index]['quantity'] = newQty;
+                                                          _cart[index]
+                                                                  ['quantity'] =
+                                                              newQty;
                                                           _cart[index]['total'] = isMuntu
-                                                              ? (newQty ~/ muntuQuantity) * (item['muntuPrice'] as int? ?? 0)
-                                                              : newQty * unitPrice;
+                                                              ? (newQty ~/
+                                                                      muntuQuantity) *
+                                                                  (item['muntuPrice']
+                                                                          as int? ??
+                                                                      0)
+                                                              : newQty *
+                                                                  unitPrice;
                                                         });
                                                       }
                                                       setModalState(() {});
                                                     },
-                                                    borderRadius: BorderRadius.circular(12),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12),
                                                     child: Container(
-                                                      padding: const EdgeInsets.all(8),
-                                                      child: Icon(Icons.remove_rounded, size: 18, color: Colors.grey.shade700),
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              8),
+                                                      child: Icon(
+                                                          Icons.remove_rounded,
+                                                          size: 18,
+                                                          color: Colors
+                                                              .grey.shade700),
                                                     ),
                                                   ),
                                                 ),
                                                 Container(
-                                                  constraints: const BoxConstraints(minWidth: 40),
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                          minWidth: 40),
                                                   alignment: Alignment.center,
                                                   child: Text(
                                                     quantity.toString(),
-                                                    style: AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                                                    style: AppTheme.bodyMedium
+                                                        .copyWith(
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold),
                                                   ),
                                                 ),
                                                 Material(
                                                   color: Colors.transparent,
                                                   child: InkWell(
                                                     onTap: () {
-                                                      final increment = isMuntu ? muntuQuantity : 1;
-                                                      final newQty = quantity + increment;
+                                                      final increment = isMuntu
+                                                          ? muntuQuantity
+                                                          : 1;
+                                                      final newQty =
+                                                          quantity + increment;
                                                       setState(() {
-                                                        _cart[index]['quantity'] = newQty;
+                                                        _cart[index]
+                                                                ['quantity'] =
+                                                            newQty;
                                                         _cart[index]['total'] = isMuntu
-                                                            ? (newQty ~/ muntuQuantity) * (item['muntuPrice'] as int? ?? 0)
-                                                            : newQty * unitPrice;
+                                                            ? (newQty ~/
+                                                                    muntuQuantity) *
+                                                                (item['muntuPrice']
+                                                                        as int? ??
+                                                                    0)
+                                                            : newQty *
+                                                                unitPrice;
                                                       });
                                                       setModalState(() {});
                                                     },
-                                                    borderRadius: BorderRadius.circular(12),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12),
                                                     child: Container(
-                                                      padding: const EdgeInsets.all(8),
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              8),
                                                       decoration: BoxDecoration(
-                                                        gradient: isMuntu ? AppTheme.successGradient : AppTheme.primaryGradient,
-                                                        borderRadius: BorderRadius.circular(12),
+                                                        gradient: isMuntu
+                                                            ? AppTheme
+                                                                .successGradient
+                                                            : AppTheme
+                                                                .primaryGradient,
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(12),
                                                       ),
-                                                      child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                                                      child: const Icon(
+                                                          Icons.add_rounded,
+                                                          size: 18,
+                                                          color: Colors.white),
                                                     ),
                                                   ),
                                                 ),
@@ -1758,14 +1866,15 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                             },
                           ),
                   ),
-                  
+
                   // Total e botão de pagamento
                   if (_cart.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24)),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.grey.withOpacity(0.15),
@@ -1782,13 +1891,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Total', style: AppTheme.bodyMedium.copyWith(color: Colors.grey.shade500)),
-                                  Text('$_cartItemCount itens', style: AppTheme.bodySmall.copyWith(color: Colors.grey.shade400)),
+                                  Text('Total',
+                                      style: AppTheme.bodyMedium.copyWith(
+                                          color: Colors.grey.shade500)),
+                                  Text('$_cartItemCount itens',
+                                      style: AppTheme.bodySmall.copyWith(
+                                          color: Colors.grey.shade400)),
                                 ],
                               ),
                               Text(
                                 CurrencyHelper.format(_cartTotal),
-                                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.successColor),
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.successColor),
                               ),
                             ],
                           ),
@@ -1818,13 +1934,18 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                   child: const Padding(
                                     padding: EdgeInsets.symmetric(vertical: 18),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                        Icon(Icons.payment_rounded, color: Colors.white),
+                                        Icon(Icons.payment_rounded,
+                                            color: Colors.white),
                                         SizedBox(width: 12),
                                         Text(
                                           'Finalizar Venda',
-                                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold),
                                         ),
                                       ],
                                     ),
