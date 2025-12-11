@@ -32,25 +32,37 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DatabaseManager = void 0;
-const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
+// Importar better-sqlite3 com fallback
+let Database;
+try {
+    Database = require('better-sqlite3');
+}
+catch (error) {
+    console.error('⚠️ better-sqlite3 não disponível - modo apenas online');
+    Database = null;
+}
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 class DatabaseManager {
     constructor(dbPath) {
         this.dbPath = dbPath;
+        this.db = null;
     }
     async initialize() {
-        this.db = new better_sqlite3_1.default(this.dbPath, { verbose: console.log });
+        if (!Database) {
+            throw new Error('better-sqlite3 não disponível');
+        }
+        this.db = new Database(this.dbPath, { verbose: console.log });
         // Enable WAL mode for better concurrency
         this.db.pragma('journal_mode = WAL');
         await this.createTables();
         await this.runMigrations();
         await this.seedInitialData();
+    }
+    isAvailable() {
+        return this.db !== null;
     }
     async createTables() {
         // Tabelas principais offline-first
@@ -771,20 +783,27 @@ class DatabaseManager {
     // ============================================
     // CRUD Operations
     // ============================================
-    createSale(data) {
-        const id = this.generateUUID();
+    createSale(data, skipSyncQueue = false) {
+        // Se o ID já existe (vindo do servidor), usar ele; senão gerar novo
+        const id = data.id || this.generateUUID();
         const stmt = this.db.prepare(`
-      INSERT INTO sales (id, sale_number, branch_id, type, table_id, customer_id, cashier_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sales (
+        id, sale_number, branch_id, type, status, table_id, customer_id,
+        cashier_id, subtotal, discount_total, tax_total, total,
+        notes, synced, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        stmt.run(id, data.saleNumber, data.branchId, data.type || 'counter', data.tableId, data.customerId, data.cashierId);
-        // Adicionar à fila de sincronização
-        // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
-        const syncData = {
-            ...data,
-            id, // Garantir que o ID seja enviado para o backend
-        };
-        this.addToSyncQueue('create', 'sale', id, syncData, 1); // Alta prioridade
+        stmt.run(id, data.saleNumber || data.sale_number || `SALE-${Date.now()}`, data.branchId || data.branch_id || 'main-branch', data.type || 'counter', data.status || 'open', data.tableId || data.table_id || null, data.customerId || data.customer_id || null, data.cashierId || data.cashier_id || data.createdBy || data.created_by || 'system', data.subtotal || 0, data.discount || data.discount_total || 0, data.tax || data.tax_total || 0, data.total || 0, data.notes || null, skipSyncQueue ? 1 : (data.synced || 0), data.createdAt || data.created_at || new Date().toISOString(), data.updatedAt || data.updated_at || new Date().toISOString());
+        // Só adiciona na fila de sync se skipSyncQueue for false
+        if (!skipSyncQueue) {
+            // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
+            const syncData = {
+                ...data,
+                id, // Garantir que o ID seja enviado para o backend
+            };
+            this.addToSyncQueue('create', 'sale', id, syncData, 1); // Alta prioridade
+        }
         return this.getSaleById(id);
     }
     addSaleItem(saleId, itemData) {
@@ -4640,7 +4659,7 @@ class DatabaseManager {
         }
         this.db.close();
         fs.copyFileSync(backupFile, this.dbPath);
-        this.db = new better_sqlite3_1.default(this.dbPath);
+        this.db = new Database(this.dbPath);
         return { success: true };
     }
     // ============================================

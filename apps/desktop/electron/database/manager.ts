@@ -1,4 +1,11 @@
-import Database from 'better-sqlite3';
+// Importar better-sqlite3 com fallback
+let Database: any;
+try {
+  Database = require('better-sqlite3');
+} catch (error) {
+  console.error('⚠️ better-sqlite3 não disponível - modo apenas online');
+  Database = null;
+}
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -75,11 +82,15 @@ interface CountRow {
 }
 
 export class DatabaseManager {
-  private db!: Database.Database;
+  private db: any = null;
 
   constructor(private dbPath: string) {}
 
   async initialize() {
+    if (!Database) {
+      throw new Error('better-sqlite3 não disponível');
+    }
+    
     this.db = new Database(this.dbPath, { verbose: console.log });
     
     // Enable WAL mode for better concurrency
@@ -88,6 +99,10 @@ export class DatabaseManager {
     await this.createTables();
     await this.runMigrations();
     await this.seedInitialData();
+  }
+
+  isAvailable(): boolean {
+    return this.db !== null;
   }
 
   private async createTables() {
@@ -839,23 +854,47 @@ export class DatabaseManager {
   // CRUD Operations
   // ============================================
 
-  createSale(data: any) {
-    const id = this.generateUUID();
+  createSale(data: any, skipSyncQueue: boolean = false) {
+    // Se o ID já existe (vindo do servidor), usar ele; senão gerar novo
+    const id = data.id || this.generateUUID();
+    
     const stmt = this.db.prepare(`
-      INSERT INTO sales (id, sale_number, branch_id, type, table_id, customer_id, cashier_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sales (
+        id, sale_number, branch_id, type, status, table_id, customer_id,
+        cashier_id, subtotal, discount_total, tax_total, total,
+        notes, synced, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
-    stmt.run(id, data.saleNumber, data.branchId, data.type || 'counter', 
-             data.tableId, data.customerId, data.cashierId);
+    stmt.run(
+      id,
+      data.saleNumber || data.sale_number || `SALE-${Date.now()}`,
+      data.branchId || data.branch_id || 'main-branch',
+      data.type || 'counter',
+      data.status || 'open',
+      data.tableId || data.table_id || null,
+      data.customerId || data.customer_id || null,
+      data.cashierId || data.cashier_id || data.createdBy || data.created_by || 'system',
+      data.subtotal || 0,
+      data.discount || data.discount_total || 0,
+      data.tax || data.tax_total || 0,
+      data.total || 0,
+      data.notes || null,
+      skipSyncQueue ? 1 : (data.synced || 0),
+      data.createdAt || data.created_at || new Date().toISOString(),
+      data.updatedAt || data.updated_at || new Date().toISOString()
+    );
     
-    // Adicionar à fila de sincronização
-    // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
-    const syncData = {
-      ...data,
-      id, // Garantir que o ID seja enviado para o backend
-    };
-    this.addToSyncQueue('create', 'sale', id, syncData, 1); // Alta prioridade
+    // Só adiciona na fila de sync se skipSyncQueue for false
+    if (!skipSyncQueue) {
+      // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
+      const syncData = {
+        ...data,
+        id, // Garantir que o ID seja enviado para o backend
+      };
+      this.addToSyncQueue('create', 'sale', id, syncData, 1); // Alta prioridade
+    }
     
     return this.getSaleById(id);
   }

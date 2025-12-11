@@ -127,6 +127,17 @@ class ProductsProvider extends ChangeNotifier {
 
   Future<void> loadInventory({String? branchId}) async {
     try {
+      // PRIMEIRO: carregar inventário local para preservar ajustes não sincronizados
+      final localResults = await _db.query('inventory');
+      final localInventory = <String, Map<String, dynamic>>{};
+
+      for (final item in localResults) {
+        final productId = item['product_id'];
+        if (productId != null) {
+          localInventory[productId] = item;
+        }
+      }
+
       if (_sync.isOnline) {
         final results = await _api.getInventory(branchId: branchId);
         _inventory = {};
@@ -134,20 +145,28 @@ class ProductsProvider extends ChangeNotifier {
         for (final item in results) {
           final productId = item['productId'] ?? item['product_id'];
           if (productId != null) {
-            _inventory[productId] = Map<String, dynamic>.from(item);
-            await _saveInventoryLocally(item);
+            // Verificar se há estoque local não sincronizado
+            final localItem = localInventory[productId];
+            // Comparar synced como int (0 = não sincronizado)
+            final isNotSynced = localItem != null &&
+                (localItem['synced'] == 0 ||
+                    localItem['synced'] == '0' ||
+                    localItem['synced'] == false);
+
+            if (isNotSynced) {
+              // MANTER estoque local (tem ajustes pendentes)
+              debugPrint(
+                  '📦 Mantendo estoque local não sincronizado para $productId: ${localItem['qty_units']} (synced=${localItem['synced']})');
+              _inventory[productId] = Map<String, dynamic>.from(localItem);
+            } else {
+              // Usar estoque do servidor
+              _inventory[productId] = Map<String, dynamic>.from(item);
+              await _saveInventoryLocally(item);
+            }
           }
         }
       } else {
-        final results = await _db.query('inventory');
-        _inventory = {};
-
-        for (final item in results) {
-          final productId = item['product_id'];
-          if (productId != null) {
-            _inventory[productId] = item;
-          }
-        }
+        _inventory = localInventory;
       }
     } catch (e) {
       // Fallback para banco local
@@ -276,6 +295,77 @@ class ProductsProvider extends ChangeNotifier {
     };
 
     await _db.insert('inventory', mappedData);
+  }
+
+  /// Decrementa o estoque de um produto localmente e sincroniza com servidor
+  Future<bool> decrementStock(String productId, int quantity) async {
+    try {
+      final inv = _inventory[productId];
+      if (inv == null) {
+        debugPrint('❌ Inventário não encontrado para produto: $productId');
+        return false;
+      }
+
+      final currentQty = inv['qty_units'] ?? inv['qtyUnits'] ?? 0;
+      final newQty = currentQty - quantity;
+      // Usar branchId do inventário ou fallback para main-branch
+      final branchId = inv['branch_id'] ?? inv['branchId'] ?? 'main-branch';
+      final invId = inv['id'];
+
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📦 DECREMENTO DE ESTOQUE');
+      debugPrint('   Produto ID: $productId');
+      debugPrint('   Inventário ID: $invId');
+      debugPrint('   Branch ID: $branchId');
+      debugPrint('   Quantidade anterior: $currentQty');
+      debugPrint('   Quantidade vendida: $quantity');
+      debugPrint('   Nova quantidade: $newQty');
+      debugPrint('═══════════════════════════════════════════════════════');
+
+      // Atualizar em memória
+      _inventory[productId]!['qty_units'] = newQty;
+
+      // Atualizar no banco local
+      if (invId != null) {
+        await _db.update(
+          'inventory',
+          {'qty_units': newQty, 'synced': 0},
+          where: 'id = ?',
+          whereArgs: [invId],
+        );
+        debugPrint('💾 Banco local atualizado: qty=$newQty, synced=0');
+
+        // Marcar para sincronização com dados do ajuste
+        await _sync.markForSync(
+          entityType: 'inventory',
+          entityId: invId,
+          action: 'adjust',
+          data: {
+            'productId': productId,
+            'branchId': branchId,
+            'adjustment': -quantity, // Negativo porque é venda
+            'reason': 'Venda mobile',
+          },
+        );
+      }
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Erro ao decrementar estoque: $e');
+      return false;
+    }
+  }
+
+  /// Decrementa o estoque de múltiplos itens (para vendas)
+  Future<void> decrementStockForSale(List<Map<String, dynamic>> items) async {
+    for (final item in items) {
+      final productId = item['productId'] ?? item['product_id'];
+      final quantity = item['quantity'] ?? item['qty_units'] ?? 0;
+      if (productId != null && quantity > 0) {
+        await decrementStock(productId, quantity);
+      }
+    }
   }
 
   void clearError() {

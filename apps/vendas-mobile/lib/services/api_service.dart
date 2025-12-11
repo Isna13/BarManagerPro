@@ -123,6 +123,26 @@ class ApiService {
     }
   }
 
+  /// Ajusta o estoque de um produto (negativo para venda, positivo para entrada)
+  Future<dynamic> adjustStockByProduct({
+    required String productId,
+    required String branchId,
+    required int adjustment,
+    String? reason,
+  }) async {
+    try {
+      final response = await _dio.put('/inventory/adjust-by-product', data: {
+        'productId': productId,
+        'branchId': branchId,
+        'adjustment': adjustment,
+        'reason': reason ?? 'Venda mobile',
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // ==================== CLIENTES ====================
   Future<List<dynamic>> getCustomers() async {
     try {
@@ -370,6 +390,15 @@ class ApiService {
 
       final response = await _dio.get('/sales', queryParameters: queryParams);
       return response.data is List ? response.data : [];
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<dynamic> closeSale(String saleId) async {
+    try {
+      final response = await _dio.post('/sales/$saleId/close');
+      return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
     }

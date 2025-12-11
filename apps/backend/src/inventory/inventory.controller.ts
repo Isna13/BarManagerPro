@@ -32,25 +32,6 @@ export class InventoryController {
     return this.inventoryService.upsertInventoryItem(upsertDto);
   }
 
-  // Endpoint para atualizar item de inventário por ID
-  @Put(':id')
-  updateItem(@Param('id') id: string, @Body() upsertDto: UpsertInventoryItemDto) {
-    return this.inventoryService.upsertInventoryItem({ ...upsertDto, id });
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.inventoryService.findOne(id);
-  }
-
-  @Get('product/:productId')
-  findByProduct(
-    @Param('productId') productId: string,
-    @Query('branchId') branchId?: string
-  ) {
-    return this.inventoryService.findByProduct(productId, branchId);
-  }
-
   @Post('add-stock')
   addStock(@Body() addStockDto: AddStockDto) {
     return this.inventoryService.addStock(addStockDto);
@@ -61,6 +42,7 @@ export class InventoryController {
     return this.inventoryService.transferStock(transferDto);
   }
 
+  // IMPORTANTE: Rotas específicas PUT devem vir ANTES de PUT :id
   @Put('adjust')
   adjustStock(@Body() adjustDto: AdjustStockDto) {
     return this.inventoryService.adjustStock(adjustDto);
@@ -71,6 +53,21 @@ export class InventoryController {
     return this.inventoryService.adjustStockByProduct(adjustDto);
   }
 
+  // Endpoint para atualizar item de inventário por ID (deve vir DEPOIS das rotas específicas)
+  @Put(':id')
+  updateItem(@Param('id') id: string, @Body() upsertDto: UpsertInventoryItemDto) {
+    return this.inventoryService.upsertInventoryItem({ ...upsertDto, id });
+  }
+
+  // IMPORTANTE: Rotas específicas GET devem vir ANTES de GET :id
+  @Get('product/:productId')
+  findByProduct(
+    @Param('productId') productId: string,
+    @Query('branchId') branchId?: string
+  ) {
+    return this.inventoryService.findByProduct(productId, branchId);
+  }
+
   @Get('movements/:inventoryItemId')
   getMovements(@Param('inventoryItemId') inventoryItemId: string) {
     return this.inventoryService.getMovements(inventoryItemId);
@@ -79,6 +76,12 @@ export class InventoryController {
   @Get('low-stock/:branchId')
   getLowStock(@Param('branchId') branchId: string) {
     return this.inventoryService.getLowStock(branchId);
+  }
+
+  // Rotas com :id devem vir por último
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.inventoryService.findOne(id);
   }
 
   @Delete(':id')

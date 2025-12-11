@@ -75,16 +75,25 @@ electron_1.app.whenReady().then(async () => {
     // Inicializar banco de dados local SQLite
     const dbPath = path.join(electron_1.app.getPath('userData'), 'barmanager.db');
     dbManager = new manager_1.DatabaseManager(dbPath);
-    await dbManager.initialize();
+    try {
+        await dbManager.initialize();
+        console.log('✅ Banco de dados SQLite inicializado');
+    }
+    catch (error) {
+        console.error('⚠️ Erro ao inicializar banco SQLite (funcionará apenas online):', error);
+        // Continuar sem banco local - app vai usar apenas API
+    }
     // Inicializar sincronização
     // URL do Railway para produção, com fallback para local em desenvolvimento
     const defaultApiUrl = 'https://barmanagerbackend-production.up.railway.app/api/v1';
     const apiUrl = store.get('apiUrl', defaultApiUrl);
     console.log('🌐 API URL configurada:', apiUrl);
-    syncManager = new manager_2.SyncManager(dbManager, apiUrl);
+    if (dbManager) {
+        syncManager = new manager_2.SyncManager(dbManager, apiUrl);
+    }
     createWindow();
     // Passar referência da janela para o SyncManager (para emitir eventos)
-    if (mainWindow) {
+    if (mainWindow && syncManager) {
         syncManager.setMainWindow(mainWindow);
         // Configurar listeners para repassar eventos de sync para o renderer
         // Nota: SyncManager já emite os eventos através de mainWindow.webContents.send()

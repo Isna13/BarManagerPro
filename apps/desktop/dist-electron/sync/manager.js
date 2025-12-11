@@ -1242,7 +1242,7 @@ class SyncManager {
                 }
             },
             sales: (items) => {
-                // Vendas - sincronizar do servidor para o desktop (apenas para visualização)
+                // Vendas - sincronizar do servidor para o desktop (bidirecional)
                 for (const item of items) {
                     try {
                         // Verificar se a venda já existe localmente
@@ -1251,9 +1251,73 @@ class SyncManager {
                         if (this.hasLocalPendingChanges('sales', item.id, existing)) {
                             continue;
                         }
-                        // Atualizar apenas se a venda do servidor for mais recente ou se não existir
                         if (!existing) {
-                            console.log(`ℹ️ Venda ${item.id} do servidor (não criar localmente, apenas sync unidirecional desktop→servidor)`);
+                            // Criar venda do servidor localmente (sync bidirecional)
+                            const saleData = {
+                                id: item.id,
+                                sale_number: item.saleNumber || item.sale_number || `SALE-${Date.now()}`,
+                                type: item.type || 'direct',
+                                status: item.status || 'completed',
+                                subtotal: item.subtotal || 0,
+                                discount: item.discount || 0,
+                                tax: item.tax || 0,
+                                total: item.total || 0,
+                                paid: item.paid || item.total || 0,
+                                change_amount: item.change || item.changeAmount || item.change_amount || 0,
+                                customer_id: item.customerId || item.customer_id || null,
+                                customer_name: item.customerName || item.customer_name || null,
+                                table_id: item.tableId || item.table_id || null,
+                                cash_box_id: item.cashBoxId || item.cash_box_id || null,
+                                branch_id: item.branchId || item.branch_id || null,
+                                created_by: item.createdBy || item.created_by || null,
+                                notes: item.notes || null,
+                                synced: 1,
+                                created_at: item.createdAt || item.created_at || new Date().toISOString(),
+                                updated_at: item.updatedAt || item.updated_at || new Date().toISOString(),
+                            };
+                            // Criar a venda no banco local
+                            this.dbManager.createSale(saleData, true); // skipSyncQueue = true
+                            console.log(`➕ Venda criada do servidor: ${item.id} (${item.status}, total: ${item.total})`);
+                            // Sincronizar itens da venda se existirem
+                            if (item.items && Array.isArray(item.items)) {
+                                for (const saleItem of item.items) {
+                                    try {
+                                        const existingItem = this.dbManager.prepare(`
+                      SELECT id FROM sale_items WHERE id = ?
+                    `).get(saleItem.id);
+                                        if (!existingItem) {
+                                            this.dbManager.prepare(`
+                        INSERT INTO sale_items (id, sale_id, product_id, qty_units, unit_price, unit_cost, subtotal, discount_amount, tax_amount, total, is_muntu, notes, synced, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                      `).run(saleItem.id, item.id, saleItem.productId || saleItem.product_id, saleItem.qtyUnits || saleItem.qty_units || 1, saleItem.unitPrice || saleItem.unit_price || 0, saleItem.unitCost || saleItem.unit_cost || 0, saleItem.subtotal || 0, saleItem.discount || saleItem.discountAmount || saleItem.discount_amount || 0, saleItem.taxAmount || saleItem.tax_amount || 0, saleItem.total || saleItem.subtotal || 0, saleItem.isMuntu || saleItem.is_muntu ? 1 : 0, saleItem.notes || null, saleItem.createdAt || new Date().toISOString());
+                                            console.log(`  📦 Item sincronizado: productId=${saleItem.productId || saleItem.product_id}`);
+                                        }
+                                    }
+                                    catch (itemError) {
+                                        console.error(`  ❌ Erro ao sincronizar item ${saleItem.id}:`, itemError?.message);
+                                    }
+                                }
+                            }
+                            // Sincronizar pagamentos da venda se existirem
+                            if (item.payments && Array.isArray(item.payments)) {
+                                for (const payment of item.payments) {
+                                    try {
+                                        const existingPayment = this.dbManager.prepare(`
+                      SELECT id FROM payments WHERE id = ?
+                    `).get(payment.id);
+                                        if (!existingPayment) {
+                                            this.dbManager.prepare(`
+                        INSERT INTO payments (id, sale_id, method, amount, provider, reference_number, transaction_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                      `).run(payment.id, item.id, payment.method || 'cash', payment.amount || item.total, payment.provider || null, payment.referenceNumber || payment.reference_number || null, payment.transactionId || payment.transaction_id || null, payment.createdAt || new Date().toISOString());
+                                            console.log(`  💰 Pagamento sincronizado: ${payment.method} - ${payment.amount}`);
+                                        }
+                                    }
+                                    catch (paymentError) {
+                                        console.error(`  ❌ Erro ao sincronizar pagamento ${payment.id}:`, paymentError?.message);
+                                    }
+                                }
+                            }
                         }
                         else {
                             // Atualizar status se necessário

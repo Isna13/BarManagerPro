@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'database_service.dart';
@@ -62,26 +64,38 @@ class SyncService {
 
   // Sincronizar tudo
   Future<void> syncAll() async {
-    if (_isSyncing || !_isOnline) return;
+    if (_isSyncing) {
+      debugPrint('⚠️ Sincronização já em andamento, ignorando...');
+      return;
+    }
+    if (!_isOnline) {
+      debugPrint('📴 Offline, sincronização adiada');
+      return;
+    }
 
+    debugPrint('🔄 Iniciando sincronização completa...');
     _isSyncing = true;
     _syncStatusController
         .add(SyncStatus(isSyncing: true, message: 'Sincronizando...'));
 
     try {
       // 1. Primeiro, enviar dados locais pendentes
+      debugPrint('📤 Etapa 1: Enviando dados pendentes...');
       await _uploadPendingChanges();
 
       // 2. Baixar dados do servidor
+      debugPrint('📥 Etapa 2: Baixando dados do servidor...');
       await _downloadServerData();
 
       // Atualizar última sincronização
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('last_sync', DateTime.now().toIso8601String());
 
+      debugPrint('✅ Sincronização completa!');
       _syncStatusController.add(
           SyncStatus(isSyncing: false, message: 'Sincronizado', success: true));
     } catch (e) {
+      debugPrint('❌ Erro na sincronização: $e');
       _syncStatusController.add(
           SyncStatus(isSyncing: false, message: 'Erro: $e', success: false));
     } finally {
@@ -92,23 +106,62 @@ class SyncService {
   // Enviar mudanças locais para o servidor
   Future<void> _uploadPendingChanges() async {
     final pendingItems = await _db.getPendingSyncItems();
+    debugPrint('🔄 Itens pendentes para sincronização: ${pendingItems.length}');
 
     for (final item in pendingItems) {
+      final entityType = item['entity_type'] as String;
+      final entityId = item['entity_id'] as String;
+      final action = item['action'] as String;
+
       try {
-        final entityType = item['entity_type'] as String;
-        final entityId = item['entity_id'] as String;
-        final action = item['action'] as String;
+        debugPrint('📤 Sincronizando: $entityType/$entityId ($action)');
+
+        // Dados salvos no sync_queue (para ajustes de estoque, etc)
+        Map<String, dynamic>? syncData;
+        final syncDataStr = item['data'] as String?;
+        if (syncDataStr != null &&
+            syncDataStr.isNotEmpty &&
+            syncDataStr != '{}') {
+          try {
+            syncData = Map<String, dynamic>.from(jsonDecode(syncDataStr));
+          } catch (_) {}
+        }
+
+        // Para ajustes de estoque, usar dados do sync_queue
+        if (entityType == 'inventory' &&
+            action == 'adjust' &&
+            syncData != null) {
+          await _sendToServer(entityType, action, syncData);
+          await _db.markSyncItemProcessed(item['id'] as int);
+          continue;
+        }
 
         // Buscar dados atuais da entidade local
         final entityData = await _getLocalEntity(entityType, entityId);
-        if (entityData == null && action != 'delete') continue;
+        if (entityData == null && action != 'delete') {
+          debugPrint('⚠️ Entidade não encontrada: $entityType/$entityId');
+          await _db.markSyncItemProcessed(item['id'] as int);
+          continue;
+        }
 
         // Enviar para o servidor baseado no tipo de ação
         await _sendToServer(entityType, action, entityData ?? {'id': entityId});
 
-        // Marcar como processado
+        // Marcar entidade como sincronizada no banco local
+        if (entityType == 'sales') {
+          await _db.update(
+            'sales',
+            {'synced': 1},
+            where: 'id = ?',
+            whereArgs: [entityId],
+          );
+          debugPrint('✅ Venda marcada como sincronizada: $entityId');
+        }
+
+        // Marcar item da fila como processado
         await _db.markSyncItemProcessed(item['id'] as int);
       } catch (e) {
+        debugPrint('❌ Erro ao sincronizar $entityType/$entityId: $e');
         await _db.markSyncItemFailed(item['id'] as int, e.toString());
       }
     }
@@ -126,15 +179,148 @@ class SyncService {
 
   Future<void> _sendToServer(
       String entityType, String action, Map<String, dynamic> data) async {
-    // Implementar envio baseado no tipo de entidade e ação
-    // Por enquanto, apenas marcamos como sincronizado localmente
     switch (entityType) {
       case 'sales':
         if (action == 'create') {
-          await _api.createSale(data);
+          // Mapear dados da venda para formato do servidor (camelCase)
+          final saleData = _mapSaleToServer(data);
+          debugPrint('📤 Enviando venda para servidor: $saleData');
+
+          try {
+            await _api.createSale(saleData);
+            debugPrint('✅ Venda criada no servidor: ${data['id']}');
+          } catch (e) {
+            debugPrint('❌ Erro ao criar venda no servidor: $e');
+            rethrow;
+          }
+
+          // Buscar e enviar itens da venda
+          final saleItems = await _db.query(
+            'sale_items',
+            where: 'sale_id = ?',
+            whereArgs: [data['id']],
+          );
+
+          debugPrint('📦 Enviando ${saleItems.length} itens da venda');
+
+          for (final item in saleItems) {
+            try {
+              await _api.addSaleItem(data['id'], {
+                'productId': item['product_id'],
+                'qtyUnits': item['qty_units'],
+                'isMuntu': item['is_muntu'] == 1,
+              });
+              debugPrint('✅ Item adicionado: ${item['product_id']}');
+            } catch (e) {
+              debugPrint('Erro ao sincronizar item: $e');
+            }
+          }
+
+          // Processar pagamento se a venda está paga
+          if (data['payment_status'] == 'paid' &&
+              data['payment_method'] != null) {
+            try {
+              await _api.addSalePayment(data['id'], {
+                'method': _mapPaymentMethod(data['payment_method']),
+                'amount': data['total'] ?? 0,
+              });
+            } catch (e) {
+              debugPrint('Erro ao sincronizar pagamento: $e');
+            }
+          }
+
+          // Fechar a venda se está completada
+          if (data['status'] == 'completed') {
+            try {
+              // Chamamos diretamente o endpoint de fechar
+              await _api.closeSale(data['id']);
+            } catch (e) {
+              debugPrint('Erro ao fechar venda: $e');
+            }
+          }
         }
         break;
-      // Adicionar outros casos conforme necessário
+
+      case 'inventory':
+        if (action == 'adjust') {
+          // Sincronizar ajuste de estoque
+          final productId = data['productId'];
+          final branchId = data['branchId'];
+          final adjustment = data['adjustment'] ?? 0;
+
+          if (productId != null && branchId != null && adjustment != 0) {
+            debugPrint(
+                '═══════════════════════════════════════════════════════');
+            debugPrint('📤 ENVIANDO AJUSTE DE ESTOQUE PARA SERVIDOR');
+            debugPrint('   Product ID: $productId');
+            debugPrint('   Branch ID: $branchId');
+            debugPrint('   Adjustment: $adjustment');
+            debugPrint(
+                '═══════════════════════════════════════════════════════');
+
+            await _api.adjustStockByProduct(
+              productId: productId,
+              branchId: branchId,
+              adjustment: adjustment,
+              reason: data['reason'] ?? 'Venda mobile',
+            );
+
+            debugPrint('✅ AJUSTE ENVIADO COM SUCESSO!');
+
+            // Marcar inventário como sincronizado
+            await _db.update(
+              'inventory',
+              {'synced': 1},
+              where: 'product_id = ?',
+              whereArgs: [productId],
+            );
+            debugPrint('📝 Inventário marcado como synced=1');
+          }
+        } else if (action == 'update') {
+          debugPrint('📦 Sincronizando estoque (update): ${data['id']}');
+        }
+        break;
+
+      case 'cash_boxes':
+        if (action == 'create' || action == 'update') {
+          debugPrint('📦 Sincronizando caixa: ${data['id']}');
+        }
+        break;
+    }
+  }
+
+  /// Mapeia dados da venda local para formato do servidor
+  Map<String, dynamic> _mapSaleToServer(Map<String, dynamic> data) {
+    return {
+      'id': data['id'],
+      'branchId': data['branch_id'],
+      'cashierId': data['cashier_id'],
+      'type': data['type'] ?? 'counter',
+      'customerId': data['customer_id'],
+      'saleNumber': data['sale_number'],
+      'subtotal': data['subtotal'],
+      'total': data['total'],
+      'status': data['status'],
+      'paymentMethod': data['payment_method'],
+      'notes': data['notes'],
+    };
+  }
+
+  /// Mapeia método de pagamento local para formato do servidor
+  String _mapPaymentMethod(String method) {
+    switch (method) {
+      case 'cash':
+        return 'cash';
+      case 'orange':
+      case 'teletaku':
+        return 'mobile_money';
+      case 'mixed':
+        return 'card';
+      case 'vale':
+      case 'debt':
+        return 'debt';
+      default:
+        return 'cash';
     }
   }
 
@@ -252,9 +438,33 @@ class SyncService {
       final id = item['id'] as String?;
       if (id == null) continue;
 
-      // Verificar se existe local e se está pendente de sincronização
-      final localItems =
-          await _db.query(table, where: 'id = ?', whereArgs: [id]);
+      // Para inventory, comparar por product_id ao invés de id
+      // porque o ID local pode ser diferente do servidor
+      List<Map<String, dynamic>> localItems;
+      if (table == 'inventory') {
+        final productId = item['productId'] ?? item['product_id'];
+        final serverQty = item['qtyUnits'] ?? item['qty_units'] ?? 0;
+        if (productId == null) continue;
+        localItems = await _db.query(
+          table,
+          where: 'product_id = ?',
+          whereArgs: [productId],
+        );
+        debugPrint('═══════════════════════════════════════════════════════');
+        debugPrint('🔄 MERGE INVENTORY - Servidor → Local');
+        debugPrint('   Product ID: $productId');
+        debugPrint('   Servidor qty: $serverQty');
+        debugPrint('   Encontrado localmente: ${localItems.isNotEmpty}');
+        if (localItems.isNotEmpty) {
+          final localQty = localItems.first['qty_units'];
+          final localSynced = localItems.first['synced'];
+          debugPrint('   Local qty: $localQty');
+          debugPrint('   Local synced: $localSynced');
+        }
+        debugPrint('═══════════════════════════════════════════════════════');
+      } else {
+        localItems = await _db.query(table, where: 'id = ?', whereArgs: [id]);
+      }
 
       if (localItems.isEmpty) {
         // Não existe localmente - inserir
@@ -263,15 +473,37 @@ class SyncService {
         await _db.insert(table, mappedData);
       } else {
         final localItem = localItems.first;
-        final localSynced = localItem['synced'] as int? ?? 0;
+        final localSynced = localItem['synced'];
+        // Comparar synced como int ou string (SQLite pode retornar ambos)
+        final isNotSynced =
+            localSynced == 0 || localSynced == '0' || localSynced == false;
 
         // Se item local está sincronizado, podemos sobrescrever
-        if (localSynced == 1) {
+        if (!isNotSynced) {
           final mappedData = _mapServerToLocal(table, item);
           mappedData['synced'] = 1;
-          await _db.update(table, mappedData, where: 'id = ?', whereArgs: [id]);
+          // Para inventory, atualizar pelo ID local, não do servidor
+          final localId = localItem['id'];
+          // IMPORTANTE: Remover o ID do mapeamento para não tentar alterar a PK
+          if (table == 'inventory') {
+            mappedData.remove('id');
+          }
+          await _db
+              .update(table, mappedData, where: 'id = ?', whereArgs: [localId]);
+          if (table == 'inventory') {
+            debugPrint(
+                '✅ INVENTORY ATUALIZADO do servidor (synced=1, sobrescrevendo)');
+          }
+        } else {
+          debugPrint('═══════════════════════════════════════════════════════');
+          debugPrint('⚠️ PRESERVANDO $table LOCAL NÃO SINCRONIZADO');
+          debugPrint('   ID: ${localItem['id']}');
+          if (table == 'inventory') {
+            debugPrint('   Local qty: ${localItem['qty_units']}');
+            debugPrint('   Motivo: synced=0 (alteração local pendente)');
+          }
+          debugPrint('═══════════════════════════════════════════════════════');
         }
-        // Se não está sincronizado, manter versão local
       }
     }
   }
@@ -370,6 +602,15 @@ class SyncService {
       }
     });
 
+    // Garantir que customers tenha name (campo obrigatório)
+    if (table == 'customers' &&
+        (mapped['name'] == null || mapped['name'] == '')) {
+      mapped['name'] = serverData['fullName'] ??
+          serverData['full_name'] ??
+          serverData['email']?.toString().split('@').first ??
+          'Cliente';
+    }
+
     return mapped;
   }
 
@@ -387,6 +628,8 @@ class SyncService {
     required String action,
     Map<String, dynamic>? data,
   }) async {
+    debugPrint('📝 Marcando para sync: $entityType/$entityId ($action)');
+
     await _db.addToSyncQueue(
       entityType: entityType,
       entityId: entityId,
@@ -396,7 +639,12 @@ class SyncService {
 
     // Tentar sincronizar imediatamente se online
     if (_isOnline) {
-      syncAll();
+      debugPrint('🌐 Online - iniciando sincronização imediata');
+      // Usar Future.delayed para não bloquear a UI
+      Future.delayed(const Duration(milliseconds: 500), () => syncAll());
+    } else {
+      debugPrint(
+          '📴 Offline - item ficará na fila para sincronização posterior');
     }
   }
 

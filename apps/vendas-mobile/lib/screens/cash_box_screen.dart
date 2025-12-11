@@ -132,28 +132,36 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
     // Valores do caixa
     final openingCash = current['opening_cash'] ?? current['openingCash'] ?? 0;
 
-    // Totais por método de pagamento - PRIORIZAR stats pois são calculados em tempo real
-    final totalCash = stats['cashPayments'] ??
-        current['total_cash'] ??
+    // Totais por método de pagamento - PRIORIZAR valores locais (total_cash, etc)
+    // pois podem conter vendas ainda não sincronizadas com o servidor
+    final totalCash = current['total_cash'] ??
         current['totalCash'] ??
+        stats['cashPayments'] ??
         0;
-    final totalMobile = stats['mobileMoneyPayments'] ??
-        current['total_mobile_money'] ??
+    final totalMobile = current['total_mobile_money'] ??
         current['totalMobileMoney'] ??
+        stats['mobileMoneyPayments'] ??
         0;
-    final totalMixed = stats['cardPayments'] ??
-        current['total_card'] ??
+    final totalMixed = current['total_card'] ??
         current['totalCard'] ??
+        stats['cardPayments'] ??
         0;
-    final totalDebt = stats['debtPayments'] ??
-        current['total_debt'] ??
+    final totalDebt = current['total_debt'] ??
         current['totalDebt'] ??
+        stats['debtPayments'] ??
         0;
-    final totalSales = stats['totalSales'] ??
-        current['total_sales'] ??
+    final totalSales = current['total_sales'] ??
         current['totalSales'] ??
+        stats['totalSales'] ??
         0;
-    final salesCount = stats['salesCount'] ?? current['sales_count'] ?? 0;
+
+    // Contagem de vendas: servidor + vendas locais não sincronizadas
+    final serverSalesCount = stats['salesCount'] ?? current['sales_count'] ?? 0;
+    // localSalesCount conta apenas vendas criadas APÓS abertura do caixa no banco local
+    // Se o banco local está vazio (acabou de sincronizar), localSalesCount = 0
+    // Nesse caso, usamos apenas o serverSalesCount
+    // Se há vendas locais, SOMAMOS ao servidor
+    final salesCount = serverSalesCount + cashBox.localSalesCount;
 
     // Dinheiro esperado = abertura + vendas em dinheiro
     final expectedCash = openingCash + totalCash;

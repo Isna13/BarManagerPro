@@ -1981,6 +1981,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
     final result = await showDialog<String>(
       context: context,
+      barrierColor: Colors.black54,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           // Verificar se Vale é permitido
@@ -1993,219 +1994,300 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
           return Dialog(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(20),
             ),
+            elevation: 16,
             child: Container(
-              constraints: const BoxConstraints(maxWidth: 420),
-              padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.payment_rounded,
-                              color: Colors.white, size: 28),
-                          SizedBox(width: 12),
-                          Text(
-                            'Forma de Pagamento',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header com gradiente
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 20, horizontal: 24),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.primaryGradient,
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(20)),
                     ),
-                    const SizedBox(height: 20),
-
-                    // Cliente selecionado
-                    if (_selectedCustomer != null)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue.shade200),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.payment_rounded,
+                            color: Colors.white, size: 40),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Forma de Pagamento',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.person,
-                                color: Colors.blue.shade700, size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _selectedCustomer!['name'] ?? 'Cliente',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.blue.shade900,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Crédito: ${CurrencyHelper.format(availableCredit)}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.blue.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (_selectedCustomer != null) const SizedBox(height: 16),
-
-                    // Total e economia
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.green.shade50, Colors.green.shade100],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        const SizedBox(height: 12),
+                        // Total no header
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('Total',
-                                  style: AppTheme.bodyLarge
-                                      .copyWith(color: Colors.green.shade700)),
+                              Text(
+                                'Total: ',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 16,
+                                ),
+                              ),
                               Text(
                                 CurrencyHelper.format(_cartTotal),
-                                style: TextStyle(
-                                  fontSize: 24,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.bold,
-                                  color: AppTheme.successColor,
                                 ),
                               ),
                             ],
                           ),
-                          if (_muntuSavings > 0) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.savings_rounded,
-                                        size: 16, color: Colors.green),
-                                    const SizedBox(width: 6),
-                                    Text('Economia Muntu',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.green.shade700)),
-                                  ],
+                        ),
+                        if (_muntuSavings > 0) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.savings_rounded,
+                                  size: 14, color: Colors.greenAccent),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Economia: ${CurrencyHelper.format(_muntuSavings)}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.greenAccent,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                Text(
-                                  CurrencyHelper.format(_muntuSavings),
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green.shade700),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Corpo do modal
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        // Cliente selecionado (se houver)
+                        if (_selectedCustomer != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.blue.shade100),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: Colors.blue.shade200,
+                                  child: Icon(Icons.person,
+                                      color: Colors.blue.shade700, size: 18),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _selectedCustomer!['name'] ?? 'Cliente',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue.shade900,
+                                          fontSize: 14,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        'Crédito: ${CurrencyHelper.format(availableCredit)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.blue.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
-                          ],
+                          ),
+                          const SizedBox(height: 16),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
 
-                    // Opções de pagamento
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        _buildPaymentOption(
-                            'cash', 'Dinheiro', Icons.money, setDialogState),
-                        _buildPaymentOption('orange', 'Orange\nMoney',
-                            Icons.phone_android_rounded, setDialogState,
-                            color: Colors.orange),
-                        _buildPaymentOption('teletaku', 'TeleTaku',
-                            Icons.phone_android_rounded, setDialogState,
-                            color: Colors.purple),
-                        _buildPaymentOption(
-                          'vale',
-                          'Vale\n(Crédito)',
-                          Icons.receipt_long_rounded,
-                          setDialogState,
-                          color: Colors.amber,
-                          enabled: _selectedCustomer != null,
-                          subtitle: _selectedCustomer == null
-                              ? 'Selecione cliente'
-                              : null,
-                        ),
-                        _buildPaymentOption('mixed', 'Misto',
-                            Icons.credit_card_rounded, setDialogState,
-                            color: Colors.teal),
-                      ],
-                    ),
-
-                    // Aviso de crédito insuficiente para Vale
-                    if (_selectedPaymentMethod == 'vale' &&
-                        _selectedCustomer != null &&
-                        !canUseVale)
-                      Container(
-                        margin: const EdgeInsets.only(top: 16),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.red.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.warning_rounded,
-                                color: Colors.red.shade700, size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Crédito insuficiente!\nDisponível: ${CurrencyHelper.format(availableCredit)}',
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.red.shade700),
-                              ),
+                        // Título das opções
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Selecione uma opção:',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
                             ),
-                          ],
-                        ),
-                      ),
-
-                    const SizedBox(height: 24),
-
-                    // Botões
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: Text('Cancelar',
-                                style: TextStyle(
-                                    color: Colors.grey.shade600, fontSize: 16)),
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(height: 12),
+
+                        // Grid de opções de pagamento (2x3)
+                        GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 1.0,
+                          children: [
+                            _buildPaymentOptionCard(
+                              'cash',
+                              'Dinheiro',
+                              Icons.payments_rounded,
+                              Colors.green,
+                              setDialogState,
+                            ),
+                            _buildPaymentOptionCard(
+                              'orange',
+                              'Orange',
+                              Icons.phone_android_rounded,
+                              Colors.orange,
+                              setDialogState,
+                            ),
+                            _buildPaymentOptionCard(
+                              'teletaku',
+                              'TeleTaku',
+                              Icons.smartphone_rounded,
+                              Colors.purple,
+                              setDialogState,
+                            ),
+                            _buildPaymentOptionCard(
+                              'vale',
+                              'Vale',
+                              Icons.receipt_long_rounded,
+                              Colors.amber.shade700,
+                              setDialogState,
+                              enabled: _selectedCustomer != null,
+                            ),
+                            _buildPaymentOptionCard(
+                              'mixed',
+                              'Misto',
+                              Icons.credit_card_rounded,
+                              Colors.teal,
+                              setDialogState,
+                            ),
+                          ],
+                        ),
+
+                        // Aviso de crédito insuficiente para Vale
+                        if (_selectedPaymentMethod == 'vale' &&
+                            _selectedCustomer != null &&
+                            !canUseVale) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded,
+                                    color: Colors.red.shade600, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Crédito insuficiente! Disponível: ${CurrencyHelper.format(availableCredit)}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red.shade700),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Aviso se Vale requer cliente
+                        if (_selectedPaymentMethod == 'vale' &&
+                            _selectedCustomer == null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline_rounded,
+                                    color: Colors.amber.shade700, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Selecione um cliente para usar Vale',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.amber.shade800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Botões de ação
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Row(
+                      children: [
+                        // Botão Cancelar
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              side: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            child: Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Botão Confirmar
                         Expanded(
                           flex: 2,
-                          child: Container(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
                             decoration: BoxDecoration(
                               gradient: (_selectedPaymentMethod != null &&
                                       !(_selectedPaymentMethod == 'vale' &&
@@ -2221,9 +2303,10 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                           !canUseVale))
                                   ? [
                                       BoxShadow(
-                                          color: Colors.green.withOpacity(0.3),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4))
+                                        color: Colors.green.withOpacity(0.4),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 3),
+                                      )
                                     ]
                                   : null,
                             ),
@@ -2234,7 +2317,6 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                         !(_selectedPaymentMethod == 'vale' &&
                                             !canUseVale))
                                     ? () {
-                                        // Se é Vale, mostrar confirmação
                                         if (_selectedPaymentMethod == 'vale') {
                                           Navigator.pop(ctx);
                                           _showValeConfirmation();
@@ -2247,18 +2329,36 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                 borderRadius: BorderRadius.circular(12),
                                 child: Padding(
                                   padding:
-                                      const EdgeInsets.symmetric(vertical: 16),
+                                      const EdgeInsets.symmetric(vertical: 14),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: const [
-                                      Icon(Icons.check_circle_rounded,
-                                          color: Colors.white),
-                                      SizedBox(width: 8),
-                                      Text('Confirmar',
-                                          style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold)),
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle_rounded,
+                                        color:
+                                            (_selectedPaymentMethod != null &&
+                                                    !(_selectedPaymentMethod ==
+                                                            'vale' &&
+                                                        !canUseVale))
+                                                ? Colors.white
+                                                : Colors.white70,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Confirmar',
+                                        style: TextStyle(
+                                          color: (_selectedPaymentMethod !=
+                                                      null &&
+                                                  !(_selectedPaymentMethod ==
+                                                          'vale' &&
+                                                      !canUseVale))
+                                              ? Colors.white
+                                              : Colors.white70,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -2268,8 +2368,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
@@ -2282,6 +2382,128 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     }
   }
 
+  Widget _buildPaymentOptionCard(
+    String value,
+    String label,
+    IconData icon,
+    Color color,
+    StateSetter setDialogState, {
+    bool enabled = true,
+  }) {
+    final isSelected = _selectedPaymentMethod == value;
+    final isDisabled = !enabled && value == 'vale';
+
+    return GestureDetector(
+      onTap: enabled || value != 'vale'
+          ? () => setDialogState(() => _selectedPaymentMethod = value)
+          : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [color, color.withOpacity(0.7)],
+                )
+              : null,
+          color: isSelected
+              ? null
+              : (isDisabled ? Colors.grey.shade100 : Colors.grey.shade50),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade200,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  )
+                ]
+              : null,
+        ),
+        child: Stack(
+          children: [
+            // Conteúdo principal
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Colors.white.withOpacity(0.2)
+                          : color.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      icon,
+                      color: isSelected ? Colors.white : color,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.w600,
+                      color: isSelected
+                          ? Colors.white
+                          : (isDisabled
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Ícone de selecionado
+            if (isSelected)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: color,
+                    size: 14,
+                  ),
+                ),
+              ),
+            // Indicador de desabilitado
+            if (isDisabled)
+              Positioned(
+                bottom: 4,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Requer cliente',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Manter o método antigo para compatibilidade (pode ser removido depois)
   Widget _buildPaymentOption(
       String value, String label, IconData icon, StateSetter setDialogState,
       {Color? color, bool enabled = true, String? subtitle}) {
@@ -2474,7 +2696,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
                                     ),
                                   ),
                                   subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (customer['phone'] != null &&
                                           customer['phone']
@@ -2760,6 +2983,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     final auth = context.read<AuthProvider>();
     final cashBox = context.read<CashBoxProvider>();
     final customersProvider = context.read<CustomersProvider>();
+    final productsProvider = context.read<ProductsProvider>();
     final db = DatabaseService.instance;
     final sync = SyncService.instance;
 
@@ -2767,6 +2991,8 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     final saleTotal = _cartTotal;
     final savings = _muntuSavings;
     final customerId = _selectedCustomer?['id'];
+    // Salvar cópia do carrinho para atualizar estoque
+    final cartItems = List<Map<String, dynamic>>.from(_cart);
 
     try {
       final saleId = _uuid.v4();
@@ -2774,11 +3000,17 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       final saleNumber =
           'V${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
 
+      // Obter branchId do caixa (mais confiável que do usuário)
+      final branchId = cashBox.currentCashBox?['branch_id'] ??
+          cashBox.currentCashBox?['branchId'] ??
+          auth.branchId ??
+          'main-branch';
+
       // Criar venda
       await db.insert('sales', {
         'id': saleId,
         'sale_number': saleNumber,
-        'branch_id': auth.branchId ?? '',
+        'branch_id': branchId,
         'type': 'counter',
         'cashier_id': auth.userId ?? '',
         'customer_id': customerId,
@@ -2794,7 +3026,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       });
 
       // Adicionar itens
-      for (final item in _cart) {
+      for (final item in cartItems) {
         await db.insert('sale_items', {
           'id': _uuid.v4(),
           'sale_id': saleId,
@@ -2807,6 +3039,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
           'synced': 0,
         });
       }
+
+      // ATUALIZAR ESTOQUE - Decrementar quantidade de cada produto vendido
+      await productsProvider.decrementStockForSale(cartItems);
 
       // Atualizar totais do caixa baseado no método de pagamento
       if (paymentMethod == 'cash') {
@@ -2823,6 +3058,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
           await customersProvider.updateCustomerDebt(customerId, saleTotal);
         }
       }
+
+      // Incrementar contador de vendas do caixa
+      cashBox.incrementSalesCount();
 
       // Adicionar pontos de fidelidade (se há cliente e não é Vale/Fiado)
       Map<String, int>? loyaltyResult;

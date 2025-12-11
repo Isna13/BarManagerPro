@@ -35,37 +35,38 @@ export declare class DatabaseManager {
     private db;
     constructor(dbPath: string);
     initialize(): Promise<void>;
+    isAvailable(): boolean;
     private createTables;
     private runMigrations;
-    createSale(data: any): {
-        items: unknown[];
-        payments: unknown[];
+    createSale(data: any, skipSyncQueue?: boolean): {
+        items: any;
+        payments: any;
     } | null;
     addSaleItem(saleId: string, itemData: any): any;
     addSalePayment(saleId: string, paymentData: any): any;
-    getSales(filters?: any): unknown[];
+    getSales(filters?: any): any;
     getSaleById(id: string): {
-        items: unknown[];
-        payments: unknown[];
+        items: any;
+        payments: any;
     } | null;
-    getProducts(filters?: any): unknown[];
-    searchProducts(query: string): unknown[];
+    getProducts(filters?: any): any;
+    searchProducts(query: string): any;
     createProduct(productData: any, skipSyncQueue?: boolean): any;
     updateProduct(id: string, productData: any, skipSyncQueue?: boolean): any;
-    getProductById(id: string): unknown;
-    getCategories(filters?: any): unknown[];
+    getProductById(id: string): any;
+    getCategories(filters?: any): any;
     createCategory(categoryData: any, skipSyncQueue?: boolean): any;
     updateCategory(id: string, categoryData: any, skipSyncQueue?: boolean): any;
     deleteCategory(id: string): {
         success: boolean;
     };
-    getSuppliers(): unknown[];
+    getSuppliers(): any;
     createSupplier(supplierData: any, skipSyncQueue?: boolean): any;
-    updateSupplier(id: string, supplierData: any, skipSyncQueue?: boolean): unknown;
+    updateSupplier(id: string, supplierData: any, skipSyncQueue?: boolean): any;
     deleteSupplier(id: string): {
         success: boolean;
     };
-    getPurchases(filters?: any): unknown[];
+    getPurchases(filters?: any): any;
     getPurchaseById(id: string): any;
     createPurchase(purchaseData: any): {
         id: string;
@@ -77,7 +78,7 @@ export declare class DatabaseManager {
     };
     private updatePurchaseTotals;
     private generatePurchaseNumber;
-    getInventory(filters?: any): unknown[];
+    getInventory(filters?: any): any;
     updateInventory(productId: string, branchId: string, quantity: number, reason: string): void;
     private addInventory;
     /**
@@ -136,7 +137,7 @@ export declare class DatabaseManager {
     /**
      * Buscar movimentações de estoque com filtros
      */
-    getStockMovements(filters?: any): unknown[];
+    getStockMovements(filters?: any): any;
     /**
      * Validador de consistência de estoque
      */
@@ -158,14 +159,14 @@ export declare class DatabaseManager {
     };
     private deductInventory;
     private updateSaleTotals;
-    getCustomers(filters?: any): unknown[];
-    getCustomerById(id: string): unknown;
-    createCustomer(data: any, skipSyncQueue?: boolean): unknown;
-    updateCustomer(id: string, data: any, skipSyncQueue?: boolean): unknown;
+    getCustomers(filters?: any): any;
+    getCustomerById(id: string): any;
+    createCustomer(data: any, skipSyncQueue?: boolean): any;
+    updateCustomer(id: string, data: any, skipSyncQueue?: boolean): any;
     deleteCustomer(id: string): {
         success: boolean;
     };
-    getCustomerPurchaseHistory(customerId: string, filters?: any): unknown[];
+    getCustomerPurchaseHistory(customerId: string, filters?: any): any;
     getCustomerStats(customerId: string): any;
     /**
      * Adiciona pontos de fidelidade a um cliente após uma compra
@@ -223,19 +224,19 @@ export declare class DatabaseManager {
         role?: string;
         search?: string;
         isActive?: boolean;
-    }): unknown[];
+    }): any;
     /**
      * Busca um usuário por ID
      */
-    getUserById(id: string): unknown;
+    getUserById(id: string): any;
     /**
      * Busca um usuário por username
      */
-    getUserByUsername(username: string): unknown;
+    getUserByUsername(username: string): any;
     /**
      * Busca um usuário por email
      */
-    getUserByEmail(email: string): unknown;
+    getUserByEmail(email: string): any;
     /**
      * Atualiza um usuário
      */
@@ -246,7 +247,7 @@ export declare class DatabaseManager {
         branchId?: string;
         phone?: string;
         isActive?: boolean;
-    }): unknown;
+    }): any;
     /**
      * Reseta a senha de um usuário
      */
@@ -293,13 +294,11 @@ export declare class DatabaseManager {
         status?: string;
         branchId?: string;
         search?: string;
-    }): unknown[];
+    }): any;
     /**
      * Busca uma dívida por ID
      */
-    getDebtById(id: string): {
-        payments: unknown[];
-    } | null;
+    getDebtById(id: string): any;
     /**
      * Busca vales pendentes de uma mesa específica
      * Retorna um mapa com customer_id => total de vales pendentes
@@ -345,52 +344,34 @@ export declare class DatabaseManager {
     getCustomerDebtStats(customerId: string): any;
     openCashBox(data: any): any;
     closeCashBox(cashBoxId: string, closingData: any): void;
-    getCurrentCashBox(): unknown;
-    getCashBoxHistory(filters?: any): unknown[];
+    getCurrentCashBox(): any;
+    getCashBoxHistory(filters?: any): any;
     getCashBoxById(id: string): any;
     calculateCashBoxProfitMetrics(cashBoxId: string, cashBox: any): {
         totalRevenue: number;
         totalCOGS: number;
         grossProfit: number;
         profitMargin: number;
-        salesItems: {
-            productId: any;
-            productName: any;
-            qtySold: any;
-            revenue: any;
-            cost: any;
-            profit: number;
-            margin: number;
-        }[];
-        restockSuggestions: {
-            productId: any;
-            productName: any;
-            sku: any;
-            currentStock: any;
-            qtySoldInPeriod: any;
-            suggestedRestockQty: number;
-            restockCost: number;
-            unitsPerBox: any;
-            suggestedBoxes: number;
-        }[];
-        totalRestockCost: number;
+        salesItems: any;
+        restockSuggestions: any;
+        totalRestockCost: any;
     };
     updateCashBoxTotals(cashBoxId: string, saleTotal: number, paymentMethod: string): void;
     private addToSyncQueue;
-    getPendingSyncItems(): unknown[];
+    getPendingSyncItems(): any;
     markSyncItemCompleted(id: string): void;
     markSyncItemFailed(id: string, error: string): void;
     /**
      * Marca itens falhados como pendentes para re-tentativa
      * Útil após sincronizar dependências (ex: clientes antes de vendas)
      */
-    retryFailedSyncItems(maxRetries?: number): number;
+    retryFailedSyncItems(maxRetries?: number): any;
     /**
      * Obtém contagem de itens falhados por entidade
      */
-    getFailedSyncStats(): unknown[];
-    getSalesReport(startDate: Date, endDate: Date, branchId?: string): unknown[];
-    getInventoryReport(branchId?: string): unknown[];
+    getFailedSyncStats(): any;
+    getSalesReport(startDate: Date, endDate: Date, branchId?: string): any;
+    getInventoryReport(branchId?: string): any;
     /**
      * Criar/Cadastrar mesas
      */
@@ -399,18 +380,18 @@ export declare class DatabaseManager {
         number: string;
         seats: number;
         area?: string;
-    }): unknown;
+    }): any;
     /**
      * Listar mesas
      */
     getTables(filters?: {
         branchId?: string;
         isActive?: boolean;
-    }): unknown[];
+    }): any;
     /**
      * Buscar mesa por ID
      */
-    getTableById(id: string): unknown;
+    getTableById(id: string): any;
     /**
      * Re-sincronizar todas as mesas não sincronizadas
      * Isso adiciona mesas com synced=0 à fila de sync
@@ -672,7 +653,7 @@ export declare class DatabaseManager {
     /**
      * Obter resumo de todas as mesas (dashboard)
      */
-    getTablesOverview(branchId: string): any[];
+    getTablesOverview(branchId: string): any;
     createBackup(backupDir: string): string;
     restoreBackup(backupFile: string): {
         success: boolean;
@@ -685,7 +666,7 @@ export declare class DatabaseManager {
     fixUnitCostInSaleItems(): {
         success: boolean;
         recordsBefore: number;
-        recordsUpdated: number;
+        recordsUpdated: any;
         recordsAfter: number;
     };
     private generateUUID;
@@ -713,7 +694,7 @@ export declare class DatabaseManager {
     /**
      * Obtém uma filial pelo ID
      */
-    getBranchById(id: string): unknown;
+    getBranchById(id: string): any;
     /**
      * Cria uma nova filial
      */
@@ -721,19 +702,19 @@ export declare class DatabaseManager {
     /**
      * Atualiza uma filial existente
      */
-    updateBranch(id: string, data: any): unknown;
+    updateBranch(id: string, data: any): any;
     /**
      * Obtém um fornecedor pelo ID
      */
-    getSupplierById(id: string): unknown;
+    getSupplierById(id: string): any;
     /**
      * Obtém uma categoria pelo ID
      */
-    getCategoryById(id: string): unknown;
+    getCategoryById(id: string): any;
     /**
      * Atualiza usuário a partir de dados do servidor (sem sobrescrever senha)
      */
-    updateUserFromServer(id: string, data: any): unknown;
+    updateUserFromServer(id: string, data: any): any;
     prepare(query: string): any;
     exec(query: string): any;
     /**

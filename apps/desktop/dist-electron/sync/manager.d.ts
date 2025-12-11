@@ -43,7 +43,7 @@ export declare class SyncManager {
         lastSuccessfulRequest: Date | null;
         lastSync: Date | null;
         syncIntervalMs: number;
-        pendingItems: number;
+        pendingItems: any;
     };
     /**
      * Verifica se o banco local está vazio ou precisa de sincronização inicial
@@ -110,7 +110,7 @@ export declare class SyncManager {
     forcePush(): Promise<void>;
     getStatus(): {
         isRunning: boolean;
-        pendingItems: number;
+        pendingItems: any;
         lastSync: Date | null;
         isOnline: boolean;
         hasValidToken: boolean;

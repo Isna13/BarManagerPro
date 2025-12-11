@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -413,11 +414,19 @@ class DatabaseService {
     required Map<String, dynamic> data,
     int priority = 10,
   }) async {
+    // Converter data para JSON string válido
+    String dataJson;
+    try {
+      dataJson = jsonEncode(data);
+    } catch (e) {
+      dataJson = '{}';
+    }
+
     await insert('sync_queue', {
       'entity_type': entityType,
       'entity_id': entityId,
       'action': action,
-      'data': data.toString(),
+      'data': dataJson,
       'priority': priority,
       'created_at': DateTime.now().toIso8601String(),
       'status': 'pending',
