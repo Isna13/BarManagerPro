@@ -1165,9 +1165,26 @@ export class DatabaseManager {
       fields.push('is_active = ?');
       values.push(productData.isActive ? 1 : 0);
     }
+    // Suporte para atualização de estoque via sincronização
+    if (productData.stock !== undefined) {
+      fields.push('stock = ?');
+      values.push(productData.stock);
+    }
+    // Suporte para synced e last_sync
+    if (productData.synced !== undefined) {
+      fields.push('synced = ?');
+      values.push(productData.synced);
+    }
+    if (productData.last_sync !== undefined) {
+      fields.push('last_sync = ?');
+      values.push(productData.last_sync);
+    }
 
     fields.push('updated_at = datetime(\'now\')');
-    fields.push('synced = 0');
+    // Só marca como synced = 0 se não foi explicitamente definido
+    if (productData.synced === undefined) {
+      fields.push('synced = 0');
+    }
     values.push(id);
 
     const stmt = this.db.prepare(`

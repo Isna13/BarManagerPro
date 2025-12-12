@@ -1224,24 +1224,48 @@ export class SyncManager {
       
       inventory: (items) => {
         // Inventário - atualizar quantidades dos produtos no desktop
+        console.log(`📦 Recebidos ${items.length} itens de inventário do servidor`);
+        
         for (const item of items) {
           try {
             // O backend retorna items com productId e qtyUnits
             const productId = item.productId || item.product_id;
-            if (!productId) continue;
+            if (!productId) {
+              console.log(`⚠️ Item de inventário sem productId: ${JSON.stringify(item)}`);
+              continue;
+            }
             
-            // Atualizar quantidade no produto (o desktop usa stock no product, não inventory_items separado)
             // Verificar se o produto existe
             const product = this.dbManager.getProductById(productId);
-            if (product) {
+            if (!product) {
+              console.log(`⚠️ Produto não encontrado localmente: ${productId}`);
+              continue;
+            }
+            
+            const newQty = item.qtyUnits ?? item.qty_units ?? 0;
+            const currentStock = product.stock ?? 0;
+            
+            // Verificar se há alterações locais pendentes
+            if (product.synced === 0) {
+              console.log(`⚠️ Produto ${productId} tem alterações locais pendentes (synced=0), pulando...`);
+              continue;
+            }
+            
+            // Só atualizar se houver diferença
+            if (currentStock !== newQty) {
+              console.log(`📦 Atualizando estoque: ${product.name} (${productId})`);
+              console.log(`   Local: ${currentStock} → Servidor: ${newQty}`);
+              
               // Atualizar stock do produto usando updateProduct
-              const newQty = item.qtyUnits ?? item.qty_units ?? 0;
               this.dbManager.updateProduct(productId, {
                 stock: newQty,
                 synced: 1,
                 last_sync: new Date().toISOString(),
               }, true); // skipSyncQueue = true para evitar loop
-              console.log(`📦 Inventário atualizado: ${productId} = ${newQty} unidades`);
+              
+              console.log(`✅ Estoque atualizado: ${product.name} = ${newQty} unidades`);
+            } else {
+              console.log(`ℹ️ Estoque já sincronizado: ${product.name} = ${newQty}`);
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar inventory ${item.id}:`, e?.message);

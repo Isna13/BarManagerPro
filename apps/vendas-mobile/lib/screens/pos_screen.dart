@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 import '../utils/currency_helper.dart';
 import '../utils/responsive_helper.dart';
 import '../utils/app_theme.dart';
+import '../utils/sale_logger.dart';
 import 'package:uuid/uuid.dart';
 
 class POSScreen extends StatefulWidget {
@@ -2986,6 +2987,7 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     final productsProvider = context.read<ProductsProvider>();
     final db = DatabaseService.instance;
     final sync = SyncService.instance;
+    final logger = SaleLogger.instance;
 
     // Salvar valores antes de limpar o carrinho
     final saleTotal = _cartTotal;
@@ -2994,11 +2996,24 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
     // Salvar cópia do carrinho para atualizar estoque
     final cartItems = List<Map<String, dynamic>>.from(_cart);
 
+    // LOG: Estado do carrinho antes da venda
+    logger.logCartState(cartItems);
+
     try {
       final saleId = _uuid.v4();
       final now = DateTime.now().toIso8601String();
       final saleNumber =
           'V${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+
+      // LOG: Registrar a venda
+      await logger.logSale(
+        saleId: saleId,
+        saleNumber: saleNumber,
+        cartItems: cartItems,
+        paymentMethod: paymentMethod,
+        total: saleTotal,
+        customerId: customerId,
+      );
 
       // Obter branchId do caixa (mais confiável que do usuário)
       final branchId = cashBox.currentCashBox?['branch_id'] ??
