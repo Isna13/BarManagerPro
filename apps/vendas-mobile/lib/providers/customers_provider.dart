@@ -145,7 +145,12 @@ class CustomersProvider extends ChangeNotifier {
 
   /// Atualiza a dívida do cliente após uma venda Vale
   /// Sincroniza imediatamente com o servidor
-  Future<void> updateCustomerDebt(String customerId, int addedDebt) async {
+  Future<void> updateCustomerDebt(
+    String customerId,
+    int addedDebt, {
+    String? saleId,
+    String? branchId,
+  }) async {
     final index = _customers.indexWhere((c) => c['id'] == customerId);
     if (index >= 0) {
       final currentDebt = _customers[index]['currentDebt'] as int? ?? 0;
@@ -167,6 +172,8 @@ class CustomersProvider extends ChangeNotifier {
           'amount': addedDebt,
           'description': 'Venda a crédito (Vale)',
           'type': 'sale',
+          if (saleId != null) 'saleId': saleId,
+          if (branchId != null) 'branchId': branchId,
         });
         debugPrint(
             '✅ Dívida sincronizada: +$addedDebt para cliente $customerId');

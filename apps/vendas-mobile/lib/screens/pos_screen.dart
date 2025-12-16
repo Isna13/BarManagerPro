@@ -3070,7 +3070,12 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
 
         // Se é Vale, atualizar dívida do cliente
         if (paymentMethod == 'vale' && customerId != null) {
-          await customersProvider.updateCustomerDebt(customerId, saleTotal);
+          await customersProvider.updateCustomerDebt(
+            customerId,
+            saleTotal,
+            saleId: saleId,
+            branchId: branchId,
+          );
         }
       }
 
