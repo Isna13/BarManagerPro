@@ -408,14 +408,14 @@ class _MovementCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // Normalizar movementType para lowercase para comparação consistente
     final type = movement.movementType.toLowerCase();
-    
+
     // cash_in, cash, entry, entrada = entrada de dinheiro físico (vendas em dinheiro)
     // vale, orange, orange_money, teletaku, mixed = pagamento digital (não entra no caixa físico)
     final isEntry = type == 'entry' ||
         type == 'entrada' ||
         type == 'cash_in' ||
         type == 'cash';
-    
+
     final color = isEntry ? AppTheme.accentColor : AppTheme.dangerColor;
     final icon = isEntry ? Icons.arrow_downward : Icons.arrow_upward;
 
