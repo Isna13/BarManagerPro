@@ -310,6 +310,8 @@ export default function POS() {
       const savings = calculateSavings();
       const totalCents = Math.round(total * 100);
       
+      console.log('🛒 DEBUG processSale - selectedPaymentMethod:', selectedPaymentMethod);
+      
       // Gerar número da venda
       const saleNumber = `SALE-${Date.now()}`;
       

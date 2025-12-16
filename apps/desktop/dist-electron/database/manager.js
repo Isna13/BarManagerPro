@@ -832,6 +832,8 @@ class DatabaseManager {
         return { id, ...itemData };
     }
     addSalePayment(saleId, paymentData) {
+        console.log('💳 DEBUG addSalePayment - paymentData:', JSON.stringify(paymentData));
+        console.log('💳 DEBUG addSalePayment - method recebido:', paymentData.method);
         const id = this.generateUUID();
         const stmt = this.db.prepare(`
       INSERT INTO payments 
@@ -1004,8 +1006,25 @@ class DatabaseManager {
             fields.push('is_active = ?');
             values.push(productData.isActive ? 1 : 0);
         }
+        // Suporte para atualização de estoque via sincronização
+        if (productData.stock !== undefined) {
+            fields.push('stock = ?');
+            values.push(productData.stock);
+        }
+        // Suporte para synced e last_sync
+        if (productData.synced !== undefined) {
+            fields.push('synced = ?');
+            values.push(productData.synced);
+        }
+        if (productData.last_sync !== undefined) {
+            fields.push('last_sync = ?');
+            values.push(productData.last_sync);
+        }
         fields.push('updated_at = datetime(\'now\')');
-        fields.push('synced = 0');
+        // Só marca como synced = 0 se não foi explicitamente definido
+        if (productData.synced === undefined) {
+            fields.push('synced = 0');
+        }
         values.push(id);
         const stmt = this.db.prepare(`
       UPDATE products 
@@ -1545,6 +1564,78 @@ class DatabaseManager {
                 }, 2);
             }
         }
+    }
+    // ============================================
+    // MÉTODOS PARA SINCRONIZAÇÃO DE INVENTÁRIO
+    // ============================================
+    /**
+     * Buscar item de inventário por ID do produto
+     * Usado principalmente pela sincronização para atualizar estoque
+     */
+    getInventoryItemByProductId(productId, branchId) {
+        if (branchId) {
+            return this.db.prepare(`
+        SELECT * FROM inventory_items 
+        WHERE product_id = ? AND branch_id = ? AND batch_number IS NULL
+      `).get(productId, branchId);
+        }
+        // Se não especificar branch, retorna o primeiro encontrado
+        return this.db.prepare(`
+      SELECT * FROM inventory_items 
+      WHERE product_id = ? AND batch_number IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(productId);
+    }
+    /**
+     * Atualizar item de inventário diretamente
+     * Usado pela sincronização para atualizar estoque do servidor
+     */
+    updateInventoryItemByProductId(productId, data, skipSyncQueue = false) {
+        const existing = this.getInventoryItemByProductId(productId);
+        if (!existing) {
+            console.log(`⚠️ Inventory item não encontrado para produto: ${productId}`);
+            return false;
+        }
+        // Buscar produto para pegar units_per_box
+        const product = this.db.prepare('SELECT units_per_box FROM products WHERE id = ?').get(productId);
+        const unitsPerBox = product?.units_per_box || 1;
+        // Calcular closed_boxes e open_box_units se não fornecidos
+        const closedBoxes = data.closedBoxes ?? Math.floor(data.qtyUnits / unitsPerBox);
+        const openBoxUnits = data.openBoxUnits ?? (data.qtyUnits % unitsPerBox);
+        this.db.prepare(`
+      UPDATE inventory_items 
+      SET qty_units = ?,
+          closed_boxes = ?,
+          open_box_units = ?,
+          updated_at = datetime('now'),
+          synced = 1,
+          last_sync = datetime('now')
+      WHERE id = ?
+    `).run(data.qtyUnits, closedBoxes, openBoxUnits, existing.id);
+        console.log(`✅ Inventory item atualizado: productId=${productId}, qty=${data.qtyUnits}`);
+        return true;
+    }
+    /**
+     * Criar item de inventário para sincronização
+     * Usado quando o servidor tem um item que não existe localmente
+     */
+    createInventoryItemFromSync(productId, branchId, data) {
+        // Buscar produto para pegar units_per_box
+        const product = this.db.prepare('SELECT units_per_box FROM products WHERE id = ?').get(productId);
+        const unitsPerBox = product?.units_per_box || 1;
+        const closedBoxes = data.closedBoxes ?? Math.floor(data.qtyUnits / unitsPerBox);
+        const openBoxUnits = data.openBoxUnits ?? (data.qtyUnits % unitsPerBox);
+        const id = this.generateUUID();
+        this.db.prepare(`
+      INSERT INTO inventory_items (
+        id, product_id, branch_id, qty_units, closed_boxes, open_box_units,
+        synced, last_sync, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'), datetime('now'))
+    `).run(id, productId, branchId, data.qtyUnits, closedBoxes, openBoxUnits);
+        console.log(`✅ Inventory item criado: productId=${productId}, qty=${data.qtyUnits}`);
+        return id;
     }
     // ============================================
     // SISTEMA AVANÇADO DE ESTOQUE
@@ -2087,11 +2178,15 @@ class DatabaseManager {
         const id = data.id || this.generateUUID();
         // Gerar código único se não fornecido
         const code = data.code || `CUST-${Date.now().toString().slice(-6)}`;
+        // Obter valores de loyalty_points e current_debt
+        const loyaltyPoints = data.loyalty_points ?? data.loyaltyPoints ?? 0;
+        const currentDebt = data.current_debt ?? data.currentDebt ?? 0;
+        const creditLimit = data.creditLimit ?? data.credit_limit ?? 0;
         const stmt = this.db.prepare(`
       INSERT INTO customers (id, code, full_name, phone, email, credit_limit, current_debt, is_blocked, loyalty_points)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
     `);
-        stmt.run(id, code, data.name, data.phone, data.email, data.creditLimit || 0);
+        stmt.run(id, code, data.name, data.phone, data.email, creditLimit, currentDebt, loyaltyPoints);
         if (!skipSyncQueue) {
             // Prioridade 0 = mais alta (antes de vendas que são prioridade 1)
             // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
@@ -2106,15 +2201,59 @@ class DatabaseManager {
     }
     updateCustomer(id, data, skipSyncQueue = false) {
         // Aceitar tanto creditLimit quanto credit_limit
-        const creditLimit = data.creditLimit ?? data.credit_limit ?? 0;
-        const stmt = this.db.prepare(`
-      UPDATE customers 
-      SET full_name = ?, phone = ?, email = ?, credit_limit = ?, updated_at = datetime('now'), synced = ?
-      WHERE id = ?
-    `);
+        const creditLimit = data.creditLimit ?? data.credit_limit;
+        const loyaltyPoints = data.loyalty_points ?? data.loyaltyPoints;
+        const currentDebt = data.current_debt ?? data.currentDebt;
+        // Construir query dinamicamente para atualizar apenas campos fornecidos
+        const updates = [];
+        const params = [];
+        if (data.name !== undefined) {
+            updates.push('full_name = ?');
+            params.push(data.name);
+        }
+        if (data.phone !== undefined) {
+            updates.push('phone = ?');
+            params.push(data.phone);
+        }
+        if (data.email !== undefined) {
+            updates.push('email = ?');
+            params.push(data.email);
+        }
+        if (creditLimit !== undefined) {
+            updates.push('credit_limit = ?');
+            params.push(creditLimit);
+        }
+        if (loyaltyPoints !== undefined) {
+            updates.push('loyalty_points = ?');
+            params.push(loyaltyPoints);
+        }
+        if (currentDebt !== undefined) {
+            updates.push('current_debt = ?');
+            params.push(currentDebt);
+        }
+        if (data.code !== undefined) {
+            updates.push('code = ?');
+            params.push(data.code);
+        }
+        if (data.is_active !== undefined) {
+            updates.push('is_blocked = ?');
+            params.push(data.is_active ? 0 : 1);
+        }
         // Se skipSyncQueue é true, significa que veio do servidor, então marcar como synced = 1
         const synced = skipSyncQueue ? 1 : 0;
-        stmt.run(data.name, data.phone, data.email, creditLimit, synced, id);
+        updates.push('synced = ?');
+        params.push(synced);
+        updates.push('updated_at = datetime(\'now\')');
+        if (updates.length === 0) {
+            return this.getCustomerById(id);
+        }
+        params.push(id);
+        const stmt = this.db.prepare(`
+      UPDATE customers 
+      SET ${updates.join(', ')}
+      WHERE id = ?
+    `);
+        stmt.run(...params);
         if (!skipSyncQueue) {
             // Prioridade 0 = mais alta (antes de vendas)
             this.addToSyncQueue('update', 'customer', id, data, 0);

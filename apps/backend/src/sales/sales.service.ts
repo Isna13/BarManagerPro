@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto, AddSaleItemDto, ProcessPaymentDto } from './dto';
+import { normalizePaymentMethod, tryNormalizePaymentMethod, isValidPaymentMethod } from '../shared/payment-methods';
 
 @Injectable()
 export class SalesService {
@@ -230,11 +231,21 @@ export class SalesService {
       throw new NotFoundException('Venda não encontrada');
     }
 
+    // Validar e normalizar método de pagamento - NUNCA assumir padrão
+    let normalizedMethod: string;
+    try {
+      normalizedMethod = normalizePaymentMethod(paymentDto.method);
+      console.log(`✅ Método de pagamento recebido: ${paymentDto.method} -> normalizado: ${normalizedMethod}`);
+    } catch (e) {
+      console.error(`❌ Método de pagamento inválido: ${paymentDto.method}`);
+      throw new BadRequestException(`Método de pagamento inválido: ${paymentDto.method}`);
+    }
+
     // Para vendas já fechadas (sincronizadas do desktop), verificar se pagamento já existe
     if (sale.status !== 'open') {
       // Verificar se já existe um pagamento com o mesmo valor (evitar duplicação)
       const existingPayment = sale.payments.find(
-        p => p.amount === paymentDto.amount && p.method === paymentDto.method
+        p => p.amount === paymentDto.amount && p.method === normalizedMethod
       );
       if (existingPayment) {
         console.log(`⚠️ Pagamento já existe na venda ${saleId}, pulando...`);
@@ -244,16 +255,16 @@ export class SalesService {
       console.log(`📝 Adicionando pagamento à venda já fechada ${saleId} (sync do desktop)`);
     }
 
-    // Se for fiado, requer cliente
-    if (paymentDto.method === 'debt' && !sale.customerId) {
+    // Se for fiado (VALE), requer cliente
+    if (normalizedMethod === 'VALE' && !sale.customerId) {
       throw new BadRequestException('Cliente é obrigatório para venda fiada');
     }
 
-    // Criar pagamento
+    // Criar pagamento com método normalizado
     const payment = await this.prisma.payment.create({
       data: {
         saleId,
-        method: paymentDto.method,
+        method: normalizedMethod, // Sempre normalizado
         provider: paymentDto.provider,
         amount: paymentDto.amount,
         referenceNumber: paymentDto.referenceNumber,
@@ -261,8 +272,10 @@ export class SalesService {
       },
     });
 
-    // Se fiado, criar dívida
-    if (paymentDto.method === 'debt' && sale.customerId) {
+    console.log(`💰 Pagamento criado: id=${payment.id}, method=${normalizedMethod}, amount=${paymentDto.amount}`);
+
+    // Se fiado (VALE), criar dívida
+    if (normalizedMethod === 'VALE' && sale.customerId) {
       await this.prisma.debt.create({
         data: {
           debtNumber: `DEBT-${Date.now()}`,

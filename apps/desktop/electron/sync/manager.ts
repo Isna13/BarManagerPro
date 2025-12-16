@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { DatabaseManager } from '../database/manager';
 import { BrowserWindow } from 'electron';
+import { tryNormalizePaymentMethod, isValidPaymentMethod, PaymentMethod } from '../shared/payment-methods';
 
 interface SyncItem {
   id: string;
@@ -253,6 +254,8 @@ export class SyncManager {
       { name: 'products', endpoint: '/products' },
       { name: 'customers', endpoint: '/customers' },
       { name: 'users', endpoint: '/users' },
+      { name: 'inventory', endpoint: '/inventory' },
+      { name: 'debts', endpoint: '/debts' },
     ];
 
     let totalProgress = 0;
@@ -1143,6 +1146,12 @@ export class SyncManager {
                 ? item.creditLimit 
                 : (existingAny.credit_limit || 0);
               
+              // Obter loyalty_points e current_debt do servidor
+              const loyaltyPoints = item.loyaltyPoints ?? item.loyalty_points ?? existingAny.loyalty_points ?? 0;
+              const currentDebt = item.currentDebt ?? item.current_debt ?? existingAny.current_debt ?? 0;
+              
+              console.log(`📊 Cliente ${fullName}: pontos=${loyaltyPoints}, dívida=${currentDebt}`);
+              
               this.dbManager.updateCustomer(item.id, {
                 name: fullName,
                 email: item.email,
@@ -1150,7 +1159,8 @@ export class SyncManager {
                 code: item.code,
                 address: item.address,
                 creditLimit: creditLimit,
-                loyalty_points: item.loyaltyPoints ?? item.loyalty_points ?? existingAny.loyalty_points ?? 0,
+                loyalty_points: loyaltyPoints,
+                current_debt: currentDebt,
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
@@ -1165,6 +1175,7 @@ export class SyncManager {
                 address: item.address,
                 creditLimit: item.creditLimit || 0,
                 loyalty_points: item.loyaltyPoints ?? item.loyalty_points ?? 0,
+                current_debt: item.currentDebt ?? item.current_debt ?? 0,
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
@@ -1223,13 +1234,15 @@ export class SyncManager {
       },
       
       inventory: (items) => {
-        // Inventário - atualizar quantidades dos produtos no desktop
+        // Inventário - atualizar quantidades na tabela inventory_items
         console.log(`📦 Recebidos ${items.length} itens de inventário do servidor`);
         
         for (const item of items) {
           try {
             // O backend retorna items com productId e qtyUnits
             const productId = item.productId || item.product_id;
+            const branchId = item.branchId || item.branch_id;
+            
             if (!productId) {
               console.log(`⚠️ Item de inventário sem productId: ${JSON.stringify(item)}`);
               continue;
@@ -1243,29 +1256,55 @@ export class SyncManager {
             }
             
             const newQty = item.qtyUnits ?? item.qty_units ?? 0;
-            const currentStock = product.stock ?? 0;
             
-            // Verificar se há alterações locais pendentes
-            if (product.synced === 0) {
-              console.log(`⚠️ Produto ${productId} tem alterações locais pendentes (synced=0), pulando...`);
-              continue;
-            }
+            // IMPORTANTE: Não usar closedBoxes/openBoxUnits do servidor se forem 0
+            // O servidor Railway pode não ter esses campos corretamente preenchidos
+            // O método updateInventoryItemByProductId vai calcular automaticamente baseado em qtyUnits
+            const closedBoxes = (item.closedBoxes ?? item.closed_boxes) || undefined;
+            const openBoxUnits = (item.openBoxUnits ?? item.open_box_units) || undefined;
             
-            // Só atualizar se houver diferença
-            if (currentStock !== newQty) {
-              console.log(`📦 Atualizando estoque: ${product.name} (${productId})`);
-              console.log(`   Local: ${currentStock} → Servidor: ${newQty}`);
+            // Buscar item de inventário local
+            const inventoryItem = this.dbManager.getInventoryItemByProductId(productId, branchId);
+            
+            if (inventoryItem) {
+              // Verificar se há alterações locais pendentes no inventário
+              if (inventoryItem.synced === 0) {
+                console.log(`⚠️ Inventory item ${productId} tem alterações locais pendentes (synced=0), pulando...`);
+                continue;
+              }
               
-              // Atualizar stock do produto usando updateProduct
-              this.dbManager.updateProduct(productId, {
-                stock: newQty,
-                synced: 1,
-                last_sync: new Date().toISOString(),
-              }, true); // skipSyncQueue = true para evitar loop
+              const currentStock = inventoryItem.qty_units ?? 0;
               
-              console.log(`✅ Estoque atualizado: ${product.name} = ${newQty} unidades`);
+              // Só atualizar se houver diferença
+              if (currentStock !== newQty) {
+                console.log(`📦 Atualizando estoque: ${(product as any).name} (${productId})`);
+                console.log(`   Local: ${currentStock} → Servidor: ${newQty}`);
+                
+                // Atualizar inventory_items diretamente
+                const updated = this.dbManager.updateInventoryItemByProductId(productId, {
+                  qtyUnits: newQty,
+                  closedBoxes,
+                  openBoxUnits,
+                }, true); // skipSyncQueue = true para evitar loop
+                
+                if (updated) {
+                  console.log(`✅ Estoque atualizado: ${(product as any).name} = ${newQty} unidades`);
+                }
+              } else {
+                console.log(`ℹ️ Estoque já sincronizado: ${(product as any).name} = ${newQty}`);
+              }
             } else {
-              console.log(`ℹ️ Estoque já sincronizado: ${product.name} = ${newQty}`);
+              // Item não existe localmente - criar novo
+              if (branchId) {
+                console.log(`📦 Criando inventory item: ${(product as any).name} (${productId}) = ${newQty} unidades`);
+                this.dbManager.createInventoryItemFromSync(productId, branchId, {
+                  qtyUnits: newQty,
+                  closedBoxes,
+                  openBoxUnits,
+                });
+              } else {
+                console.log(`⚠️ Não é possível criar inventory item sem branchId: ${productId}`);
+              }
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar inventory ${item.id}:`, e?.message);
@@ -1346,6 +1385,13 @@ export class SyncManager {
                   `).get(payment.id);
                   
                   if (!existingPayment) {
+                    // Validar método de pagamento - NUNCA usar fallback
+                    const normalizedMethod = tryNormalizePaymentMethod(payment.method);
+                    if (!normalizedMethod) {
+                      console.error(`  ❌ Pagamento de dívida ${payment.id} com método inválido: ${payment.method}`);
+                      continue;
+                    }
+                    
                     this.dbManager.prepare(`
                       INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, created_at)
                       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1353,12 +1399,12 @@ export class SyncManager {
                       payment.id,
                       item.id,
                       payment.amount,
-                      payment.method || 'cash',
+                      normalizedMethod, // Método validado e normalizado
                       payment.referenceNumber || payment.reference || null,
                       payment.notes || null,
                       payment.createdAt || new Date().toISOString()
                     );
-                    console.log(`  💰 Pagamento sincronizado: ${payment.id}`);
+                    console.log(`  💰 Pagamento sincronizado: ${payment.id} (${normalizedMethod})`);
                   }
                 } catch (paymentError: any) {
                   console.error(`  ❌ Erro ao sincronizar pagamento ${payment.id}:`, paymentError?.message);
@@ -1463,10 +1509,8 @@ export class SyncManager {
             // Verificar se a venda já existe localmente
             const existing = this.dbManager.getSaleById ? this.dbManager.getSaleById(item.id) : null;
             
-            // Não sobrescrever vendas locais que ainda não foram sincronizadas
-            if (this.hasLocalPendingChanges('sales', item.id, existing)) {
-              continue;
-            }
+            // Para vendas, NÃO pular se existir - precisamos verificar pagamentos
+            // Mesmo que a venda local tenha synced=0, podemos precisar adicionar pagamentos do servidor
             
             if (!existing) {
               // Criar venda do servidor localmente (sync bidirecional)
@@ -1533,7 +1577,7 @@ export class SyncManager {
               }
               
               // Sincronizar pagamentos da venda se existirem
-              if (item.payments && Array.isArray(item.payments)) {
+              if (item.payments && Array.isArray(item.payments) && item.payments.length > 0) {
                 for (const payment of item.payments) {
                   try {
                     const existingPayment = this.dbManager.prepare(`
@@ -1541,36 +1585,183 @@ export class SyncManager {
                     `).get(payment.id);
                     
                     if (!existingPayment) {
+                      // Validar método de pagamento - NUNCA usar fallback
+                      const normalizedMethod = tryNormalizePaymentMethod(payment.method);
+                      if (!normalizedMethod) {
+                        console.error(`  ❌ Método de pagamento inválido: ${payment.method} - Venda ${item.id} marcada como inconsistente`);
+                        // Marcar a venda como inconsistente em vez de assumir 'cash'
+                        continue;
+                      }
+                      
                       this.dbManager.prepare(`
                         INSERT INTO payments (id, sale_id, method, amount, provider, reference_number, transaction_id, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                       `).run(
                         payment.id,
                         item.id,
-                        payment.method || 'cash',
+                        normalizedMethod, // Método validado e normalizado
                         payment.amount || item.total,
                         payment.provider || null,
                         payment.referenceNumber || payment.reference_number || null,
                         payment.transactionId || payment.transaction_id || null,
                         payment.createdAt || new Date().toISOString()
                       );
-                      console.log(`  💰 Pagamento sincronizado: ${payment.method} - ${payment.amount}`);
+                      console.log(`  💰 Pagamento sincronizado: ${normalizedMethod} - ${payment.amount}`);
                     }
                   } catch (paymentError: any) {
                     console.error(`  ❌ Erro ao sincronizar pagamento ${payment.id}:`, paymentError?.message);
                   }
                 }
+              } else {
+                // Se não tem array de payments, verificar paymentMethod direto do item
+                const rawPaymentMethod = item.paymentMethod || item.payment_method;
+                
+                // Validar método de pagamento - NUNCA usar fallback
+                const normalizedMethod = tryNormalizePaymentMethod(rawPaymentMethod);
+                if (!normalizedMethod) {
+                  console.error(`  ❌ Venda ${item.id} sem método de pagamento válido: ${rawPaymentMethod}`);
+                  // NÃO criar pagamento com método inválido
+                } else {
+                  const paymentId = `PAY-${item.id}-${Date.now()}`;
+                  
+                  try {
+                    this.dbManager.prepare(`
+                      INSERT INTO payments (id, sale_id, method, amount, created_at)
+                      VALUES (?, ?, ?, ?, ?)
+                    `).run(
+                      paymentId,
+                      item.id,
+                      normalizedMethod, // Método validado e normalizado
+                      item.total || 0,
+                      item.createdAt || new Date().toISOString()
+                    );
+                    console.log(`  💰 Pagamento criado: ${normalizedMethod} - ${item.total}`);
+                  } catch (paymentError: any) {
+                    console.error(`  ❌ Erro ao criar pagamento:`, paymentError?.message);
+                  }
+                }
+              }
+              
+              // Decrementar estoque para itens da venda
+              if (item.items && Array.isArray(item.items)) {
+                for (const saleItem of item.items) {
+                  try {
+                    const productId = saleItem.productId || saleItem.product_id;
+                    const qty = saleItem.qtyUnits || saleItem.qty_units || 1;
+                    
+                    // Buscar inventory_item e decrementar
+                    const inventoryItem = this.dbManager.getInventoryItemByProductId(productId);
+                    if (inventoryItem) {
+                      const newQty = Math.max(0, (inventoryItem.qty_units || 0) - qty);
+                      this.dbManager.updateInventoryItemByProductId(productId, {
+                        qtyUnits: newQty,
+                      }, true); // skipSyncQueue
+                      console.log(`  📦 Estoque decrementado: ${productId} -${qty} = ${newQty}`);
+                    }
+                  } catch (stockError: any) {
+                    console.error(`  ❌ Erro ao decrementar estoque:`, stockError?.message);
+                  }
+                }
               }
             } else {
-              // Atualizar status se necessário
+              // Venda já existe - verificar se precisa atualizar
               const existingAny = existing as any;
-              if (existingAny.status !== item.status || existingAny.synced === 0) {
+              
+              // DEBUG: Log do que o servidor enviou
+              console.log(`🔍 DEBUG Venda ${item.id}: payments=${JSON.stringify(item.payments)}, paymentMethod=${item.paymentMethod || item.payment_method}`);
+              
+              // Atualizar status se necessário
+              if (existingAny.status !== item.status) {
                 this.dbManager.prepare(`
                   UPDATE sales SET status = ?, synced = 1, updated_at = datetime('now')
                   WHERE id = ?
                 `).run(item.status, item.id);
                 console.log(`📝 Venda atualizada: ${item.id} (status: ${item.status})`);
               }
+              
+              // Verificar pagamentos locais e do servidor
+              const localPayments = this.dbManager.prepare(`
+                SELECT id, method FROM payments WHERE sale_id = ?
+              `).all(item.id) as any[];
+              
+              console.log(`📊 DEBUG Local payments (${localPayments.length}): ${JSON.stringify(localPayments)}`);
+              
+              // Determinar método de pagamento do servidor
+              const serverPaymentMethod = item.payments && Array.isArray(item.payments) && item.payments.length > 0
+                ? item.payments[0].method
+                : (item.paymentMethod || item.payment_method || null);
+              
+              if (localPayments.length === 0) {
+                // Não tem pagamento local - criar
+                if (item.payments && Array.isArray(item.payments) && item.payments.length > 0) {
+                  // Sincronizar pagamentos do servidor
+                  for (const payment of item.payments) {
+                    try {
+                      // Validar método de pagamento - NUNCA usar fallback
+                      const normalizedMethod = tryNormalizePaymentMethod(payment.method);
+                      if (!normalizedMethod) {
+                        console.error(`  ❌ Pagamento ${payment.id} com método inválido: ${payment.method}`);
+                        continue;
+                      }
+                      
+                      this.dbManager.prepare(`
+                        INSERT INTO payments (id, sale_id, method, amount, provider, reference_number, transaction_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                      `).run(
+                        payment.id,
+                        item.id,
+                        normalizedMethod, // Método validado e normalizado
+                        payment.amount || item.total,
+                        payment.provider || null,
+                        payment.referenceNumber || payment.reference_number || null,
+                        payment.transactionId || payment.transaction_id || null,
+                        payment.createdAt || new Date().toISOString()
+                      );
+                      console.log(`  💰 Pagamento adicionado: ${normalizedMethod} - ${payment.amount}`);
+                    } catch (paymentError: any) {
+                      console.error(`  ❌ Erro ao adicionar pagamento:`, paymentError?.message);
+                    }
+                  }
+                } else if (serverPaymentMethod) {
+                  // Sem pagamento no servidor mas tem paymentMethod - criar do paymentMethod
+                  const paymentId = `PAY-${item.id}-${Date.now()}`;
+                  
+                  try {
+                    this.dbManager.prepare(`
+                      INSERT INTO payments (id, sale_id, method, amount, created_at)
+                      VALUES (?, ?, ?, ?, ?)
+                    `).run(
+                      paymentId,
+                      item.id,
+                      serverPaymentMethod,
+                      item.total || 0,
+                      item.createdAt || new Date().toISOString()
+                    );
+                    console.log(`  💰 Pagamento criado para venda existente: ${serverPaymentMethod} - ${item.total}`);
+                  } catch (paymentError: any) {
+                    console.error(`  ❌ Erro ao criar pagamento:`, paymentError?.message);
+                  }
+                }
+              } else if (serverPaymentMethod && localPayments.length > 0) {
+                // Tem pagamento local E servidor tem método diferente
+                // Verificar se o método local está incorreto (cash quando deveria ser outro)
+                const localMethod = localPayments[0].method;
+                
+                console.log(`  📊 Comparando métodos: local="${localMethod}" vs server="${serverPaymentMethod}"`);
+                
+                // Se o servidor diz que é 'debt' ou 'vale' mas local diz 'cash', confiar no servidor
+                if (localMethod !== serverPaymentMethod) {
+                  console.log(`  🔄 Corrigindo método de pagamento: ${localMethod} → ${serverPaymentMethod}`);
+                  this.dbManager.prepare(`
+                    UPDATE payments SET method = ? WHERE sale_id = ?
+                  `).run(serverPaymentMethod, item.id);
+                }
+              }
+              
+              // Marcar como sincronizado
+              this.dbManager.prepare(`
+                UPDATE sales SET synced = 1 WHERE id = ?
+              `).run(item.id);
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar sale ${item.id}:`, e?.message);
@@ -1634,6 +1825,13 @@ export class SyncManager {
       case 'payment':
         // Pagamentos devem ser processados via POST /sales/:saleId/payments
         if (operation === 'create' && data.saleId) {
+          // Validar método de pagamento - NUNCA usar fallback
+          const normalizedMethod = tryNormalizePaymentMethod(data.method);
+          if (!normalizedMethod) {
+            console.error(`❌ Pagamento com método inválido: ${data.method}`);
+            return { success: false, reason: `Método de pagamento inválido: ${data.method}` };
+          }
+          
           // Verificar se a venda existe primeiro
           try {
             await this.apiClient.get(`/sales/${data.saleId}`);
@@ -1646,7 +1844,7 @@ export class SyncManager {
           }
           
           await this.apiClient.post(`/sales/${data.saleId}/payments`, {
-            method: data.method || 'cash',
+            method: normalizedMethod, // Método validado e normalizado
             amount: data.amount,
             provider: data.provider,
             referenceNumber: data.referenceNumber || data.reference_number,
@@ -1718,9 +1916,16 @@ export class SyncManager {
       case 'debt_payment':
         // Pagamento de dívida - deve chamar POST /debts/:debtId/pay
         if (operation === 'create' && data.debtId) {
+          // Validar método de pagamento - NUNCA usar fallback
+          const normalizedMethod = tryNormalizePaymentMethod(data.method);
+          if (!normalizedMethod) {
+            console.error(`❌ Pagamento de dívida com método inválido: ${data.method}`);
+            return { success: false, reason: `Método de pagamento inválido: ${data.method}` };
+          }
+          
           await this.apiClient.post(`/debts/${data.debtId}/pay`, {
             amount: data.amount,
-            method: data.method || 'cash',
+            method: normalizedMethod, // Método validado e normalizado
             reference: data.reference,
             notes: data.notes,
           });

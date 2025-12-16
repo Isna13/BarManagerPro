@@ -82,6 +82,29 @@ export declare class DatabaseManager {
     updateInventory(productId: string, branchId: string, quantity: number, reason: string): void;
     private addInventory;
     /**
+     * Buscar item de inventário por ID do produto
+     * Usado principalmente pela sincronização para atualizar estoque
+     */
+    getInventoryItemByProductId(productId: string, branchId?: string): any;
+    /**
+     * Atualizar item de inventário diretamente
+     * Usado pela sincronização para atualizar estoque do servidor
+     */
+    updateInventoryItemByProductId(productId: string, data: {
+        qtyUnits: number;
+        closedBoxes?: number;
+        openBoxUnits?: number;
+    }, skipSyncQueue?: boolean): boolean;
+    /**
+     * Criar item de inventário para sincronização
+     * Usado quando o servidor tem um item que não existe localmente
+     */
+    createInventoryItemFromSync(productId: string, branchId: string, data: {
+        qtyUnits: number;
+        closedBoxes?: number;
+        openBoxUnits?: number;
+    }): string;
+    /**
      * Abre uma caixa automaticamente quando necessário
      * Reduz closed_boxes em 1 e adiciona units_per_box em open_box_units
      */

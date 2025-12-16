@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../services/database_service.dart';
+import '../config/payment_methods.dart';
 
 class CartItem {
   final String productId;
@@ -197,6 +198,16 @@ class CartProvider extends ChangeNotifier {
       return null;
     }
 
+    // Validar e normalizar método de pagamento - NUNCA assumir padrão
+    String normalizedPaymentMethod;
+    try {
+      normalizedPaymentMethod = PaymentMethod.normalize(paymentMethod);
+    } catch (e) {
+      _error = 'Método de pagamento inválido: $paymentMethod';
+      notifyListeners();
+      return null;
+    }
+
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -206,35 +217,38 @@ class CartProvider extends ChangeNotifier {
       final saleId = uuid.v4();
       final now = DateTime.now().toIso8601String();
 
-      // Criar venda
+      // Criar venda com payment_method normalizado
+      // IMPORTANTE: Salvar como snake_case para compatibilidade com sincronização
       final sale = {
         'id': saleId,
-        'customerId': _customerId,
-        'tableSessionId': _tableSessionId,
+        'customer_id': _customerId,
+        'table_session_id': _tableSessionId,
         'subtotal': subtotal,
         'discount': 0.0,
         'total': total,
-        'paymentMethod': paymentMethod,
-        'amountPaid': amountPaid ?? total,
+        'payment_method': normalizedPaymentMethod, // Sempre normalizado
+        'payment_status': 'paid',
+        'amount_paid': amountPaid ?? total,
         'change': change ?? 0.0,
         'notes': notes,
         'status': 'completed',
-        'createdAt': now,
-        'updatedAt': now,
+        'created_at': now,
+        'updated_at': now,
         'synced': 0,
       };
 
+      debugPrint('💰 Criando venda com payment_method: $normalizedPaymentMethod');
       await _db.insert('sales', sale);
 
       // Criar itens da venda
       for (final item in _items) {
         final saleItem = {
           'id': uuid.v4(),
-          'saleId': saleId,
-          'productId': item.productId,
-          'productName': item.productName,
-          'quantity': item.quantity,
-          'unitPrice': item.price,
+          'sale_id': saleId,
+          'product_id': item.productId,
+          'product_name': item.productName,
+          'qty_units': item.quantity,
+          'unit_price': item.price,
           'total': item.total,
           'notes': item.notes,
           'synced': 0,
@@ -245,16 +259,17 @@ class CartProvider extends ChangeNotifier {
         await _updateInventory(item.productId, -item.quantity);
       }
 
-      // Criar pagamento
+      // Criar pagamento com método normalizado
       final payment = {
         'id': uuid.v4(),
-        'saleId': saleId,
-        'method': paymentMethod,
+        'sale_id': saleId,
+        'method': normalizedPaymentMethod, // Usar método normalizado
         'amount': total,
         'status': 'completed',
-        'createdAt': now,
+        'created_at': now,
         'synced': 0,
       };
+      debugPrint('💳 Criando pagamento com method: $normalizedPaymentMethod');
       await _db.insert('payments', payment);
 
       // Adicionar à fila de sincronização

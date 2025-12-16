@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'database_service.dart';
 import '../config/app_config.dart';
+import '../config/payment_methods.dart';
 
 class SyncService {
   static final SyncService instance = SyncService._init();
@@ -291,37 +292,41 @@ class SyncService {
 
   /// Mapeia dados da venda local para formato do servidor
   Map<String, dynamic> _mapSaleToServer(Map<String, dynamic> data) {
+    // Obter método de pagamento de forma robusta
+    final rawPaymentMethod = data['payment_method'] ?? data['paymentMethod'];
+    String? normalizedPaymentMethod;
+    
+    if (rawPaymentMethod != null && rawPaymentMethod.toString().isNotEmpty) {
+      try {
+        normalizedPaymentMethod = PaymentMethod.normalize(rawPaymentMethod.toString());
+        debugPrint('✅ Método de pagamento normalizado: $rawPaymentMethod -> $normalizedPaymentMethod');
+      } catch (e) {
+        debugPrint('⚠️ Erro ao normalizar método de pagamento: $rawPaymentMethod - $e');
+        // NÃO usar fallback - deixar null para que o servidor rejeite
+        normalizedPaymentMethod = null;
+      }
+    }
+    
     return {
       'id': data['id'],
-      'branchId': data['branch_id'],
-      'cashierId': data['cashier_id'],
+      'branchId': data['branch_id'] ?? data['branchId'],
+      'cashierId': data['cashier_id'] ?? data['cashierId'],
       'type': data['type'] ?? 'counter',
-      'customerId': data['customer_id'],
-      'saleNumber': data['sale_number'],
+      'customerId': data['customer_id'] ?? data['customerId'],
+      'saleNumber': data['sale_number'] ?? data['saleNumber'],
       'subtotal': data['subtotal'],
       'total': data['total'],
       'status': data['status'],
-      'paymentMethod': data['payment_method'],
+      'paymentMethod': normalizedPaymentMethod, // Método normalizado
+      'paymentStatus': data['payment_status'] ?? data['paymentStatus'] ?? 'paid',
       'notes': data['notes'],
     };
   }
 
   /// Mapeia método de pagamento local para formato do servidor
+  /// NUNCA retorna valor padrão - lança exceção se inválido
   String _mapPaymentMethod(String method) {
-    switch (method) {
-      case 'cash':
-        return 'cash';
-      case 'orange':
-      case 'teletaku':
-        return 'mobile_money';
-      case 'mixed':
-        return 'card';
-      case 'vale':
-      case 'debt':
-        return 'debt';
-      default:
-        return 'cash';
-    }
+    return PaymentMethod.normalize(method);
   }
 
   // Baixar dados do servidor

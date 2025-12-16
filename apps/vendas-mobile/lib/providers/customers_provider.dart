@@ -143,20 +143,45 @@ class CustomersProvider extends ChangeNotifier {
     return availableCredit >= amount;
   }
 
-  /// Atualiza a dívida do cliente localmente após uma venda Vale
+  /// Atualiza a dívida do cliente após uma venda Vale
+  /// Sincroniza imediatamente com o servidor
   Future<void> updateCustomerDebt(String customerId, int addedDebt) async {
     final index = _customers.indexWhere((c) => c['id'] == customerId);
     if (index >= 0) {
       final currentDebt = _customers[index]['currentDebt'] as int? ?? 0;
-      _customers[index]['currentDebt'] = currentDebt + addedDebt;
+      final newDebt = currentDebt + addedDebt;
+      _customers[index]['currentDebt'] = newDebt;
 
       // Atualizar no banco local
       await _db.update(
         'customers',
-        {'current_debt': currentDebt + addedDebt, 'synced': 0},
+        {'current_debt': newDebt, 'synced': 0},
         where: 'id = ?',
         whereArgs: [customerId],
       );
+
+      // Sincronizar dívida com o servidor
+      try {
+        await _api.createDebt({
+          'customerId': customerId,
+          'amount': addedDebt,
+          'description': 'Venda a crédito (Vale)',
+          'type': 'sale',
+        });
+        debugPrint(
+            '✅ Dívida sincronizada: +$addedDebt para cliente $customerId');
+
+        // Marcar como sincronizado
+        await _db.update(
+          'customers',
+          {'synced': 1},
+          where: 'id = ?',
+          whereArgs: [customerId],
+        );
+      } catch (e) {
+        debugPrint('❌ Erro ao sincronizar dívida: $e');
+        // Não bloqueia - será sincronizado depois pela fila
+      }
 
       notifyListeners();
     }
@@ -164,13 +189,15 @@ class CustomersProvider extends ChangeNotifier {
 
   /// Adiciona pontos de fidelidade ao cliente após uma venda
   /// Retorna o número de pontos adicionados e o total atualizado
+  /// Regra: 1 ponto para cada 1.000 FCFA gastos (valores em centavos)
   Future<Map<String, int>?> addLoyaltyPoints(
       String customerId, int saleAmount) async {
     final customer = getCustomerById(customerId);
     if (customer == null) return null;
 
-    // Calcular pontos: 1 ponto a cada 1000 FCFA
-    final pointsToAdd = saleAmount ~/ 1000;
+    // Calcular pontos: 1 ponto para cada 1.000 FCFA (100000 centavos)
+    // Ex: 1200 FCFA = 120000 centavos => 120000 ~/ 100000 = 1 ponto
+    final pointsToAdd = saleAmount ~/ 100000;
     if (pointsToAdd <= 0) return null;
 
     final index = _customers.indexWhere((c) => c['id'] == customerId);

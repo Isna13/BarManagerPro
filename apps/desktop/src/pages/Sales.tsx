@@ -153,7 +153,11 @@ export default function SalesPage() {
       cash: '💵 Dinheiro',
       orange: '🍊 Orange Money',
       teletaku: '📱 TeleTaku',
+      mobile_money: '📱 Mobile Money',
       mixed: '💳 Misto',
+      card: '💳 Misto',
+      vale: '📝 Vale',
+      debt: '📝 Vale',
     };
     return methods[method] || method;
   };
@@ -163,7 +167,11 @@ export default function SalesPage() {
       cash: 'bg-green-100 text-green-700',
       orange: 'bg-orange-100 text-orange-700',
       teletaku: 'bg-purple-100 text-purple-700',
+      mobile_money: 'bg-purple-100 text-purple-700',
       mixed: 'bg-blue-100 text-blue-700',
+      card: 'bg-blue-100 text-blue-700',
+      vale: 'bg-yellow-100 text-yellow-700',
+      debt: 'bg-yellow-100 text-yellow-700',
     };
     return colors[method] || 'bg-gray-100 text-gray-700';
   };

@@ -95,6 +95,22 @@ const InventoryAdvanced: React.FC = () => {
     if (activeTab === 'movements') {
       loadMovements();
     }
+    
+    // Listener para atualizar inventário após sincronização
+    // @ts-ignore
+    const unsubscribeSyncComplete = window.electronAPI?.sync?.onSyncComplete?.((data: any) => {
+      console.log('📦 Sync completed, reloading inventory...', data);
+      loadInventory();
+      if (activeTab === 'movements') {
+        loadMovements();
+      }
+    });
+    
+    return () => {
+      if (unsubscribeSyncComplete) {
+        unsubscribeSyncComplete();
+      }
+    };
   }, [activeTab]);
 
   const loadInventory = async () => {
