@@ -534,9 +534,27 @@ export class CashBoxService {
       take: limit,
     });
 
-    // Mapear para o formato esperado pelo mobile
-    // Normalizar método de pagamento para lowercase para comparação consistente
-    return payments.map(payment => {
+    // Buscar dívidas (vendas com Vale) criadas durante o período do caixa
+    const debts = await this.prisma.debt.findMany({
+      where: {
+        createdAt: { gte: targetCashBox.openedAt },
+        branchId: targetCashBox.branchId,
+      },
+      include: {
+        sale: {
+          select: {
+            saleNumber: true,
+            cashier: { select: { fullName: true } },
+          },
+        },
+        customer: { select: { fullName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    // Mapear pagamentos para o formato esperado pelo mobile
+    const paymentMovements = payments.map(payment => {
       const method = (payment.method || '').toLowerCase();
       // CASH = entrada de dinheiro na caixa
       // Outros métodos (vale, orange_money, teletaku) = pagamento digital, não entra no caixa físico
@@ -557,6 +575,29 @@ export class CashBoxService {
         createdAt: payment.createdAt,
       };
     });
+
+    // Mapear dívidas (Vale) para o formato esperado pelo mobile
+    const debtMovements = debts.map(debt => ({
+      id: debt.id,
+      cashBoxId: targetCashBox!.id,
+      movementType: 'vale',
+      amount: debt.originalAmount,
+      description: `Venda ${debt.sale?.saleNumber || ''}${
+        debt.customer?.fullName ? ` - ${debt.customer.fullName}` : ''
+      }`,
+      referenceType: 'debt',
+      referenceId: debt.saleId,
+      userId: null,
+      userName: debt.sale?.cashier?.fullName || null,
+      createdAt: debt.createdAt,
+    }));
+
+    // Combinar e ordenar por data (mais recentes primeiro)
+    const allMovements = [...paymentMovements, ...debtMovements]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
+
+    return allMovements;
   }
 }
 
