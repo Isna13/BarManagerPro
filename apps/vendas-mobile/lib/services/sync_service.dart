@@ -295,18 +295,21 @@ class SyncService {
     // Obter método de pagamento de forma robusta
     final rawPaymentMethod = data['payment_method'] ?? data['paymentMethod'];
     String? normalizedPaymentMethod;
-    
+
     if (rawPaymentMethod != null && rawPaymentMethod.toString().isNotEmpty) {
       try {
-        normalizedPaymentMethod = PaymentMethod.normalize(rawPaymentMethod.toString());
-        debugPrint('✅ Método de pagamento normalizado: $rawPaymentMethod -> $normalizedPaymentMethod');
+        normalizedPaymentMethod =
+            PaymentMethod.normalize(rawPaymentMethod.toString());
+        debugPrint(
+            '✅ Método de pagamento normalizado: $rawPaymentMethod -> $normalizedPaymentMethod');
       } catch (e) {
-        debugPrint('⚠️ Erro ao normalizar método de pagamento: $rawPaymentMethod - $e');
+        debugPrint(
+            '⚠️ Erro ao normalizar método de pagamento: $rawPaymentMethod - $e');
         // NÃO usar fallback - deixar null para que o servidor rejeite
         normalizedPaymentMethod = null;
       }
     }
-    
+
     return {
       'id': data['id'],
       'branchId': data['branch_id'] ?? data['branchId'],
@@ -318,7 +321,8 @@ class SyncService {
       'total': data['total'],
       'status': data['status'],
       'paymentMethod': normalizedPaymentMethod, // Método normalizado
-      'paymentStatus': data['payment_status'] ?? data['paymentStatus'] ?? 'paid',
+      'paymentStatus':
+          data['payment_status'] ?? data['paymentStatus'] ?? 'paid',
       'notes': data['notes'],
     };
   }

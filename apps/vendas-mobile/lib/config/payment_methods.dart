@@ -7,7 +7,7 @@ class PaymentMethod {
   static const String teletaku = 'TELETAKU';
   static const String vale = 'VALE';
   static const String mixed = 'MIXED';
-  
+
   // Lista de todos os métodos válidos
   static const List<String> validMethods = [
     cash,
@@ -16,21 +16,21 @@ class PaymentMethod {
     vale,
     mixed,
   ];
-  
+
   /// Valida se o método é válido
   static bool isValid(String? method) {
     if (method == null || method.isEmpty) return false;
     return validMethods.contains(method.toUpperCase());
   }
-  
+
   /// Normaliza o método de pagamento para o padrão global
   static String normalize(String? method) {
     if (method == null || method.isEmpty) {
       throw ArgumentError('Método de pagamento não pode ser nulo ou vazio');
     }
-    
+
     final upperMethod = method.toUpperCase();
-    
+
     // Mapeamento de valores antigos/alternativos para o padrão
     switch (upperMethod) {
       case 'CASH':
@@ -56,7 +56,7 @@ class PaymentMethod {
         throw ArgumentError('Método de pagamento inválido: $method');
     }
   }
-  
+
   /// Retorna nome amigável para exibição
   static String getDisplayName(String method) {
     switch (method.toUpperCase()) {

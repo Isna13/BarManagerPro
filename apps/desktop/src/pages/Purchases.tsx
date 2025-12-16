@@ -778,10 +778,13 @@ const Purchases: React.FC = () => {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Método de Pagamento:</span>
                       <span className="font-medium">
-                        {purchaseDetails.payment_method === 'cash' ? 'Dinheiro' :
-                         purchaseDetails.payment_method === 'transfer' ? 'Transferência' :
-                         purchaseDetails.payment_method === 'check' ? 'Cheque' :
-                         purchaseDetails.payment_method === 'credit' ? 'A Prazo' : '-'}
+                        {(() => {
+                          const method = (purchaseDetails.payment_method || '').toLowerCase();
+                          return method === 'cash' ? 'Dinheiro' :
+                                 method === 'transfer' ? 'Transferência' :
+                                 method === 'check' ? 'Cheque' :
+                                 method === 'credit' ? 'A Prazo' : '-';
+                        })()}
                       </span>
                     </div>
                     <div className="flex justify-between">

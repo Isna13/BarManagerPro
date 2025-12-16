@@ -517,20 +517,28 @@ export class CashBoxService {
     });
 
     // Mapear para o formato esperado pelo mobile
-    return payments.map(payment => ({
-      id: payment.id,
-      cashBoxId: targetCashBox!.id,
-      movementType: payment.method === 'cash' ? 'cash_in' : payment.method,
-      amount: payment.amount,
-      description: `Venda ${payment.sale?.saleNumber || ''}${
-        payment.sale?.customer?.fullName ? ` - ${payment.sale.customer.fullName}` : ''
-      }`,
-      referenceType: 'sale',
-      referenceId: payment.saleId,
-      userId: null,
-      userName: payment.sale?.cashier?.fullName || null,
-      createdAt: payment.createdAt,
-    }));
+    // Normalizar método de pagamento para lowercase para comparação consistente
+    return payments.map(payment => {
+      const method = (payment.method || '').toLowerCase();
+      // CASH = entrada de dinheiro na caixa
+      // Outros métodos (vale, orange_money, teletaku) = pagamento digital, não entra no caixa físico
+      const isCashPayment = method === 'cash';
+      
+      return {
+        id: payment.id,
+        cashBoxId: targetCashBox!.id,
+        movementType: isCashPayment ? 'cash_in' : method,
+        amount: payment.amount,
+        description: `Venda ${payment.sale?.saleNumber || ''}${
+          payment.sale?.customer?.fullName ? ` - ${payment.sale.customer.fullName}` : ''
+        }`,
+        referenceType: 'sale',
+        referenceId: payment.saleId,
+        userId: null,
+        userName: payment.sale?.cashier?.fullName || null,
+        createdAt: payment.createdAt,
+      };
+    });
   }
 }
 

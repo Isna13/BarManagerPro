@@ -550,9 +550,13 @@ export default function CustomersPage() {
                             <td className="px-4 py-2 text-center">
                               {purchase.payment_method ? (
                                 <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                                  {purchase.payment_method === 'cash' ? 'Dinheiro' : 
-                                   purchase.payment_method === 'orange' ? 'Orange Money' :
-                                   purchase.payment_method === 'teletaku' ? 'TeleTaku' : purchase.payment_method}
+                                  {(() => {
+                                    const method = purchase.payment_method.toLowerCase();
+                                    return method === 'cash' ? 'Dinheiro' : 
+                                           method === 'orange' || method === 'orange_money' ? 'Orange Money' :
+                                           method === 'teletaku' ? 'TeleTaku' :
+                                           method === 'vale' ? 'Vale' : purchase.payment_method;
+                                  })()}
                                 </span>
                               ) : (
                                 <span className="text-xs text-gray-400">-</span>

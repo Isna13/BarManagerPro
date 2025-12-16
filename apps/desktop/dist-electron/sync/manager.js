@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SyncManager = void 0;
 const axios_1 = __importDefault(require("axios"));
+const payment_methods_1 = require("../shared/payment-methods");
 /**
  * Configurações otimizadas para Railway Free Plan
  *
@@ -1217,11 +1218,18 @@ class SyncManager {
                     SELECT id FROM debt_payments WHERE id = ?
                   `).get(payment.id);
                                     if (!existingPayment) {
+                                        // Validar método de pagamento - NUNCA usar fallback
+                                        const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(payment.method);
+                                        if (!normalizedMethod) {
+                                            console.error(`  ❌ Pagamento de dívida ${payment.id} com método inválido: ${payment.method}`);
+                                            continue;
+                                        }
                                         this.dbManager.prepare(`
                       INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, created_at)
                       VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `).run(payment.id, item.id, payment.amount, payment.method || 'cash', payment.referenceNumber || payment.reference || null, payment.notes || null, payment.createdAt || new Date().toISOString());
-                                        console.log(`  💰 Pagamento sincronizado: ${payment.id}`);
+                    `).run(payment.id, item.id, payment.amount, normalizedMethod, // Método validado e normalizado
+                                        payment.referenceNumber || payment.reference || null, payment.notes || null, payment.createdAt || new Date().toISOString());
+                                        console.log(`  💰 Pagamento sincronizado: ${payment.id} (${normalizedMethod})`);
                                     }
                                 }
                                 catch (paymentError) {
@@ -1356,11 +1364,19 @@ class SyncManager {
                       SELECT id FROM payments WHERE id = ?
                     `).get(payment.id);
                                         if (!existingPayment) {
+                                            // Validar método de pagamento - NUNCA usar fallback
+                                            const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(payment.method);
+                                            if (!normalizedMethod) {
+                                                console.error(`  ❌ Método de pagamento inválido: ${payment.method} - Venda ${item.id} marcada como inconsistente`);
+                                                // Marcar a venda como inconsistente em vez de assumir 'cash'
+                                                continue;
+                                            }
                                             this.dbManager.prepare(`
                         INSERT INTO payments (id, sale_id, method, amount, provider, reference_number, transaction_id, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                      `).run(payment.id, item.id, payment.method || 'cash', payment.amount || item.total, payment.provider || null, payment.referenceNumber || payment.reference_number || null, payment.transactionId || payment.transaction_id || null, payment.createdAt || new Date().toISOString());
-                                            console.log(`  💰 Pagamento sincronizado: ${payment.method} - ${payment.amount}`);
+                      `).run(payment.id, item.id, normalizedMethod, // Método validado e normalizado
+                                            payment.amount || item.total, payment.provider || null, payment.referenceNumber || payment.reference_number || null, payment.transactionId || payment.transaction_id || null, payment.createdAt || new Date().toISOString());
+                                            console.log(`  💰 Pagamento sincronizado: ${normalizedMethod} - ${payment.amount}`);
                                         }
                                     }
                                     catch (paymentError) {
@@ -1370,17 +1386,26 @@ class SyncManager {
                             }
                             else {
                                 // Se não tem array de payments, verificar paymentMethod direto do item
-                                const paymentMethod = item.paymentMethod || item.payment_method || 'cash';
-                                const paymentId = `PAY-${item.id}-${Date.now()}`;
-                                try {
-                                    this.dbManager.prepare(`
-                    INSERT INTO payments (id, sale_id, method, amount, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                  `).run(paymentId, item.id, paymentMethod, item.total || 0, item.createdAt || new Date().toISOString());
-                                    console.log(`  💰 Pagamento criado: ${paymentMethod} - ${item.total}`);
+                                const rawPaymentMethod = item.paymentMethod || item.payment_method;
+                                // Validar método de pagamento - NUNCA usar fallback
+                                const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(rawPaymentMethod);
+                                if (!normalizedMethod) {
+                                    console.error(`  ❌ Venda ${item.id} sem método de pagamento válido: ${rawPaymentMethod}`);
+                                    // NÃO criar pagamento com método inválido
                                 }
-                                catch (paymentError) {
-                                    console.error(`  ❌ Erro ao criar pagamento:`, paymentError?.message);
+                                else {
+                                    const paymentId = `PAY-${item.id}-${Date.now()}`;
+                                    try {
+                                        this.dbManager.prepare(`
+                      INSERT INTO payments (id, sale_id, method, amount, created_at)
+                      VALUES (?, ?, ?, ?, ?)
+                    `).run(paymentId, item.id, normalizedMethod, // Método validado e normalizado
+                                        item.total || 0, item.createdAt || new Date().toISOString());
+                                        console.log(`  💰 Pagamento criado: ${normalizedMethod} - ${item.total}`);
+                                    }
+                                    catch (paymentError) {
+                                        console.error(`  ❌ Erro ao criar pagamento:`, paymentError?.message);
+                                    }
                                 }
                             }
                             // Decrementar estoque para itens da venda
@@ -1433,11 +1458,18 @@ class SyncManager {
                                     // Sincronizar pagamentos do servidor
                                     for (const payment of item.payments) {
                                         try {
+                                            // Validar método de pagamento - NUNCA usar fallback
+                                            const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(payment.method);
+                                            if (!normalizedMethod) {
+                                                console.error(`  ❌ Pagamento ${payment.id} com método inválido: ${payment.method}`);
+                                                continue;
+                                            }
                                             this.dbManager.prepare(`
                         INSERT INTO payments (id, sale_id, method, amount, provider, reference_number, transaction_id, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                      `).run(payment.id, item.id, payment.method || 'cash', payment.amount || item.total, payment.provider || null, payment.referenceNumber || payment.reference_number || null, payment.transactionId || payment.transaction_id || null, payment.createdAt || new Date().toISOString());
-                                            console.log(`  💰 Pagamento adicionado: ${payment.method} - ${payment.amount}`);
+                      `).run(payment.id, item.id, normalizedMethod, // Método validado e normalizado
+                                            payment.amount || item.total, payment.provider || null, payment.referenceNumber || payment.reference_number || null, payment.transactionId || payment.transaction_id || null, payment.createdAt || new Date().toISOString());
+                                            console.log(`  💰 Pagamento adicionado: ${normalizedMethod} - ${payment.amount}`);
                                         }
                                         catch (paymentError) {
                                             console.error(`  ❌ Erro ao adicionar pagamento:`, paymentError?.message);
@@ -1535,6 +1567,12 @@ class SyncManager {
             case 'payment':
                 // Pagamentos devem ser processados via POST /sales/:saleId/payments
                 if (operation === 'create' && data.saleId) {
+                    // Validar método de pagamento - NUNCA usar fallback
+                    const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(data.method);
+                    if (!normalizedMethod) {
+                        console.error(`❌ Pagamento com método inválido: ${data.method}`);
+                        return { success: false, reason: `Método de pagamento inválido: ${data.method}` };
+                    }
                     // Verificar se a venda existe primeiro
                     try {
                         await this.apiClient.get(`/sales/${data.saleId}`);
@@ -1547,7 +1585,7 @@ class SyncManager {
                         throw checkError;
                     }
                     await this.apiClient.post(`/sales/${data.saleId}/payments`, {
-                        method: data.method || 'cash',
+                        method: normalizedMethod, // Método validado e normalizado
                         amount: data.amount,
                         provider: data.provider,
                         referenceNumber: data.referenceNumber || data.reference_number,
@@ -1620,9 +1658,15 @@ class SyncManager {
             case 'debt_payment':
                 // Pagamento de dívida - deve chamar POST /debts/:debtId/pay
                 if (operation === 'create' && data.debtId) {
+                    // Validar método de pagamento - NUNCA usar fallback
+                    const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(data.method);
+                    if (!normalizedMethod) {
+                        console.error(`❌ Pagamento de dívida com método inválido: ${data.method}`);
+                        return { success: false, reason: `Método de pagamento inválido: ${data.method}` };
+                    }
                     await this.apiClient.post(`/debts/${data.debtId}/pay`, {
                         amount: data.amount,
-                        method: data.method || 'cash',
+                        method: normalizedMethod, // Método validado e normalizado
                         reference: data.reference,
                         notes: data.notes,
                     });

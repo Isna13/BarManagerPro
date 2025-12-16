@@ -237,7 +237,8 @@ class CartProvider extends ChangeNotifier {
         'synced': 0,
       };
 
-      debugPrint('💰 Criando venda com payment_method: $normalizedPaymentMethod');
+      debugPrint(
+          '💰 Criando venda com payment_method: $normalizedPaymentMethod');
       await _db.insert('sales', sale);
 
       // Criar itens da venda

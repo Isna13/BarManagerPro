@@ -175,13 +175,16 @@ const CashBox: React.FC = () => {
       const amount = sale.total / 100;
       totalSales += amount;
 
-      if (sale.payment_method === 'cash') {
+      // Normalizar método para minúsculas para compatibilidade
+      const method = (sale.payment_method || '').toLowerCase();
+
+      if (method === 'cash') {
         totalCash += amount;
-      } else if (sale.payment_method === 'mixed' || sale.payment_method === 'card') {
+      } else if (method === 'mixed' || method === 'card') {
         totalCard += amount;
-      } else if (sale.payment_method === 'orange' || sale.payment_method === 'teletaku' || sale.payment_method === 'mobile') {
+      } else if (method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile' || method === 'mobile_money') {
         totalMobile += amount;
-      } else if (sale.payment_method === 'debt' || sale.payment_method === 'vale') {
+      } else if (method === 'debt' || method === 'vale') {
         totalDebt += amount;
       }
     });
@@ -378,31 +381,33 @@ const CashBox: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    sales.map((sale) => (
+                    sales.map((sale) => {
+                      const method = (sale.payment_method || '').toLowerCase();
+                      return (
                       <tr key={sale.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 text-sm font-medium text-gray-900">{sale.sale_number}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{formatDate(sale.created_at)}</td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                            sale.payment_method === 'cash' ? 'bg-green-100 text-green-700' :
-                            sale.payment_method === 'orange' ? 'bg-orange-100 text-orange-700' :
-                            sale.payment_method === 'teletaku' ? 'bg-purple-100 text-purple-700' :
-                            sale.payment_method === 'mixed' ? 'bg-blue-100 text-blue-700' :
-                            sale.payment_method === 'vale' || sale.payment_method === 'debt' ? 'bg-yellow-100 text-yellow-700' :
+                            method === 'cash' ? 'bg-green-100 text-green-700' :
+                            method === 'orange' || method === 'orange_money' ? 'bg-orange-100 text-orange-700' :
+                            method === 'teletaku' ? 'bg-purple-100 text-purple-700' :
+                            method === 'mixed' ? 'bg-blue-100 text-blue-700' :
+                            method === 'vale' || method === 'debt' ? 'bg-yellow-100 text-yellow-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
-                            {sale.payment_method === 'cash' ? '💵 Dinheiro (FCFA)' :
-                             sale.payment_method === 'orange' ? '🍊 Orange Money' :
-                             sale.payment_method === 'teletaku' ? '📱 TeleTaku' :
-                             sale.payment_method === 'mixed' ? '💳 Misto' :
-                             sale.payment_method === 'vale' || sale.payment_method === 'debt' ? '📝 Vale' : 'Outro'}
+                            {method === 'cash' ? '💵 Dinheiro (FCFA)' :
+                             method === 'orange' || method === 'orange_money' ? '🍊 Orange Money' :
+                             method === 'teletaku' ? '📱 TeleTaku' :
+                             method === 'mixed' ? '💳 Misto' :
+                             method === 'vale' || method === 'debt' ? '📝 Vale' : 'Outro'}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm font-bold text-right text-gray-900">
                           {(sale.total / 100).toFixed(2)} FCFA
                         </td>
                       </tr>
-                    ))
+                    )})
                   )}
                 </tbody>
               </table>

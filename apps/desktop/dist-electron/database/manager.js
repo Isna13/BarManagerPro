@@ -45,6 +45,7 @@ catch (error) {
 }
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const payment_methods_1 = require("../shared/payment-methods");
 class DatabaseManager {
     constructor(dbPath) {
         this.dbPath = dbPath;
@@ -834,13 +835,20 @@ class DatabaseManager {
     addSalePayment(saleId, paymentData) {
         console.log('💳 DEBUG addSalePayment - paymentData:', JSON.stringify(paymentData));
         console.log('💳 DEBUG addSalePayment - method recebido:', paymentData.method);
+        // Validar método de pagamento - NUNCA usar fallback
+        const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(paymentData.method);
+        if (!normalizedMethod) {
+            console.error(`❌ Método de pagamento inválido: ${paymentData.method}`);
+            throw new Error(`Método de pagamento inválido: ${paymentData.method}`);
+        }
         const id = this.generateUUID();
         const stmt = this.db.prepare(`
       INSERT INTO payments 
       (id, sale_id, method, provider, amount, reference_number, transaction_id, status, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        stmt.run(id, saleId, paymentData.method || 'cash', paymentData.provider || null, paymentData.amount, paymentData.referenceNumber || null, paymentData.transactionId || null, paymentData.status || 'completed', paymentData.notes || null);
+        stmt.run(id, saleId, normalizedMethod, // Método validado e normalizado
+        paymentData.provider || null, paymentData.amount, paymentData.referenceNumber || null, paymentData.transactionId || null, paymentData.status || 'completed', paymentData.notes || null);
         // Atualizar status da venda para 'paid'
         this.db.prepare(`
       UPDATE sales 
@@ -852,8 +860,8 @@ class DatabaseManager {
         // IMPORTANTE: Atualizar totais do caixa
         const currentCashBox = this.getCurrentCashBox();
         if (currentCashBox) {
-            this.updateCashBoxTotals(currentCashBox.id, paymentData.amount, paymentData.method || 'cash');
-            console.log(`[CASH-BOX] Atualizado: +${paymentData.amount / 100} FCFA (${paymentData.method})`);
+            this.updateCashBoxTotals(currentCashBox.id, paymentData.amount, normalizedMethod);
+            console.log(`[CASH-BOX] Atualizado: +${paymentData.amount / 100} FCFA (${normalizedMethod})`);
         }
         else {
             console.warn('[CASH-BOX] Nenhum caixa aberto - totais não atualizados');
@@ -866,9 +874,11 @@ class DatabaseManager {
         let query = `
       SELECT 
         s.*,
-        p.method as payment_method
+        COALESCE(
+          (SELECT method FROM payments WHERE sale_id = s.id ORDER BY created_at DESC LIMIT 1),
+          'CASH'
+        ) as payment_method
       FROM sales s
-      LEFT JOIN payments p ON s.id = p.sale_id
       WHERE 1=1
     `;
         const params = [];

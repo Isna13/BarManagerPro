@@ -406,17 +406,21 @@ class _MovementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // cash_in é entrada de dinheiro (vendas em dinheiro)
-    final isEntry = movement.movementType == 'entry' ||
-        movement.movementType == 'entrada' ||
-        movement.movementType == 'sale' ||
-        movement.movementType == 'cash_in' ||
-        movement.movementType == 'cash';
+    // Normalizar movementType para lowercase para comparação consistente
+    final type = movement.movementType.toLowerCase();
+    
+    // cash_in, cash, entry, entrada = entrada de dinheiro físico (vendas em dinheiro)
+    // vale, orange, orange_money, teletaku, mixed = pagamento digital (não entra no caixa físico)
+    final isEntry = type == 'entry' ||
+        type == 'entrada' ||
+        type == 'cash_in' ||
+        type == 'cash';
+    
     final color = isEntry ? AppTheme.accentColor : AppTheme.dangerColor;
     final icon = isEntry ? Icons.arrow_downward : Icons.arrow_upward;
 
     String typeLabel;
-    switch (movement.movementType.toLowerCase()) {
+    switch (type) {
       case 'entry':
       case 'entrada':
         typeLabel = 'Entrada';
@@ -432,6 +436,20 @@ class _MovementCard extends StatelessWidget {
       case 'cash_in':
       case 'cash':
         typeLabel = 'Venda';
+        break;
+      case 'vale':
+      case 'debt':
+        typeLabel = 'Venda (Vale)';
+        break;
+      case 'orange':
+      case 'orange_money':
+        typeLabel = 'Venda (Orange)';
+        break;
+      case 'teletaku':
+        typeLabel = 'Venda (TeleTaku)';
+        break;
+      case 'mixed':
+        typeLabel = 'Venda (Misto)';
         break;
       default:
         typeLabel = movement.movementType;

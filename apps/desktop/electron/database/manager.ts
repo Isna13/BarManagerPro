@@ -1000,9 +1000,11 @@ export class DatabaseManager {
     let query = `
       SELECT 
         s.*,
-        p.method as payment_method
+        COALESCE(
+          (SELECT method FROM payments WHERE sale_id = s.id ORDER BY created_at DESC LIMIT 1),
+          'CASH'
+        ) as payment_method
       FROM sales s
-      LEFT JOIN payments p ON s.id = p.sale_id
       WHERE 1=1
     `;
     const params: any[] = [];
