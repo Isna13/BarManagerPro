@@ -535,10 +535,14 @@ export class CashBoxService {
     });
 
     // Buscar dívidas (vendas com Vale) criadas durante o período do caixa
+    // Usar OR para buscar dívidas com branchId direto OU via sale.branchId (algumas dívidas podem não ter branchId preenchido)
     const debts = await this.prisma.debt.findMany({
       where: {
         createdAt: { gte: targetCashBox.openedAt },
-        branchId: targetCashBox.branchId,
+        OR: [
+          { branchId: targetCashBox.branchId },
+          { sale: { branchId: targetCashBox.branchId } },
+        ],
       },
       include: {
         sale: {
