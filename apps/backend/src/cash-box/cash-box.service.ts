@@ -87,10 +87,10 @@ export class CashBoxService {
       },
     });
 
-    // Somar apenas pagamentos em dinheiro
+    // Somar apenas pagamentos em dinheiro (case-insensitive)
     const cashPayments = sales.reduce((sum, sale) => {
       const cashAmount = sale.payments
-        .filter(p => p.method === 'cash' && p.status === 'completed')
+        .filter(p => (p.method || '').toLowerCase() === 'cash' && p.status === 'completed')
         .reduce((s, p) => s + p.amount, 0);
       return sum + cashAmount;
     }, 0);
@@ -219,7 +219,7 @@ export class CashBoxService {
     const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
     const cashPayments = sales.reduce((sum, sale) => {
       const cashAmount = sale.payments
-        .filter(p => p.method === 'cash')
+        .filter(p => (p.method || '').toLowerCase() === 'cash')
         .reduce((s, p) => s + p.amount, 0);
       return sum + cashAmount;
     }, 0);
@@ -269,7 +269,7 @@ export class CashBoxService {
         const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
         const cashPayments = sales.reduce((sum, sale) => {
           const cashAmount = sale.payments
-            .filter(p => p.method === 'cash')
+            .filter(p => (p.method || '').toLowerCase() === 'cash')
             .reduce((s, p) => s + p.amount, 0);
           return sum + cashAmount;
         }, 0);
@@ -349,31 +349,40 @@ export class CashBoxService {
 
     const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
     
-    // Calcular pagamentos por método
+    // Calcular pagamentos por método (case-insensitive)
     const cashPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
-        .filter(p => p.method === 'cash')
+        .filter(p => (p.method || '').toLowerCase() === 'cash')
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
 
     const mobileMoneyPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
-        .filter(p => p.method === 'orange' || p.method === 'teletaku' || p.method === 'mobile')
+        .filter(p => {
+          const method = (p.method || '').toLowerCase();
+          return method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile';
+        })
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
 
     const cardPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
-        .filter(p => p.method === 'card' || p.method === 'mixed')
+        .filter(p => {
+          const method = (p.method || '').toLowerCase();
+          return method === 'card' || method === 'mixed';
+        })
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
 
     const debtPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
-        .filter(p => p.method === 'debt' || p.method === 'vale')
+        .filter(p => {
+          const method = (p.method || '').toLowerCase();
+          return method === 'debt' || method === 'vale';
+        })
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
@@ -429,31 +438,40 @@ export class CashBoxService {
 
         const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
         
-        // Calcular pagamentos por método
+        // Calcular pagamentos por método (case-insensitive)
         const cashPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
-            .filter(p => p.method === 'cash')
+            .filter(p => (p.method || '').toLowerCase() === 'cash')
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
 
         const mobileMoneyPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
-            .filter(p => p.method === 'orange' || p.method === 'teletaku' || p.method === 'mobile')
+            .filter(p => {
+              const method = (p.method || '').toLowerCase();
+              return method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile';
+            })
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
 
         const cardPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
-            .filter(p => p.method === 'card' || p.method === 'mixed')
+            .filter(p => {
+              const method = (p.method || '').toLowerCase();
+              return method === 'card' || method === 'mixed';
+            })
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
 
         const debtPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
-            .filter(p => p.method === 'debt' || p.method === 'vale')
+            .filter(p => {
+              const method = (p.method || '').toLowerCase();
+              return method === 'debt' || method === 'vale';
+            })
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
