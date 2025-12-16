@@ -1513,6 +1513,12 @@ export class SyncManager {
             // Mesmo que a venda local tenha synced=0, podemos precisar adicionar pagamentos do servidor
             
             if (!existing) {
+              // Determinar o método de pagamento do servidor
+              // Prioridade: 1) payments[0].method, 2) paymentMethod da venda
+              const serverPaymentMethod = item.payments && Array.isArray(item.payments) && item.payments.length > 0
+                ? item.payments[0].method
+                : (item.paymentMethod || item.payment_method || null);
+              
               // Criar venda do servidor localmente (sync bidirecional)
               const saleData = {
                 id: item.id,
@@ -1531,11 +1537,14 @@ export class SyncManager {
                 cash_box_id: item.cashBoxId || item.cash_box_id || null,
                 branch_id: item.branchId || item.branch_id || null,
                 created_by: item.createdBy || item.created_by || null,
+                paymentMethod: serverPaymentMethod, // IMPORTANTE: Salvar método de pagamento
                 notes: item.notes || null,
                 synced: 1,
                 created_at: item.createdAt || item.created_at || new Date().toISOString(),
                 updated_at: item.updatedAt || item.updated_at || new Date().toISOString(),
               };
+              
+              console.log(`📝 Criando venda ${item.id} com paymentMethod: ${serverPaymentMethod}`);
               
               // Criar a venda no banco local
               this.dbManager.createSale(saleData, true); // skipSyncQueue = true

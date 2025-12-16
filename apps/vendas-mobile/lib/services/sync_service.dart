@@ -217,14 +217,20 @@ class SyncService {
             }
           }
 
-          // Processar pagamento se a venda está paga
-          if (data['payment_status'] == 'paid' &&
-              data['payment_method'] != null) {
+          // Processar pagamento - VALE também precisa de Payment para sincronização correta
+          // VALE tem payment_status='pending' mas precisa de registro de Payment
+          final paymentMethod = data['payment_method'];
+          final shouldCreatePayment = paymentMethod != null && 
+              (data['payment_status'] == 'paid' || 
+               paymentMethod.toString().toUpperCase() == 'VALE');
+          
+          if (shouldCreatePayment) {
             try {
               await _api.addSalePayment(data['id'], {
-                'method': _mapPaymentMethod(data['payment_method']),
+                'method': _mapPaymentMethod(paymentMethod),
                 'amount': data['total'] ?? 0,
               });
+              debugPrint('✅ Pagamento sincronizado: $paymentMethod');
             } catch (e) {
               debugPrint('Erro ao sincronizar pagamento: $e');
             }
