@@ -1,20 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Database, CheckCircle, AlertCircle, Settings as SettingsIcon, 
   ShoppingCart, Table, Package, Printer, Shield, HardDrive, 
   Activity, Building, DollarSign, Globe, Calendar, Image,
   Clock, FileText, Lock, History, Trash2, ChevronDown, ChevronUp,
-  Cloud, RefreshCw, Upload, Wifi, WifiOff
+  Cloud, RefreshCw, Upload, Wifi, WifiOff, Download, Users,
+  CreditCard, Boxes, FileBox, Monitor
 } from 'lucide-react';
+
+// Interface para status detalhado de sync
+interface SyncEntityStatus {
+  name: string;
+  icon: any;
+  localCount: number;
+  serverCount: number;
+  pendingSync: number;
+  lastSync: string | null;
+  status: 'synced' | 'pending' | 'error' | 'unknown';
+}
 
 export default function SettingsPage() {
   const [migrationStatus, setMigrationStatus] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<any>(null);
   const [syncLoading, setSyncLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [detailedSyncStatus, setDetailedSyncStatus] = useState<SyncEntityStatus[]>([]);
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [lastFullSync, setLastFullSync] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     database: true,
     sync: true,
+    syncDetails: false,
     general: false,
     pdv: false,
     tables: false,
@@ -24,6 +40,25 @@ export default function SettingsPage() {
     backup: false,
     advanced: false
   });
+
+  // Carregar status detalhado ao montar
+  useEffect(() => {
+    loadDetailedSyncStatus();
+  }, []);
+
+  const loadDetailedSyncStatus = async () => {
+    try {
+      // @ts-ignore
+      const status = await window.electronAPI?.sync?.getDetailedStatus?.();
+      if (status) {
+        setDetailedSyncStatus(status.entities || []);
+        setDeviceId(status.deviceId || '');
+        setLastFullSync(status.lastFullSync || null);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar status de sync:', error);
+    }
+  };
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -63,6 +98,7 @@ export default function SettingsPage() {
           message: 'Sincronização concluída com sucesso!',
           summary: result.summary
         });
+        loadDetailedSyncStatus(); // Recarregar status
       } else {
         setSyncStatus({
           status: 'error',
@@ -74,6 +110,37 @@ export default function SettingsPage() {
       setSyncStatus({
         status: 'error',
         message: error.message || 'Erro ao sincronizar dados'
+      });
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handlePullFromServer = async () => {
+    try {
+      setSyncLoading(true);
+      setSyncStatus({ status: 'running', message: 'Baixando dados do servidor...' });
+      
+      // @ts-ignore
+      const result = await window.electronAPI?.sync?.fullPullFromServer?.();
+      
+      if (result?.success) {
+        setSyncStatus({
+          status: 'success',
+          message: 'Download concluído com sucesso!',
+          summary: result.stats
+        });
+        loadDetailedSyncStatus(); // Recarregar status
+      } else {
+        setSyncStatus({
+          status: 'error',
+          message: 'Erro ao baixar dados do servidor'
+        });
+      }
+    } catch (error: any) {
+      setSyncStatus({
+        status: 'error',
+        message: error.message || 'Erro ao baixar dados'
       });
     } finally {
       setSyncLoading(false);
@@ -332,6 +399,110 @@ export default function SettingsPage() {
                     <p className="mt-1">Use "Enviar Todos os Dados" apenas para <strong>sincronização inicial</strong> ou para restaurar dados.</p>
                   </div>
                 </div>
+              </div>
+
+              {/* Botão de Download do Servidor */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="font-semibold text-green-900 mb-2">Baixar Dados do Servidor</h3>
+                <p className="text-sm text-green-800 mb-3">
+                  Baixa todos os dados do servidor Railway para este dispositivo. 
+                  Use quando conectar um novo PC ou após reinstalar o sistema.
+                </p>
+                <button
+                  onClick={handlePullFromServer}
+                  disabled={syncLoading}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                >
+                  {syncLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Baixando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Baixar do Servidor
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Informações do Dispositivo */}
+              {deviceId && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <Monitor className="w-4 h-4" />
+                    Informações do Dispositivo
+                  </h3>
+                  <div className="text-sm text-gray-700 space-y-1">
+                    <p><strong>ID do Dispositivo:</strong> {deviceId}</p>
+                    {lastFullSync && (
+                      <p><strong>Última Sincronização Completa:</strong> {new Date(lastFullSync).toLocaleString('pt-BR')}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ConfigCard>
+
+          {/* 2.5 Detalhes de Sincronização por Entidade */}
+          <ConfigCard title="Status Detalhado por Módulo" icon={Activity} sectionKey="syncDetails">
+            <div className="space-y-3">
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-sm text-gray-600">Status de sincronização de cada módulo do sistema.</p>
+                <button
+                  onClick={loadDetailedSyncStatus}
+                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Atualizar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[
+                  { name: 'Produtos', icon: Package, key: 'products' },
+                  { name: 'Categorias', icon: FileBox, key: 'categories' },
+                  { name: 'Clientes', icon: Users, key: 'customers' },
+                  { name: 'Fornecedores', icon: Building, key: 'suppliers' },
+                  { name: 'Vendas', icon: ShoppingCart, key: 'sales' },
+                  { name: 'Caixa', icon: CreditCard, key: 'cash_boxes' },
+                  { name: 'Estoque', icon: Boxes, key: 'inventory' },
+                  { name: 'Dívidas', icon: FileText, key: 'debts' },
+                  { name: 'Mesas', icon: Table, key: 'tables' },
+                  { name: 'Compras', icon: Download, key: 'purchases' },
+                ].map((entity) => {
+                  const status = detailedSyncStatus.find(s => s.name === entity.key);
+                  const Icon = entity.icon;
+                  return (
+                    <div 
+                      key={entity.key}
+                      className={`p-3 rounded-lg border ${
+                        status?.status === 'synced' ? 'bg-green-50 border-green-200' :
+                        status?.status === 'pending' ? 'bg-yellow-50 border-yellow-200' :
+                        status?.status === 'error' ? 'bg-red-50 border-red-200' :
+                        'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Icon className={`w-4 h-4 ${
+                          status?.status === 'synced' ? 'text-green-600' :
+                          status?.status === 'pending' ? 'text-yellow-600' :
+                          status?.status === 'error' ? 'text-red-600' :
+                          'text-gray-600'
+                        }`} />
+                        <span className="font-medium text-sm">{entity.name}</span>
+                        {status?.status === 'synced' && <CheckCircle className="w-3 h-3 text-green-600 ml-auto" />}
+                        {status?.status === 'pending' && <Clock className="w-3 h-3 text-yellow-600 ml-auto" />}
+                        {status?.status === 'error' && <AlertCircle className="w-3 h-3 text-red-600 ml-auto" />}
+                      </div>
+                      <div className="text-xs text-gray-600 space-y-0.5">
+                        <p>Local: {status?.localCount ?? '-'}</p>
+                        <p>Pendentes: {status?.pendingSync ?? 0}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </ConfigCard>

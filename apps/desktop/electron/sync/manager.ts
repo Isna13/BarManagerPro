@@ -255,11 +255,13 @@ export class SyncManager {
       { name: 'customers', endpoint: '/customers' },
       { name: 'users', endpoint: '/users' },
       { name: 'inventory', endpoint: '/inventory' },
+      { name: 'inventory_movements', endpoint: '/inventory/movements?limit=500' },
       { name: 'debts', endpoint: '/debts' },
       { name: 'tables', endpoint: '/tables' },
       { name: 'sales', endpoint: '/sales' },
       { name: 'cash_boxes', endpoint: '/cash-box/history?limit=100' },
       { name: 'purchases', endpoint: '/purchases' },
+      { name: 'settings', endpoint: '/settings' },
     ];
 
     let totalProgress = 0;
@@ -1335,6 +1337,56 @@ export class SyncManager {
         }
       },
       
+      inventory_movements: (items) => {
+        // Movimentações de estoque - sincronizar do servidor para o desktop
+        console.log(`📦 Processando ${items.length} movimentações de estoque do servidor`);
+        
+        for (const item of items) {
+          try {
+            // Verificar se a movimentação já existe localmente
+            const existing = this.dbManager.prepare(`
+              SELECT id FROM stock_movements WHERE id = ?
+            `).get(item.id);
+            
+            if (existing) {
+              // Movimentação já existe, pular
+              continue;
+            }
+            
+            // Extrair dados da movimentação
+            const productId = item.inventoryItem?.product?.id || item.productId || item.product_id;
+            const branchId = item.inventoryItem?.branch?.id || item.branchId || item.branch_id;
+            
+            if (!productId) {
+              console.log(`⚠️ Movimentação ${item.id} sem productId, pulando...`);
+              continue;
+            }
+            
+            // Criar nova movimentação
+            this.dbManager.prepare(`
+              INSERT INTO stock_movements (id, product_id, branch_id, movement_type, qty_units, qty_boxes, reason, reference_type, reference_id, notes, created_by, synced, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            `).run(
+              item.id,
+              productId,
+              branchId || 'main-branch',
+              item.movementType || item.movement_type || 'adjustment',
+              item.qtyUnits || item.qty_units || 0,
+              item.qtyBoxes || item.qty_boxes || 0,
+              item.reason || null,
+              item.referenceType || item.reference_type || null,
+              item.referenceId || item.reference_id || null,
+              item.notes || null,
+              item.createdBy || item.created_by || null,
+              item.createdAt || item.created_at || new Date().toISOString()
+            );
+            console.log(`➕ Movimentação criada: ${item.id} (${item.movementType || item.movement_type})`);
+          } catch (e: any) {
+            console.error(`Erro ao mesclar movement ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
       debts: (items) => {
         // Débitos/Vales - sincronizar do servidor para o desktop
         for (const item of items) {
@@ -1652,6 +1704,40 @@ export class SyncManager {
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar cash_box ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      settings: (items) => {
+        // Configurações - sincronizar do servidor para o desktop
+        // Configurações de admin têm prioridade sobre locais
+        console.log(`⚙️ Processando ${items.length} configurações do servidor`);
+        
+        for (const item of items) {
+          try {
+            const key = item.key;
+            const value = item.value;
+            
+            if (!key) {
+              continue;
+            }
+            
+            // Configurações especiais que NÃO devem ser sobrescritas (específicas do dispositivo)
+            const deviceSpecificKeys = ['device_id', 'last_sync_date', 'offline_mode'];
+            if (deviceSpecificKeys.includes(key)) {
+              console.log(`⚠️ Pulando configuração específica do dispositivo: ${key}`);
+              continue;
+            }
+            
+            // Verificar se existe localmente
+            const existing = this.dbManager.getSetting(key);
+            
+            if (existing !== value) {
+              this.dbManager.setSetting(key, value);
+              console.log(`⚙️ Configuração atualizada: ${key} = ${value.substring(0, 50)}${value.length > 50 ? '...' : ''}`);
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar setting ${item.key}:`, e?.message);
           }
         }
       },

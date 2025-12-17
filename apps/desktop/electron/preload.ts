@@ -221,6 +221,10 @@ const api = {
     startConnectionMonitor: () => ipcRenderer.invoke('sync:startConnectionMonitor'),
     stopConnectionMonitor: () => ipcRenderer.invoke('sync:stopConnectionMonitor'),
     
+    // Sync status and device info
+    getDetailedStatus: () => ipcRenderer.invoke('sync:getDetailedStatus'),
+    getDeviceId: () => ipcRenderer.invoke('sync:getDeviceId'),
+    
     onConnectionChange: (callback: (data: { isOnline: boolean }) => void) => {
       const handler = (_: any, data: { isOnline: boolean }) => callback(data);
       ipcRenderer.on('sync:connectionChange', handler);
