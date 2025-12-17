@@ -3793,10 +3793,19 @@ export class DatabaseManager {
 
   private addToSyncQueue(operation: string, entity: string, entityId: string, data: any, priority: number = 5) {
     const id = this.generateUUID();
+    const deviceId = this.getDeviceId();
+    
+    // Adicionar device_id e timestamp aos dados
+    const enrichedData = {
+      ...data,
+      _deviceId: deviceId,
+      _timestamp: new Date().toISOString(),
+    };
+    
     this.db.prepare(`
       INSERT INTO sync_queue (id, operation, entity, entity_id, data, priority)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, operation, entity, entityId, JSON.stringify(data), priority);
+    `).run(id, operation, entity, entityId, JSON.stringify(enrichedData), priority);
   }
 
   getPendingSyncItems() {
@@ -6194,6 +6203,46 @@ export class DatabaseManager {
       `).run(key, value);
     } catch (error) {
       console.error('Erro ao definir setting:', key, error);
+    }
+  }
+
+  /**
+   * Obtém ou gera um ID único para este dispositivo
+   * O ID é persistido e reutilizado em todas as operações
+   */
+  getDeviceId(): string {
+    try {
+      let deviceId = this.getSetting('device_id');
+      
+      if (!deviceId) {
+        // Gerar um novo device_id único
+        const os = require('os');
+        const crypto = require('crypto');
+        
+        // Combinar informações do sistema para criar um ID único
+        const machineInfo = [
+          os.hostname(),
+          os.platform(),
+          os.arch(),
+          os.cpus()[0]?.model || 'unknown',
+          Date.now().toString(36),
+          crypto.randomBytes(4).toString('hex')
+        ].join('-');
+        
+        deviceId = crypto.createHash('sha256').update(machineInfo).digest('hex').substring(0, 16);
+        
+        // Salvar para uso futuro
+        this.setSetting('device_id', deviceId);
+        console.log(`🆔 Device ID gerado: ${deviceId}`);
+      }
+      
+      return deviceId;
+    } catch (error) {
+      console.error('Erro ao obter/gerar device_id:', error);
+      // Fallback: gerar um ID simples
+      const fallbackId = `device-${Date.now().toString(36)}`;
+      this.setSetting('device_id', fallbackId);
+      return fallbackId;
     }
   }
 

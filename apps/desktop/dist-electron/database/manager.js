@@ -780,6 +780,20 @@ class DatabaseManager {
         catch (error) {
             console.error('Erro ao criar tabelas de gestão de mesas:', error);
         }
+        // Migration 11: Adicionar coluna payment_method à tabela sales
+        // CRÍTICO: Necessário para rastrear método de pagamento original (especialmente VALE)
+        try {
+            const salesTableInfo = this.db.pragma('table_info(sales)');
+            const hasPaymentMethod = salesTableInfo.some((col) => col.name === 'payment_method');
+            if (!hasPaymentMethod) {
+                console.log('Executando migration: adicionando coluna payment_method em sales...');
+                this.db.exec('ALTER TABLE sales ADD COLUMN payment_method TEXT');
+                console.log('✅ Migration payment_method em sales concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration payment_method:', error);
+        }
     }
     // ============================================
     // CRUD Operations
@@ -787,15 +801,19 @@ class DatabaseManager {
     createSale(data, skipSyncQueue = false) {
         // Se o ID já existe (vindo do servidor), usar ele; senão gerar novo
         const id = data.id || this.generateUUID();
+        // Normalizar payment_method se fornecido
+        const rawPaymentMethod = data.paymentMethod || data.payment_method;
+        const paymentMethod = rawPaymentMethod ? (0, payment_methods_1.tryNormalizePaymentMethod)(rawPaymentMethod) : null;
         const stmt = this.db.prepare(`
       INSERT INTO sales (
         id, sale_number, branch_id, type, status, table_id, customer_id,
         cashier_id, subtotal, discount_total, tax_total, total,
-        notes, synced, created_at, updated_at
+        payment_method, notes, synced, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        stmt.run(id, data.saleNumber || data.sale_number || `SALE-${Date.now()}`, data.branchId || data.branch_id || 'main-branch', data.type || 'counter', data.status || 'open', data.tableId || data.table_id || null, data.customerId || data.customer_id || null, data.cashierId || data.cashier_id || data.createdBy || data.created_by || 'system', data.subtotal || 0, data.discount || data.discount_total || 0, data.tax || data.tax_total || 0, data.total || 0, data.notes || null, skipSyncQueue ? 1 : (data.synced || 0), data.createdAt || data.created_at || new Date().toISOString(), data.updatedAt || data.updated_at || new Date().toISOString());
+        stmt.run(id, data.saleNumber || data.sale_number || `SALE-${Date.now()}`, data.branchId || data.branch_id || 'main-branch', data.type || 'counter', data.status || 'open', data.tableId || data.table_id || null, data.customerId || data.customer_id || null, data.cashierId || data.cashier_id || data.createdBy || data.created_by || 'system', data.subtotal || 0, data.discount || data.discount_total || 0, data.tax || data.tax_total || 0, data.total || 0, paymentMethod, // Método de pagamento normalizado
+        data.notes || null, skipSyncQueue ? 1 : (data.synced || 0), data.createdAt || data.created_at || new Date().toISOString(), data.updatedAt || data.updated_at || new Date().toISOString());
         // Só adiciona na fila de sync se skipSyncQueue for false
         if (!skipSyncQueue) {
             // IMPORTANTE: Incluir o id nos dados para o backend usar o mesmo UUID
@@ -871,12 +889,14 @@ class DatabaseManager {
         return { id, ...paymentData };
     }
     getSales(filters = {}) {
+        // IMPORTANTE: NUNCA usar CASH como fallback - isso causa bug de VALE aparecer como CASH
+        // Prioridade: 1) Payment.method, 2) Sale.payment_method original, 3) NULL (não classificar)
         let query = `
       SELECT 
         s.*,
         COALESCE(
           (SELECT method FROM payments WHERE sale_id = s.id ORDER BY created_at DESC LIMIT 1),
-          'CASH'
+          s.payment_method
         ) as payment_method
       FROM sales s
       WHERE 1=1
@@ -3060,17 +3080,19 @@ class DatabaseManager {
     }
     updateCashBoxTotals(cashBoxId, saleTotal, paymentMethod) {
         // Incrementar o total de vendas e o método específico
+        // Normalizar para uppercase para comparação consistente
+        const method = (paymentMethod || '').toUpperCase();
         let paymentField = '';
-        if (paymentMethod === 'cash') {
+        if (method === 'CASH' || method === 'DINHEIRO') {
             paymentField = 'total_cash';
         }
-        else if (paymentMethod === 'orange' || paymentMethod === 'teletaku' || paymentMethod === 'mobile') {
+        else if (method === 'ORANGE_MONEY' || method === 'ORANGE' || method === 'TELETAKU' || method === 'MOBILE') {
             paymentField = 'total_mobile_money';
         }
-        else if (paymentMethod === 'mixed' || paymentMethod === 'card') {
+        else if (method === 'MIXED' || method === 'CARD' || method === 'MISTO') {
             paymentField = 'total_card';
         }
-        else if (paymentMethod === 'vale' || paymentMethod === 'debt') {
+        else if (method === 'VALE' || method === 'DEBT' || method === 'FIADO') {
             paymentField = 'total_debt';
         }
         if (paymentField) {

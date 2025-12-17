@@ -256,6 +256,10 @@ export class SyncManager {
       { name: 'users', endpoint: '/users' },
       { name: 'inventory', endpoint: '/inventory' },
       { name: 'debts', endpoint: '/debts' },
+      { name: 'tables', endpoint: '/tables' },
+      { name: 'sales', endpoint: '/sales' },
+      { name: 'cash_boxes', endpoint: '/cash-box/history?limit=100' },
+      { name: 'purchases', endpoint: '/purchases' },
     ];
 
     let totalProgress = 0;
@@ -293,6 +297,25 @@ export class SyncManager {
         }
         totalProgress += progressStep;
       }
+    }
+
+    // Buscar caixa ativo atual (separadamente do histórico)
+    try {
+      console.log('📥 Buscando caixa ativo...');
+      const currentCashBoxResponse = await this.apiClient.get('/cash-box/current', { timeout: 15000 });
+      if (currentCashBoxResponse.data && currentCashBoxResponse.data.id) {
+        console.log(`   ✅ Caixa ativo encontrado: ${currentCashBoxResponse.data.id}`);
+        await this.mergeEntityData('cash_boxes', [currentCashBoxResponse.data]);
+        stats['cash_box_current'] = 1;
+      } else {
+        console.log('   ℹ️ Nenhum caixa ativo no servidor');
+        stats['cash_box_current'] = 0;
+      }
+    } catch (error: any) {
+      if (error?.response?.status !== 404) {
+        console.error('   ❌ Erro ao buscar caixa ativo:', error?.message);
+      }
+      stats['cash_box_current'] = 0;
     }
 
     // Atualizar data da última sincronização
@@ -1498,6 +1521,137 @@ export class SyncManager {
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar purchase ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      tables: (items) => {
+        // Mesas - sincronizar do servidor para o desktop
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getTableById ? this.dbManager.getTableById(item.id) : null;
+            
+            // Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('tables', item.id, existing)) {
+              continue;
+            }
+            
+            if (existing) {
+              // Atualizar mesa existente
+              this.dbManager.prepare(`
+                UPDATE tables SET
+                  number = ?,
+                  name = ?,
+                  seats = ?,
+                  area = ?,
+                  status = ?,
+                  is_active = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(
+                item.number,
+                item.name || `Mesa ${item.number}`,
+                item.seats || 4,
+                item.area || null,
+                item.status || 'available',
+                item.isActive !== false ? 1 : 0,
+                item.id
+              );
+              console.log(`📝 Mesa atualizada: ${item.number}`);
+            } else {
+              // Criar nova mesa
+              this.dbManager.prepare(`
+                INSERT INTO tables (id, number, name, seats, area, status, branch_id, is_active, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(
+                item.id,
+                item.number,
+                item.name || `Mesa ${item.number}`,
+                item.seats || 4,
+                item.area || null,
+                item.status || 'available',
+                item.branchId || item.branch_id || 'main-branch',
+                item.isActive !== false ? 1 : 0
+              );
+              console.log(`➕ Mesa criada: ${item.number}`);
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar table ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      cash_boxes: (items) => {
+        // Caixas - sincronizar histórico do servidor para o desktop
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.getCashBoxById ? this.dbManager.getCashBoxById(item.id) : null;
+            
+            // Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('cash_box', item.id, existing)) {
+              continue;
+            }
+            
+            if (existing) {
+              // Atualizar caixa existente (especialmente status de fechamento)
+              this.dbManager.prepare(`
+                UPDATE cash_boxes SET
+                  status = ?,
+                  closing_cash = ?,
+                  total_sales = ?,
+                  total_cash = ?,
+                  total_card = ?,
+                  total_pix = ?,
+                  total_mobile_money = ?,
+                  total_debt = ?,
+                  difference = ?,
+                  closed_at = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(
+                item.status || 'open',
+                item.closingCash || item.closing_cash || null,
+                item.totalSales || item.total_sales || 0,
+                item.totalCash || item.total_cash || 0,
+                item.totalCard || item.total_card || 0,
+                item.totalPix || item.total_pix || 0,
+                item.totalMobileMoney || item.total_mobile_money || 0,
+                item.totalDebt || item.total_debt || 0,
+                item.difference || 0,
+                item.closedAt || item.closed_at || null,
+                item.id
+              );
+              console.log(`📝 Caixa atualizado: ${item.id} (${item.status})`);
+            } else {
+              // Criar novo caixa do servidor
+              this.dbManager.prepare(`
+                INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, status, opening_cash, closing_cash, total_sales, total_cash, total_card, total_pix, total_mobile_money, total_debt, difference, notes, opened_at, closed_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(
+                item.id,
+                item.boxNumber || item.box_number || `CX-${Date.now()}`,
+                item.branchId || item.branch_id || 'main-branch',
+                item.openedBy || item.opened_by || null,
+                item.status || 'closed',
+                item.openingCash || item.opening_cash || 0,
+                item.closingCash || item.closing_cash || null,
+                item.totalSales || item.total_sales || 0,
+                item.totalCash || item.total_cash || 0,
+                item.totalCard || item.total_card || 0,
+                item.totalPix || item.total_pix || 0,
+                item.totalMobileMoney || item.total_mobile_money || 0,
+                item.totalDebt || item.total_debt || 0,
+                item.difference || 0,
+                item.notes || null,
+                item.openedAt || item.opened_at || new Date().toISOString(),
+                item.closedAt || item.closed_at || null
+              );
+              console.log(`➕ Caixa criado do servidor: ${item.id} (${item.status})`);
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar cash_box ${item.id}:`, e?.message);
           }
         }
       },

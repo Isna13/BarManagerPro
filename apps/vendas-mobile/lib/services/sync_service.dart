@@ -220,10 +220,10 @@ class SyncService {
           // Processar pagamento - VALE também precisa de Payment para sincronização correta
           // VALE tem payment_status='pending' mas precisa de registro de Payment
           final paymentMethod = data['payment_method'];
-          final shouldCreatePayment = paymentMethod != null && 
-              (data['payment_status'] == 'paid' || 
-               paymentMethod.toString().toUpperCase() == 'VALE');
-          
+          final shouldCreatePayment = paymentMethod != null &&
+              (data['payment_status'] == 'paid' ||
+                  paymentMethod.toString().toUpperCase() == 'VALE');
+
           if (shouldCreatePayment) {
             try {
               await _api.addSalePayment(data['id'], {
