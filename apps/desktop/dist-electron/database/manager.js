@@ -3121,10 +3121,17 @@ class DatabaseManager {
     // ============================================
     addToSyncQueue(operation, entity, entityId, data, priority = 5) {
         const id = this.generateUUID();
+        const deviceId = this.getDeviceId();
+        // Adicionar device_id e timestamp aos dados
+        const enrichedData = {
+            ...data,
+            _deviceId: deviceId,
+            _timestamp: new Date().toISOString(),
+        };
         this.db.prepare(`
       INSERT INTO sync_queue (id, operation, entity, entity_id, data, priority)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, operation, entity, entityId, JSON.stringify(data), priority);
+    `).run(id, operation, entity, entityId, JSON.stringify(enrichedData), priority);
     }
     getPendingSyncItems() {
         return this.db.prepare(`
@@ -5013,6 +5020,79 @@ class DatabaseManager {
         }
         catch (error) {
             console.error('Erro ao definir setting:', key, error);
+        }
+    }
+    /**
+     * Obtém ou gera um ID único para este dispositivo
+     * O ID é persistido e reutilizado em todas as operações
+     */
+    getDeviceId() {
+        try {
+            const existingDeviceId = this.getSetting('device_id');
+            if (existingDeviceId) {
+                return existingDeviceId;
+            }
+            // Gerar um novo device_id único
+            const os = require('os');
+            const crypto = require('crypto');
+            // Combinar informações do sistema para criar um ID único
+            const machineInfo = [
+                os.hostname(),
+                os.platform(),
+                os.arch(),
+                os.cpus()[0]?.model || 'unknown',
+                Date.now().toString(36),
+                crypto.randomBytes(4).toString('hex')
+            ].join('-');
+            const newDeviceId = crypto.createHash('sha256').update(machineInfo).digest('hex').substring(0, 16);
+            // Salvar para uso futuro
+            this.setSetting('device_id', newDeviceId);
+            console.log(`🆔 Device ID gerado: ${newDeviceId}`);
+            return newDeviceId;
+        }
+        catch (error) {
+            console.error('Erro ao obter/gerar device_id:', error);
+            // Fallback: gerar um ID simples
+            const fallbackId = `device-${Date.now().toString(36)}`;
+            this.setSetting('device_id', fallbackId);
+            return fallbackId;
+        }
+    }
+    /**
+     * Conta o número de registros em uma tabela
+     */
+    count(tableName) {
+        try {
+            // Sanitizar nome da tabela para evitar SQL injection
+            const validTables = [
+                'customers', 'products', 'categories', 'suppliers', 'tables',
+                'sales', 'purchases', 'cash_boxes', 'inventory_movements',
+                'settings', 'branches', 'users', 'inventory_items', 'sale_items',
+                'purchase_items', 'debts', 'payments', 'loyalty_transactions'
+            ];
+            if (!validTables.includes(tableName)) {
+                console.warn(`Tabela inválida para count: ${tableName}`);
+                return 0;
+            }
+            const result = this.db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get();
+            return result?.count || 0;
+        }
+        catch (error) {
+            console.error(`Erro ao contar registros em ${tableName}:`, error);
+            return 0;
+        }
+    }
+    /**
+     * Conta itens pendentes na fila de sincronização para uma entidade específica
+     */
+    getPendingSyncCount(entity) {
+        try {
+            const result = this.db.prepare(`SELECT COUNT(*) as count FROM sync_queue WHERE entity = ? AND status = 'pending'`).get(entity);
+            return result?.count || 0;
+        }
+        catch (error) {
+            console.error(`Erro ao contar sync pendente para ${entity}:`, error);
+            return 0;
         }
     }
     /**

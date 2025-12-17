@@ -646,6 +646,9 @@ export class SyncManager {
       return;
     }
     
+    // Atualizar heartbeat do dispositivo
+    this.dbManager.updateDeviceHeartbeat();
+    
     // Ordenar itens por prioridade de dependência
     const sortedItems = this.sortByDependency(pendingItems);
     console.log(`📤 Sincronizando ${sortedItems.length} itens (ordenados por dependência):`);
@@ -665,6 +668,15 @@ export class SyncManager {
         
         if (syncResult.success) {
           this.dbManager.markSyncItemCompleted(item.id);
+          // Log de auditoria - sucesso
+          this.dbManager.logSyncAudit({
+            action: item.operation,
+            entity: item.entity,
+            entityId: item.entity_id,
+            direction: 'push',
+            status: 'success',
+            details: { itemId: item.id },
+          });
           console.log(`✅ Sync ${item.entity} concluído`);
         } else if (syncResult.skip) {
           // Marcar como completado para pular (entidade não suportada)
@@ -676,6 +688,16 @@ export class SyncManager {
         hasFailures = true;
         const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
         console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
+        
+        // Log de auditoria - erro
+        this.dbManager.logSyncAudit({
+          action: item.operation,
+          entity: item.entity,
+          entityId: item.entity_id,
+          direction: 'push',
+          status: 'error',
+          errorMessage: errorMsg,
+        });
         
         // Verificar tipo de erro
         if (error.response?.status === 401) {
@@ -695,6 +717,9 @@ export class SyncManager {
         }
       }
     }
+    
+    // Atualizar última sincronização do dispositivo
+    this.dbManager.updateDeviceLastSync();
     
     // Se houve falhas, tentar re-sincronizar itens falhados
     // (útil quando dependências foram sincronizadas nesta rodada)
@@ -955,8 +980,10 @@ export class SyncManager {
   /**
    * Verifica se um item local tem alterações pendentes (não sincronizadas)
    * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
+   * 
+   * FASE 3: Agora também detecta e registra conflitos
    */
-  private hasLocalPendingChanges(entityName: string, itemId: string, existing: any): boolean {
+  private hasLocalPendingChanges(entityName: string, itemId: string, existing: any, serverItem?: any): boolean {
     // Se não existe localmente, não há conflito
     if (!existing) return false;
     
@@ -964,6 +991,12 @@ export class SyncManager {
     const synced = existing.synced ?? existing.is_synced ?? 1;
     if (synced === 0) {
       console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais pendentes (synced=0)`);
+      
+      // FASE 3: Registrar conflito se temos dados do servidor
+      if (serverItem) {
+        this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+      }
+      
       return true;
     }
     
@@ -975,10 +1008,67 @@ export class SyncManager {
     
     if (hasPendingSync) {
       console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais (na fila de sync)`);
+      
+      // FASE 3: Registrar conflito se temos dados do servidor
+      if (serverItem) {
+        this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+      }
+      
       return true;
     }
     
     return false;
+  }
+
+  /**
+   * FASE 3: Registra conflito se os dados locais e do servidor são diferentes
+   */
+  private registerConflictIfNeeded(entityName: string, itemId: string, localData: any, serverData: any): void {
+    try {
+      // Verificar se realmente há diferença significativa
+      const localUpdated = new Date(localData.updated_at || localData.updatedAt || 0);
+      const serverUpdated = new Date(serverData.updated_at || serverData.updatedAt || 0);
+      
+      // Se os timestamps são iguais, não há conflito real
+      if (Math.abs(localUpdated.getTime() - serverUpdated.getTime()) < 1000) {
+        return;
+      }
+      
+      // Registrar o conflito
+      this.dbManager.registerSyncConflict({
+        entity: entityName,
+        entityId: itemId,
+        localData: localData,
+        serverData: serverData,
+        serverDeviceId: serverData._deviceId,
+        localTimestamp: localUpdated,
+        serverTimestamp: serverUpdated,
+      });
+      
+      // Log de auditoria
+      this.dbManager.logSyncAudit({
+        action: 'conflict_detected',
+        entity: entityName,
+        entityId: itemId,
+        direction: 'pull',
+        status: 'conflict',
+        details: {
+          localUpdated: localUpdated.toISOString(),
+          serverUpdated: serverUpdated.toISOString(),
+        },
+      });
+      
+      // Emitir evento para UI
+      this.emit('sync:conflict', {
+        entity: entityName,
+        entityId: itemId,
+        localTimestamp: localUpdated,
+        serverTimestamp: serverUpdated,
+      });
+      
+    } catch (error: any) {
+      console.error(`Erro ao registrar conflito para ${entityName}/${itemId}:`, error.message);
+    }
   }
 
   /**
@@ -993,7 +1083,7 @@ export class SyncManager {
             const existing = this.dbManager.getBranchById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('branches', item.id, existing)) {
+            if (this.hasLocalPendingChanges('branches', item.id, existing, item)) {
               continue;
             }
             
@@ -1033,7 +1123,7 @@ export class SyncManager {
             const existing = this.dbManager.getUserByEmail(item.email);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-            if (existing && this.hasLocalPendingChanges('users', (existing as any).id, existing)) {
+            if (existing && this.hasLocalPendingChanges('users', (existing as any).id, existing, item)) {
               continue;
             }
             
@@ -1063,7 +1153,7 @@ export class SyncManager {
             const existing = this.dbManager.getCategoryById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('categories', item.id, existing)) {
+            if (this.hasLocalPendingChanges('categories', item.id, existing, item)) {
               continue;
             }
             
@@ -1101,7 +1191,7 @@ export class SyncManager {
             const existing = this.dbManager.getProductById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('products', item.id, existing)) {
+            if (this.hasLocalPendingChanges('products', item.id, existing, item)) {
               continue;
             }
             
@@ -1151,7 +1241,7 @@ export class SyncManager {
             const existing = this.dbManager.getCustomerById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('customers', item.id, existing)) {
+            if (this.hasLocalPendingChanges('customers', item.id, existing, item)) {
               continue;
             }
             
@@ -1218,7 +1308,7 @@ export class SyncManager {
             const existing = this.dbManager.getSupplierById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('suppliers', item.id, existing)) {
+            if (this.hasLocalPendingChanges('suppliers', item.id, existing, item)) {
               continue;
             }
             
@@ -1394,7 +1484,7 @@ export class SyncManager {
             const existing = this.dbManager.getDebtById ? this.dbManager.getDebtById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('debts', item.id, existing)) {
+            if (this.hasLocalPendingChanges('debts', item.id, existing, item)) {
               continue;
             }
             
@@ -1499,7 +1589,7 @@ export class SyncManager {
             const existing = this.dbManager.getPurchaseById ? this.dbManager.getPurchaseById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('purchases', item.id, existing)) {
+            if (this.hasLocalPendingChanges('purchases', item.id, existing, item)) {
               continue;
             }
             
@@ -1584,7 +1674,7 @@ export class SyncManager {
             const existing = this.dbManager.getTableById ? this.dbManager.getTableById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('tables', item.id, existing)) {
+            if (this.hasLocalPendingChanges('tables', item.id, existing, item)) {
               continue;
             }
             
@@ -1641,7 +1731,7 @@ export class SyncManager {
             const existing = this.dbManager.getCashBoxById ? this.dbManager.getCashBoxById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
-            if (this.hasLocalPendingChanges('cash_box', item.id, existing)) {
+            if (this.hasLocalPendingChanges('cash_box', item.id, existing, item)) {
               continue;
             }
             

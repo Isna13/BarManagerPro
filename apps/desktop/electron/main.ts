@@ -690,6 +690,63 @@ ipcMain.handle('sync:getDeviceId', async () => {
   }
 });
 
+// FASE 3: Sync Audit Log
+ipcMain.handle('sync:getAuditLog', async (_, options?: { limit?: number; entity?: string; status?: string }) => {
+  try {
+    const logs = dbManager?.getSyncAuditLog(options) || [];
+    return { success: true, data: logs };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// FASE 3: Sync Conflicts
+ipcMain.handle('sync:getConflicts', async () => {
+  try {
+    const conflicts = dbManager?.getPendingConflicts() || [];
+    return { success: true, data: conflicts };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:resolveConflict', async (_, conflictId: string, resolution: 'keep_local' | 'keep_server' | 'merge') => {
+  try {
+    dbManager?.resolveConflict(conflictId, resolution);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// FASE 3: Device Registry
+ipcMain.handle('sync:getActiveDevices', async () => {
+  try {
+    const devices = dbManager?.getActiveDevices() || [];
+    return { success: true, data: devices };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:getAllDevices', async () => {
+  try {
+    const devices = dbManager?.getAllDevices() || [];
+    return { success: true, data: devices };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:updateHeartbeat', async () => {
+  try {
+    dbManager?.updateDeviceHeartbeat();
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Settings
 ipcMain.handle('settings:get', async (_, key) => {
   return store.get(key);

@@ -535,6 +535,73 @@ electron_1.ipcMain.handle('sync:stopConnectionMonitor', async () => {
     syncManager.stopConnectionMonitor();
     return { success: true };
 });
+// Detailed sync status for admin UI
+electron_1.ipcMain.handle('sync:getDetailedStatus', async () => {
+    try {
+        const status = await syncManager.getStatus();
+        const lastSync = store.get('lastFullSync');
+        // Get counts from database for each entity
+        const entities = [
+            { name: 'customers', label: 'Clientes' },
+            { name: 'products', label: 'Produtos' },
+            { name: 'categories', label: 'Categorias' },
+            { name: 'suppliers', label: 'Fornecedores' },
+            { name: 'tables', label: 'Mesas' },
+            { name: 'sales', label: 'Vendas' },
+            { name: 'purchases', label: 'Compras' },
+            { name: 'cash_boxes', label: 'Caixas' },
+            { name: 'inventory_movements', label: 'Mov. Estoque' },
+            { name: 'settings', label: 'Configurações' },
+        ];
+        const entityStatus = entities.map((entity) => {
+            try {
+                const count = dbManager?.count(entity.name) || 0;
+                const pendingCount = dbManager?.getPendingSyncCount(entity.name) || 0;
+                return {
+                    entity: entity.name,
+                    label: entity.label,
+                    localCount: count || 0,
+                    pendingSync: pendingCount,
+                    lastSynced: lastSync,
+                    status: pendingCount > 0 ? 'pending' : 'synced',
+                };
+            }
+            catch (err) {
+                return {
+                    entity: entity.name,
+                    label: entity.label,
+                    localCount: 0,
+                    pendingSync: 0,
+                    lastSynced: null,
+                    status: 'error',
+                };
+            }
+        });
+        return {
+            success: true,
+            data: {
+                isOnline: status.isOnline,
+                isRunning: status.isRunning,
+                lastFullSync: lastSync,
+                pendingItems: status.pendingItems,
+                entities: entityStatus,
+            },
+        };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+// Get device ID
+electron_1.ipcMain.handle('sync:getDeviceId', async () => {
+    try {
+        const deviceId = dbManager?.getDeviceId() || 'unknown';
+        return { success: true, deviceId };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
 // Settings
 electron_1.ipcMain.handle('settings:get', async (_, key) => {
     return store.get(key);

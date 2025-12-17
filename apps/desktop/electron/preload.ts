@@ -225,6 +225,27 @@ const api = {
     getDetailedStatus: () => ipcRenderer.invoke('sync:getDetailedStatus'),
     getDeviceId: () => ipcRenderer.invoke('sync:getDeviceId'),
     
+    // FASE 3: Audit log
+    getAuditLog: (options?: { limit?: number; entity?: string; status?: string }) => 
+      ipcRenderer.invoke('sync:getAuditLog', options),
+    
+    // FASE 3: Conflict management
+    getConflicts: () => ipcRenderer.invoke('sync:getConflicts'),
+    resolveConflict: (conflictId: string, resolution: 'keep_local' | 'keep_server' | 'merge') =>
+      ipcRenderer.invoke('sync:resolveConflict', conflictId, resolution),
+    
+    // FASE 3: Device registry
+    getActiveDevices: () => ipcRenderer.invoke('sync:getActiveDevices'),
+    getAllDevices: () => ipcRenderer.invoke('sync:getAllDevices'),
+    updateHeartbeat: () => ipcRenderer.invoke('sync:updateHeartbeat'),
+    
+    // FASE 3: Conflict event listener
+    onConflict: (callback: (data: { entity: string; entityId: string; localTimestamp: Date; serverTimestamp: Date }) => void) => {
+      const handler = (_: any, data: any) => callback(data);
+      ipcRenderer.on('sync:conflict', handler);
+      return () => ipcRenderer.removeListener('sync:conflict', handler);
+    },
+    
     onConnectionChange: (callback: (data: { isOnline: boolean }) => void) => {
       const handler = (_: any, data: { isOnline: boolean }) => callback(data);
       ipcRenderer.on('sync:connectionChange', handler);

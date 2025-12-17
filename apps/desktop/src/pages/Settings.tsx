@@ -5,7 +5,8 @@ import {
   Activity, Building, DollarSign, Globe, Calendar, Image,
   Clock, FileText, Lock, History, Trash2, ChevronDown, ChevronUp,
   Cloud, RefreshCw, Upload, Wifi, WifiOff, Download, Users,
-  CreditCard, Boxes, FileBox, Monitor
+  CreditCard, Boxes, FileBox, Monitor, AlertTriangle, Laptop, 
+  CheckSquare, XCircle
 } from 'lucide-react';
 
 // Interface para status detalhado de sync
@@ -19,6 +20,27 @@ interface SyncEntityStatus {
   status: 'synced' | 'pending' | 'error' | 'unknown';
 }
 
+// Interface para conflitos
+interface SyncConflict {
+  id: string;
+  entity: string;
+  entity_id: string;
+  local_data: string;
+  server_data: string;
+  local_timestamp: string;
+  server_timestamp: string;
+  created_at: string;
+}
+
+// Interface para dispositivos
+interface ConnectedDevice {
+  device_id: string;
+  device_name: string;
+  last_heartbeat: string;
+  last_sync: string;
+  connection_status: 'online' | 'away' | 'offline';
+}
+
 export default function SettingsPage() {
   const [migrationStatus, setMigrationStatus] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<any>(null);
@@ -27,10 +49,14 @@ export default function SettingsPage() {
   const [detailedSyncStatus, setDetailedSyncStatus] = useState<SyncEntityStatus[]>([]);
   const [deviceId, setDeviceId] = useState<string>('');
   const [lastFullSync, setLastFullSync] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
+  const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     database: true,
     sync: true,
     syncDetails: false,
+    conflicts: false,
+    devices: false,
     general: false,
     pdv: false,
     tables: false,
@@ -50,13 +76,60 @@ export default function SettingsPage() {
     try {
       // @ts-ignore
       const status = await window.electronAPI?.sync?.getDetailedStatus?.();
-      if (status) {
-        setDetailedSyncStatus(status.entities || []);
-        setDeviceId(status.deviceId || '');
-        setLastFullSync(status.lastFullSync || null);
+      if (status?.success) {
+        setDetailedSyncStatus(status.data?.entities || []);
+        setLastFullSync(status.data?.lastFullSync || null);
       }
+      
+      // @ts-ignore
+      const deviceResult = await window.electronAPI?.sync?.getDeviceId?.();
+      if (deviceResult?.success) {
+        setDeviceId(deviceResult.deviceId || '');
+      }
+      
+      // Carregar conflitos
+      await loadConflicts();
+      
+      // Carregar dispositivos conectados
+      await loadConnectedDevices();
     } catch (error) {
       console.error('Erro ao carregar status de sync:', error);
+    }
+  };
+
+  const loadConflicts = async () => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI?.sync?.getConflicts?.();
+      if (result?.success) {
+        setConflicts(result.data || []);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar conflitos:', error);
+    }
+  };
+
+  const loadConnectedDevices = async () => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI?.sync?.getAllDevices?.();
+      if (result?.success) {
+        setConnectedDevices(result.data || []);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dispositivos:', error);
+    }
+  };
+
+  const handleResolveConflict = async (conflictId: string, resolution: 'keep_local' | 'keep_server') => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI?.sync?.resolveConflict?.(conflictId, resolution);
+      if (result?.success) {
+        await loadConflicts(); // Recarregar lista
+      }
+    } catch (error) {
+      console.error('Erro ao resolver conflito:', error);
     }
   };
 
@@ -504,6 +577,130 @@ export default function SettingsPage() {
                   );
                 })}
               </div>
+            </div>
+          </ConfigCard>
+
+          {/* 2.6 Conflitos de Sincronização (FASE 3) */}
+          <ConfigCard title="Conflitos de Sincronização" icon={AlertTriangle} sectionKey="conflicts">
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 mb-4">
+                Conflitos ocorrem quando o mesmo registro é alterado em diferentes dispositivos.
+              </p>
+              
+              {conflicts.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-500" />
+                  <p>Nenhum conflito pendente</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {conflicts.map((conflict) => (
+                    <div 
+                      key={conflict.id}
+                      className="p-3 rounded-lg border border-orange-200 bg-orange-50"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="font-medium text-sm">{conflict.entity}</span>
+                          <span className="text-xs text-gray-500 ml-2">ID: {conflict.entity_id.substring(0, 8)}...</span>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {new Date(conflict.created_at).toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-600 mb-2">
+                        <p>Local: {new Date(conflict.local_timestamp).toLocaleString('pt-BR')}</p>
+                        <p>Servidor: {new Date(conflict.server_timestamp).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleResolveConflict(conflict.id, 'keep_local')}
+                          className="flex-1 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex items-center justify-center gap-1"
+                        >
+                          <Laptop className="w-3 h-3" />
+                          Manter Local
+                        </button>
+                        <button
+                          onClick={() => handleResolveConflict(conflict.id, 'keep_server')}
+                          className="flex-1 px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 flex items-center justify-center gap-1"
+                        >
+                          <Cloud className="w-3 h-3" />
+                          Usar Servidor
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </ConfigCard>
+
+          {/* 2.7 Dispositivos Conectados (FASE 3) */}
+          <ConfigCard title="Dispositivos Conectados" icon={Laptop} sectionKey="devices">
+            <div className="space-y-3">
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-sm text-gray-600">Dispositivos que acessaram o sistema recentemente.</p>
+                <button
+                  onClick={loadConnectedDevices}
+                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Atualizar
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                <p className="text-sm text-blue-700">
+                  <Monitor className="w-4 h-4 inline mr-1" />
+                  Este dispositivo: <span className="font-mono font-medium">{deviceId || 'N/A'}</span>
+                </p>
+              </div>
+              
+              {connectedDevices.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  <Laptop className="w-8 h-8 mx-auto mb-2" />
+                  <p>Nenhum dispositivo registrado</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {connectedDevices.map((device) => (
+                    <div 
+                      key={device.device_id}
+                      className={`p-3 rounded-lg border ${
+                        device.connection_status === 'online' ? 'bg-green-50 border-green-200' :
+                        device.connection_status === 'away' ? 'bg-yellow-50 border-yellow-200' :
+                        'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            device.connection_status === 'online' ? 'bg-green-500' :
+                            device.connection_status === 'away' ? 'bg-yellow-500' :
+                            'bg-gray-400'
+                          }`} />
+                          <span className="font-medium text-sm">{device.device_name || 'Dispositivo'}</span>
+                          {device.device_id === deviceId && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Este</span>
+                          )}
+                        </div>
+                        <span className={`text-xs ${
+                          device.connection_status === 'online' ? 'text-green-600' :
+                          device.connection_status === 'away' ? 'text-yellow-600' :
+                          'text-gray-500'
+                        }`}>
+                          {device.connection_status === 'online' ? 'Online' :
+                           device.connection_status === 'away' ? 'Ausente' : 'Offline'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        <span className="font-mono">{device.device_id.substring(0, 12)}...</span>
+                        <span className="ml-2">Último sync: {device.last_sync ? new Date(device.last_sync).toLocaleString('pt-BR') : 'Nunca'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </ConfigCard>
 

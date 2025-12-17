@@ -143,6 +143,8 @@ declare const api: {
         fullPullFromServer: () => Promise<any>;
         startConnectionMonitor: () => Promise<any>;
         stopConnectionMonitor: () => Promise<any>;
+        getDetailedStatus: () => Promise<any>;
+        getDeviceId: () => Promise<any>;
         onConnectionChange: (callback: (data: {
             isOnline: boolean;
         }) => void) => () => Electron.IpcRenderer;

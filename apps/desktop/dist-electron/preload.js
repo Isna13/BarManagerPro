@@ -185,6 +185,9 @@ const api = {
         fullPullFromServer: () => electron_1.ipcRenderer.invoke('sync:fullPullFromServer'),
         startConnectionMonitor: () => electron_1.ipcRenderer.invoke('sync:startConnectionMonitor'),
         stopConnectionMonitor: () => electron_1.ipcRenderer.invoke('sync:stopConnectionMonitor'),
+        // Sync status and device info
+        getDetailedStatus: () => electron_1.ipcRenderer.invoke('sync:getDetailedStatus'),
+        getDeviceId: () => electron_1.ipcRenderer.invoke('sync:getDeviceId'),
         onConnectionChange: (callback) => {
             const handler = (_, data) => callback(data);
             electron_1.ipcRenderer.on('sync:connectionChange', handler);

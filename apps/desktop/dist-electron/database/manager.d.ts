@@ -707,6 +707,19 @@ export declare class DatabaseManager {
      */
     setSetting(key: string, value: string): void;
     /**
+     * Obtém ou gera um ID único para este dispositivo
+     * O ID é persistido e reutilizado em todas as operações
+     */
+    getDeviceId(): string;
+    /**
+     * Conta o número de registros em uma tabela
+     */
+    count(tableName: string): number;
+    /**
+     * Conta itens pendentes na fila de sincronização para uma entidade específica
+     */
+    getPendingSyncCount(entity: string): number;
+    /**
      * Obtém a última data de sincronização
      */
     getLastSyncDate(): Date | null;
