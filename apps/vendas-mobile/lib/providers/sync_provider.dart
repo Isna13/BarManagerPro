@@ -199,22 +199,22 @@ class SyncProvider extends ChangeNotifier {
       final tables = await _api.getTables();
       for (final table in tables) {
         await _upsertIfNotModified('tables', table);
-        
+
         // Se a mesa veio com sessão ativa, sincronizar também
         if (table['currentSession'] != null) {
           await _upsertTableSession(table['currentSession']);
         }
       }
-      
+
       // Tentar buscar overview para mesas com sessões completas
       try {
         // Usar o primeiro branchId disponível das mesas
         String? branchId;
         if (tables.isNotEmpty) {
-          branchId = tables.first['branchId']?.toString() ?? 
-                     tables.first['branch_id']?.toString();
+          branchId = tables.first['branchId']?.toString() ??
+              tables.first['branch_id']?.toString();
         }
-        
+
         if (branchId != null) {
           final tablesOverview = await _api.getTablesOverview(branchId);
           for (final tableData in tablesOverview) {
@@ -241,12 +241,15 @@ class SyncProvider extends ChangeNotifier {
       'id': sessionId,
       'table_id': sessionData['tableId'] ?? sessionData['table_id'],
       'branch_id': sessionData['branchId'] ?? sessionData['branch_id'],
-      'session_number': sessionData['sessionNumber'] ?? sessionData['session_number'],
+      'session_number':
+          sessionData['sessionNumber'] ?? sessionData['session_number'],
       'status': sessionData['status'] ?? 'open',
       'opened_by': sessionData['openedBy'] ?? sessionData['opened_by'],
       'closed_by': sessionData['closedBy'] ?? sessionData['closed_by'],
-      'total_amount': sessionData['totalAmount'] ?? sessionData['total_amount'] ?? 0,
-      'paid_amount': sessionData['paidAmount'] ?? sessionData['paid_amount'] ?? 0,
+      'total_amount':
+          sessionData['totalAmount'] ?? sessionData['total_amount'] ?? 0,
+      'paid_amount':
+          sessionData['paidAmount'] ?? sessionData['paid_amount'] ?? 0,
       'opened_at': sessionData['openedAt'] ?? sessionData['opened_at'],
       'closed_at': sessionData['closedAt'] ?? sessionData['closed_at'],
       'synced': 1,
@@ -258,34 +261,39 @@ class SyncProvider extends ChangeNotifier {
     final customers = sessionData['customers'] as List<dynamic>? ?? [];
     for (final customer in customers) {
       if (customer is! Map<String, dynamic>) continue;
-      
+
       final mappedCustomer = {
         'id': customer['id'],
         'session_id': sessionId,
         'customer_id': customer['customerId'] ?? customer['customer_id'],
-        'customer_name': customer['customerName'] ?? customer['customer_name'] ?? 'Cliente',
-        'order_sequence': customer['orderSequence'] ?? customer['order_sequence'] ?? 0,
+        'customer_name':
+            customer['customerName'] ?? customer['customer_name'] ?? 'Cliente',
+        'order_sequence':
+            customer['orderSequence'] ?? customer['order_sequence'] ?? 0,
         'subtotal': customer['subtotal'] ?? 0,
         'total': customer['total'] ?? 0,
         'paid_amount': customer['paidAmount'] ?? customer['paid_amount'] ?? 0,
-        'payment_status': customer['paymentStatus'] ?? customer['payment_status'] ?? 'pending',
+        'payment_status': customer['paymentStatus'] ??
+            customer['payment_status'] ??
+            'pending',
         'synced': 1,
       };
-      
+
       await _upsertIfNotModified('table_customers', mappedCustomer);
 
       // Sincronizar pedidos do cliente
       final orders = customer['orders'] as List<dynamic>? ?? [];
       for (final order in orders) {
         if (order is! Map<String, dynamic>) continue;
-        
+
         final mappedOrder = {
           'id': order['id'],
           'session_id': sessionId,
           'table_customer_id': customer['id'],
           'product_id': order['productId'] ?? order['product_id'],
           'qty_units': order['qtyUnits'] ?? order['qty_units'] ?? 1,
-          'is_muntu': (order['isMuntu'] == true || order['is_muntu'] == 1) ? 1 : 0,
+          'is_muntu':
+              (order['isMuntu'] == true || order['is_muntu'] == 1) ? 1 : 0,
           'unit_price': order['unitPrice'] ?? order['unit_price'] ?? 0,
           'subtotal': order['subtotal'] ?? 0,
           'total': order['total'] ?? 0,
@@ -294,7 +302,7 @@ class SyncProvider extends ChangeNotifier {
           'ordered_at': order['orderedAt'] ?? order['ordered_at'],
           'synced': 1,
         };
-        
+
         await _upsertIfNotModified('table_orders', mappedOrder);
       }
     }

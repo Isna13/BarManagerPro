@@ -932,7 +932,7 @@ class TablesProvider extends ChangeNotifier {
 
     try {
       final now = DateTime.now().toIso8601String();
-      
+
       if (_sync.isOnline) {
         final result = await _api.createTable(
           branchId: branchId,

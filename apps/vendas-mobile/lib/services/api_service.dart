@@ -540,7 +540,7 @@ class ApiService {
       if (seats != null) data['seats'] = seats;
       if (area != null) data['area'] = area;
       if (isActive != null) data['isActive'] = isActive;
-      
+
       final response = await _dio.put('/tables/$id', data: data);
       return response.data;
     } on DioException catch (e) {
