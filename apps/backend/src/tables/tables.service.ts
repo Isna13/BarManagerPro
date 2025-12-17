@@ -47,10 +47,26 @@ export class TablesService {
       where.branchId = branchId;
     }
 
-    return this.prisma.table.findMany({
+    const tables = await this.prisma.table.findMany({
       where,
       orderBy: { number: 'asc' },
     });
+
+    // Incluir sessão ativa para cada mesa
+    const result = [];
+    for (const table of tables) {
+      const activeSession = await this.prisma.tableSession.findFirst({
+        where: { tableId: table.id, status: 'open' },
+      });
+
+      result.push({
+        ...table,
+        status: activeSession ? 'occupied' : 'available',
+        currentSession: activeSession,
+      });
+    }
+
+    return result;
   }
 
   async findOne(id: string) {

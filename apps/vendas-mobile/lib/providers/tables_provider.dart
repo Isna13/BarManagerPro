@@ -38,11 +38,18 @@ class TablesProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
-    try {
-      if (_sync.isOnline && branchId != null) {
-        final results = await _api.getTablesOverview(branchId);
-        _tables = results.map((e) => Map<String, dynamic>.from(e)).toList();
+    debugPrint(
+        '🍽️ loadTables chamado - branchId: $branchId, isOnline: ${_sync.isOnline}');
 
+    try {
+      if (_sync.isOnline) {
+        debugPrint('🍽️ Online - buscando mesas da API...');
+        // Primeiro, buscar todas as mesas da API (não requer branchId)
+        final allTables = await _api.getTables(branchId: branchId);
+        debugPrint('🍽️ Mesas recebidas da API: ${allTables.length}');
+        _tables = allTables.map((e) => Map<String, dynamic>.from(e)).toList();
+
+        // Salvar localmente
         for (final table in _tables) {
           await _saveTableLocally(table);
 
@@ -51,7 +58,29 @@ class TablesProvider extends ChangeNotifier {
             await _saveSessionLocally(table['currentSession']);
           }
         }
+
+        // Se temos branchId, tentar buscar overview com sessões detalhadas
+        if (branchId != null && branchId.isNotEmpty) {
+          try {
+            final results = await _api.getTablesOverview(branchId);
+            if (results.isNotEmpty) {
+              _tables =
+                  results.map((e) => Map<String, dynamic>.from(e)).toList();
+
+              for (final table in _tables) {
+                await _saveTableLocally(table);
+                if (table['currentSession'] != null) {
+                  await _saveSessionLocally(table['currentSession']);
+                }
+              }
+            }
+          } catch (e) {
+            // Ignorar erro no overview, já temos as mesas básicas
+            debugPrint('Aviso: Não foi possível buscar overview: $e');
+          }
+        }
       } else {
+        debugPrint('🍽️ Offline - carregando do banco local...');
         // Carregar do banco local
         final results = await _db.query(
           'tables',
@@ -59,6 +88,7 @@ class TablesProvider extends ChangeNotifier {
           whereArgs: branchId != null ? [branchId] : null,
           orderBy: 'number ASC',
         );
+        debugPrint('🍽️ Mesas do banco local: ${results.length}');
         _tables = results;
 
         // Carregar sessões ativas para cada mesa
@@ -150,6 +180,7 @@ class TablesProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('❌ Erro ao abrir mesa: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();

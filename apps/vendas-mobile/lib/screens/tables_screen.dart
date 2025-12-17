@@ -14,6 +14,16 @@ class TablesScreen extends StatefulWidget {
 
 class _TablesScreenState extends State<TablesScreen> {
   @override
+  void initState() {
+    super.initState();
+    // Carregar mesas quando a tela é montada
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      context.read<TablesProvider>().loadTables(branchId: auth.branchId);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Consumer<TablesProvider>(
       builder: (context, tables, _) {
@@ -129,35 +139,36 @@ class _TablesScreenState extends State<TablesScreen> {
         onTap: () => _onTableTap(table, tables),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               // Número da mesa
               Text(
                 'Mesa $number',
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Ícone de status
               Container(
-                width: 48,
-                height: 48,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Icon(
                   statusIcon,
                   color: statusColor,
-                  size: 28,
+                  size: 24,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
               // Status text
               Text(
@@ -165,17 +176,19 @@ class _TablesScreenState extends State<TablesScreen> {
                 style: TextStyle(
                   color: statusColor,
                   fontWeight: FontWeight.w500,
+                  fontSize: 13,
                 ),
               ),
 
               // Total (se ocupada)
               if (isOccupied && totalAmount > 0) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   CurrencyHelper.format(totalAmount),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.green,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -225,9 +238,17 @@ class _TablesScreenState extends State<TablesScreen> {
 
     final auth = context.read<AuthProvider>();
 
+    // Usar branchId da mesa se disponível, senão do usuário, senão 'main-branch'
+    final branchId = table['branch_id'] ??
+        table['branchId'] ??
+        auth.branchId ??
+        'main-branch';
+    debugPrint(
+        '🍽️ Abrindo mesa: tableId=${table['id']}, branchId=$branchId, userId=${auth.userId}');
+
     final success = await tables.openTable(
       tableId: table['id'],
-      branchId: auth.branchId ?? '',
+      branchId: branchId,
       openedBy: auth.userId ?? '',
     );
 
