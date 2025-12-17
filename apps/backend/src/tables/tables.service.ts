@@ -720,35 +720,35 @@ export class TablesService {
 
   private async adjustStock(productId: string, adjustment: number, reason: string) {
     try {
-      const inventory = await this.prisma.inventory.findFirst({
+      // Usar InventoryItem em vez de Inventory (tabela correta para estoque)
+      const inventoryItem = await this.prisma.inventoryItem.findFirst({
         where: { productId },
       });
 
-      if (inventory) {
-        await this.prisma.inventory.update({
-          where: { id: inventory.id },
+      if (inventoryItem) {
+        const quantityBefore = inventoryItem.qtyUnits;
+        const quantityAfter = quantityBefore + adjustment;
+        
+        await this.prisma.inventoryItem.update({
+          where: { id: inventoryItem.id },
           data: { qtyUnits: { increment: adjustment } },
         });
 
         await this.prisma.stockMovement.create({
           data: {
             productId,
-            branchId: inventory.branchId,
-            type: adjustment > 0 ? 'IN' : 'OUT',
+            branchId: inventoryItem.branchId,
+            movementType: adjustment > 0 ? 'IN' : 'OUT',
             quantity: Math.abs(adjustment),
+            quantityBefore,
+            quantityAfter,
             reason,
-            performedBy: 'system',
+            responsible: 'system',
           },
         });
       }
     } catch (e) {
       console.error('Erro ao ajustar estoque:', e);
     }
-  }
-}
-      ...table,
-      status: activeSale ? 'occupied' : 'available',
-      currentSale: activeSale,
-    };
   }
 }
