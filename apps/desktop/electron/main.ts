@@ -420,6 +420,10 @@ ipcMain.handle('tables:create', async (_, data) => {
   return dbManager.createTable(data);
 });
 
+ipcMain.handle('tables:update', async (_, { id, data }) => {
+  return dbManager.updateTable(id, data);
+});
+
 ipcMain.handle('tables:list', async (_, filters) => {
   return dbManager.getTables(filters);
 });

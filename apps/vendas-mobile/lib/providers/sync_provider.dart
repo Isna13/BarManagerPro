@@ -195,13 +195,108 @@ class SyncProvider extends ChangeNotifier {
         await _upsertIfNotModified('customers', cust);
       }
 
-      // Sincronizar mesas
+      // Sincronizar mesas e suas sessões ativas
       final tables = await _api.getTables();
       for (final table in tables) {
         await _upsertIfNotModified('tables', table);
+        
+        // Se a mesa veio com sessão ativa, sincronizar também
+        if (table['currentSession'] != null) {
+          await _upsertTableSession(table['currentSession']);
+        }
+      }
+      
+      // Tentar buscar overview para mesas com sessões completas
+      try {
+        // Usar o primeiro branchId disponível das mesas
+        String? branchId;
+        if (tables.isNotEmpty) {
+          branchId = tables.first['branchId']?.toString() ?? 
+                     tables.first['branch_id']?.toString();
+        }
+        
+        if (branchId != null) {
+          final tablesOverview = await _api.getTablesOverview(branchId);
+          for (final tableData in tablesOverview) {
+            if (tableData['currentSession'] != null) {
+              await _upsertTableSession(tableData['currentSession']);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Aviso: Não foi possível buscar overview das mesas: $e');
       }
     } catch (e) {
       debugPrint('Erro ao baixar dados: $e');
+    }
+  }
+
+  /// Sincroniza uma sessão de mesa e seus dados relacionados
+  Future<void> _upsertTableSession(Map<String, dynamic> sessionData) async {
+    final sessionId = sessionData['id']?.toString();
+    if (sessionId == null) return;
+
+    // Mapear e salvar sessão
+    final mappedSession = {
+      'id': sessionId,
+      'table_id': sessionData['tableId'] ?? sessionData['table_id'],
+      'branch_id': sessionData['branchId'] ?? sessionData['branch_id'],
+      'session_number': sessionData['sessionNumber'] ?? sessionData['session_number'],
+      'status': sessionData['status'] ?? 'open',
+      'opened_by': sessionData['openedBy'] ?? sessionData['opened_by'],
+      'closed_by': sessionData['closedBy'] ?? sessionData['closed_by'],
+      'total_amount': sessionData['totalAmount'] ?? sessionData['total_amount'] ?? 0,
+      'paid_amount': sessionData['paidAmount'] ?? sessionData['paid_amount'] ?? 0,
+      'opened_at': sessionData['openedAt'] ?? sessionData['opened_at'],
+      'closed_at': sessionData['closedAt'] ?? sessionData['closed_at'],
+      'synced': 1,
+    };
+
+    await _upsertIfNotModified('table_sessions', mappedSession);
+
+    // Sincronizar clientes da sessão
+    final customers = sessionData['customers'] as List<dynamic>? ?? [];
+    for (final customer in customers) {
+      if (customer is! Map<String, dynamic>) continue;
+      
+      final mappedCustomer = {
+        'id': customer['id'],
+        'session_id': sessionId,
+        'customer_id': customer['customerId'] ?? customer['customer_id'],
+        'customer_name': customer['customerName'] ?? customer['customer_name'] ?? 'Cliente',
+        'order_sequence': customer['orderSequence'] ?? customer['order_sequence'] ?? 0,
+        'subtotal': customer['subtotal'] ?? 0,
+        'total': customer['total'] ?? 0,
+        'paid_amount': customer['paidAmount'] ?? customer['paid_amount'] ?? 0,
+        'payment_status': customer['paymentStatus'] ?? customer['payment_status'] ?? 'pending',
+        'synced': 1,
+      };
+      
+      await _upsertIfNotModified('table_customers', mappedCustomer);
+
+      // Sincronizar pedidos do cliente
+      final orders = customer['orders'] as List<dynamic>? ?? [];
+      for (final order in orders) {
+        if (order is! Map<String, dynamic>) continue;
+        
+        final mappedOrder = {
+          'id': order['id'],
+          'session_id': sessionId,
+          'table_customer_id': customer['id'],
+          'product_id': order['productId'] ?? order['product_id'],
+          'qty_units': order['qtyUnits'] ?? order['qty_units'] ?? 1,
+          'is_muntu': (order['isMuntu'] == true || order['is_muntu'] == 1) ? 1 : 0,
+          'unit_price': order['unitPrice'] ?? order['unit_price'] ?? 0,
+          'subtotal': order['subtotal'] ?? 0,
+          'total': order['total'] ?? 0,
+          'status': order['status'] ?? 'pending',
+          'ordered_by': order['orderedBy'] ?? order['ordered_by'],
+          'ordered_at': order['orderedAt'] ?? order['ordered_at'],
+          'synced': 1,
+        };
+        
+        await _upsertIfNotModified('table_orders', mappedOrder);
+      }
     }
   }
 
@@ -310,6 +405,53 @@ class SyncProvider extends ChangeNotifier {
         'updated_at',
         'synced'
       },
+      'table_sessions': {
+        'id',
+        'table_id',
+        'branch_id',
+        'session_number',
+        'status',
+        'opened_by',
+        'closed_by',
+        'total_amount',
+        'paid_amount',
+        'notes',
+        'opened_at',
+        'closed_at',
+        'synced'
+      },
+      'table_customers': {
+        'id',
+        'session_id',
+        'customer_id',
+        'customer_name',
+        'order_sequence',
+        'subtotal',
+        'total',
+        'paid_amount',
+        'payment_status',
+        'created_at',
+        'updated_at',
+        'synced'
+      },
+      'table_orders': {
+        'id',
+        'session_id',
+        'table_customer_id',
+        'product_id',
+        'qty_units',
+        'is_muntu',
+        'unit_price',
+        'unit_cost',
+        'subtotal',
+        'total',
+        'status',
+        'notes',
+        'ordered_by',
+        'ordered_at',
+        'updated_at',
+        'synced'
+      },
     };
 
     final fields = allowedFields[tableName];
@@ -341,6 +483,26 @@ class SyncProvider extends ChangeNotifier {
       'lowStockAlert': 'low_stock_alert',
       'batchNumber': 'batch_number',
       'expiryDate': 'expiry_date',
+      // Mapeamentos para mesas
+      'tableId': 'table_id',
+      'sessionId': 'session_id',
+      'sessionNumber': 'session_number',
+      'openedBy': 'opened_by',
+      'closedBy': 'closed_by',
+      'totalAmount': 'total_amount',
+      'paidAmount': 'paid_amount',
+      'openedAt': 'opened_at',
+      'closedAt': 'closed_at',
+      'customerId': 'customer_id',
+      'customerName': 'customer_name',
+      'orderSequence': 'order_sequence',
+      'paymentStatus': 'payment_status',
+      'tableCustomerId': 'table_customer_id',
+      'isMuntu': 'is_muntu',
+      'unitPrice': 'unit_price',
+      'unitCost': 'unit_cost',
+      'orderedBy': 'ordered_by',
+      'orderedAt': 'ordered_at',
     };
 
     for (final entry in data.entries) {

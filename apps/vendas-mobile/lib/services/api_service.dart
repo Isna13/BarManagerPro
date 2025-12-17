@@ -526,6 +526,28 @@ class ApiService {
     }
   }
 
+  // Atualizar mesa
+  Future<dynamic> updateTable({
+    required String id,
+    String? status,
+    int? seats,
+    String? area,
+    bool? isActive,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (status != null) data['status'] = status;
+      if (seats != null) data['seats'] = seats;
+      if (area != null) data['area'] = area;
+      if (isActive != null) data['isActive'] = isActive;
+      
+      final response = await _dio.put('/tables/$id', data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // Buscar informações de crédito do cliente
   Future<Map<String, dynamic>?> getCustomerCredit(String customerId) async {
     try {

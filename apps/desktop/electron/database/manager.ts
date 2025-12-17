@@ -4012,6 +4012,55 @@ export class DatabaseManager {
   }
 
   /**
+   * Atualizar mesa
+   */
+  updateTable(id: string, data: { status?: string; seats?: number; area?: string; isActive?: boolean }) {
+    const existing = this.getTableById(id) as any;
+    if (!existing) {
+      throw new Error('Mesa não encontrada');
+    }
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (data.status !== undefined) {
+      updates.push('status = ?');
+      params.push(data.status);
+    }
+    if (data.seats !== undefined) {
+      updates.push('seats = ?');
+      params.push(data.seats);
+    }
+    if (data.area !== undefined) {
+      updates.push('area = ?');
+      params.push(data.area);
+    }
+    if (data.isActive !== undefined) {
+      updates.push('is_active = ?');
+      params.push(data.isActive ? 1 : 0);
+    }
+
+    if (updates.length > 0) {
+      updates.push('updated_at = datetime("now")');
+      updates.push('synced = 0');
+      params.push(id);
+
+      this.db.prepare(`
+        UPDATE tables SET ${updates.join(', ')} WHERE id = ?
+      `).run(...params);
+
+      // Adicionar à fila de sincronização
+      const updated = this.getTableById(id);
+      this.addToSyncQueue('update', 'table', id, {
+        ...updated,
+        source: 'electron',
+      }, 0);
+    }
+
+    return this.getTableById(id);
+  }
+
+  /**
    * Re-sincronizar todas as mesas não sincronizadas
    * Isso adiciona mesas com synced=0 à fila de sync
    */

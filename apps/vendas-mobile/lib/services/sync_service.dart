@@ -293,6 +293,131 @@ class SyncService {
           debugPrint('📦 Sincronizando caixa: ${data['id']}');
         }
         break;
+
+      // ==================== ENTIDADES DE MESAS ====================
+      case 'tables':
+        if (action == 'create') {
+          debugPrint('📋 Sincronizando mesa: ${data['id']}');
+          await _api.createTable(
+            branchId: data['branch_id'] ?? data['branchId'] ?? '',
+            number: data['number']?.toString() ?? '',
+            seats: data['seats'] ?? 4,
+            area: data['area'],
+          );
+          debugPrint('✅ Mesa sincronizada: ${data['id']}');
+          
+          // Marcar mesa como sincronizada
+          await _db.update(
+            'tables',
+            {'synced': 1},
+            where: 'id = ?',
+            whereArgs: [data['id']],
+          );
+        } else if (action == 'update') {
+          debugPrint('📋 Atualizando mesa: ${data['id']}');
+          await _api.updateTable(
+            id: data['id'],
+            status: data['status'],
+            seats: data['seats'],
+            area: data['area'],
+            isActive: data['is_active'] == 1,
+          );
+          debugPrint('✅ Mesa atualizada: ${data['id']}');
+        }
+        break;
+
+      case 'table_sessions':
+        if (action == 'create') {
+          debugPrint('📋 Sincronizando sessão de mesa: ${data['id']}');
+          await _api.openTable(
+            tableId: data['table_id'] ?? data['tableId'] ?? '',
+            branchId: data['branch_id'] ?? data['branchId'] ?? '',
+            openedBy: data['opened_by'] ?? data['openedBy'] ?? 'mobile',
+          );
+          debugPrint('✅ Sessão de mesa sincronizada: ${data['id']}');
+          
+          // Marcar sessão como sincronizada
+          await _db.update(
+            'table_sessions',
+            {'synced': 1},
+            where: 'id = ?',
+            whereArgs: [data['id']],
+          );
+        } else if (action == 'update' && (data['status'] == 'closed' || data['closed_by'] != null)) {
+          debugPrint('📋 Fechando sessão de mesa: ${data['id']}');
+          await _api.closeTableSession(
+            sessionId: data['id'],
+            closedBy: data['closed_by'] ?? data['closedBy'] ?? 'mobile',
+          );
+          debugPrint('✅ Sessão de mesa fechada: ${data['id']}');
+        }
+        break;
+
+      case 'table_customers':
+        if (action == 'create') {
+          debugPrint('📋 Sincronizando cliente de mesa: ${data['id']}');
+          await _api.addCustomerToTable(
+            sessionId: data['session_id'] ?? data['sessionId'] ?? '',
+            customerName: data['customer_name'] ?? data['customerName'] ?? 'Cliente',
+            customerId: data['customer_id'] ?? data['customerId'],
+            addedBy: data['added_by'] ?? data['addedBy'] ?? 'mobile',
+          );
+          debugPrint('✅ Cliente de mesa sincronizado: ${data['id']}');
+          
+          // Marcar cliente como sincronizado
+          await _db.update(
+            'table_customers',
+            {'synced': 1},
+            where: 'id = ?',
+            whereArgs: [data['id']],
+          );
+        }
+        break;
+
+      case 'table_orders':
+        if (action == 'create') {
+          debugPrint('📋 Sincronizando pedido de mesa: ${data['id']}');
+          await _api.addOrderToTable(
+            sessionId: data['session_id'] ?? data['sessionId'] ?? '',
+            tableCustomerId: data['table_customer_id'] ?? data['tableCustomerId'] ?? '',
+            productId: data['product_id'] ?? data['productId'] ?? '',
+            qtyUnits: data['qty_units'] ?? data['qtyUnits'] ?? 1,
+            isMuntu: (data['is_muntu'] == 1 || data['isMuntu'] == true),
+            orderedBy: data['ordered_by'] ?? data['orderedBy'] ?? 'mobile',
+          );
+          debugPrint('✅ Pedido de mesa sincronizado: ${data['id']}');
+          
+          // Marcar pedido como sincronizado
+          await _db.update(
+            'table_orders',
+            {'synced': 1},
+            where: 'id = ?',
+            whereArgs: [data['id']],
+          );
+        } else if (action == 'update' && data['status'] == 'cancelled') {
+          debugPrint('📋 Cancelando pedido de mesa: ${data['id']}');
+          await _api.cancelTableOrder(
+            orderId: data['id'],
+            cancelledBy: data['cancelled_by'] ?? 'mobile',
+          );
+          debugPrint('✅ Pedido de mesa cancelado: ${data['id']}');
+        }
+        break;
+
+      case 'table_payments':
+        if (action == 'create') {
+          debugPrint('📋 Sincronizando pagamento de mesa: ${data['id']}');
+          await _api.processTablePayment(
+            sessionId: data['session_id'] ?? data['sessionId'] ?? '',
+            tableCustomerId: data['table_customer_id'] ?? data['tableCustomerId'],
+            method: data['method'] ?? 'CASH',
+            amount: data['amount'] ?? 0,
+            processedBy: data['processed_by'] ?? data['processedBy'] ?? 'mobile',
+            isSessionPayment: data['is_session_payment'] == 1 || data['isSessionPayment'] == true,
+          );
+          debugPrint('✅ Pagamento de mesa sincronizado: ${data['id']}');
+        }
+        break;
     }
   }
 
@@ -361,6 +486,26 @@ class SyncService {
       // Baixar mesas
       final tables = await _api.getTables();
       await _mergeData('tables', tables);
+      
+      // Baixar mesas com sessões ativas (overview)
+      try {
+        // Usar o primeiro branchId disponível das mesas
+        String? branchId;
+        if (tables.isNotEmpty) {
+          branchId = (tables.first['branchId'] ?? tables.first['branch_id'])?.toString();
+        }
+        
+        if (branchId != null) {
+          final tablesOverview = await _api.getTablesOverview(branchId);
+          for (final tableData in tablesOverview) {
+            if (tableData is Map<String, dynamic> && tableData['currentSession'] != null) {
+              await _mergeTableSession(tableData['currentSession']);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Aviso: Não foi possível buscar sessões ativas: $e');
+      }
 
       // Baixar caixa atual
       final currentCashBox = await _api.getCurrentCashBox();
@@ -378,6 +523,131 @@ class SyncService {
     } catch (e) {
       print('Erro ao baixar dados: $e');
       rethrow;
+    }
+  }
+
+  // Mesclar sessão de mesa do servidor com local
+  Future<void> _mergeTableSession(Map<String, dynamic> sessionData) async {
+    final sessionId = sessionData['id']?.toString();
+    if (sessionId == null) return;
+
+    // Mapear e salvar sessão
+    final mappedSession = {
+      'id': sessionId,
+      'table_id': sessionData['tableId'] ?? sessionData['table_id'],
+      'branch_id': sessionData['branchId'] ?? sessionData['branch_id'],
+      'session_number': sessionData['sessionNumber'] ?? sessionData['session_number'],
+      'status': sessionData['status'] ?? 'open',
+      'opened_by': sessionData['openedBy'] ?? sessionData['opened_by'],
+      'closed_by': sessionData['closedBy'] ?? sessionData['closed_by'],
+      'total_amount': sessionData['totalAmount'] ?? sessionData['total_amount'] ?? 0,
+      'paid_amount': sessionData['paidAmount'] ?? sessionData['paid_amount'] ?? 0,
+      'opened_at': sessionData['openedAt'] ?? sessionData['opened_at'],
+      'closed_at': sessionData['closedAt'] ?? sessionData['closed_at'],
+      'synced': 1,
+    };
+
+    final existingSessions = await _db.query(
+      'table_sessions',
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+
+    if (existingSessions.isEmpty) {
+      await _db.insert('table_sessions', mappedSession);
+    } else {
+      final localSynced = existingSessions.first['synced'] as int? ?? 1;
+      if (localSynced == 1) {
+        await _db.update('table_sessions', mappedSession,
+            where: 'id = ?', whereArgs: [sessionId]);
+      }
+    }
+
+    // Sincronizar clientes da sessão
+    final customers = sessionData['customers'] as List<dynamic>? ?? [];
+    for (final customer in customers) {
+      if (customer is! Map<String, dynamic>) continue;
+      await _mergeTableCustomer(sessionId, customer);
+    }
+  }
+
+  // Mesclar cliente de mesa do servidor com local
+  Future<void> _mergeTableCustomer(String sessionId, Map<String, dynamic> customer) async {
+    final customerId = customer['id']?.toString();
+    if (customerId == null) return;
+
+    final mappedCustomer = {
+      'id': customerId,
+      'session_id': sessionId,
+      'customer_id': customer['customerId'] ?? customer['customer_id'],
+      'customer_name': customer['customerName'] ?? customer['customer_name'] ?? 'Cliente',
+      'order_sequence': customer['orderSequence'] ?? customer['order_sequence'] ?? 0,
+      'subtotal': customer['subtotal'] ?? 0,
+      'total': customer['total'] ?? 0,
+      'paid_amount': customer['paidAmount'] ?? customer['paid_amount'] ?? 0,
+      'payment_status': customer['paymentStatus'] ?? customer['payment_status'] ?? 'pending',
+      'synced': 1,
+    };
+
+    final existingCustomers = await _db.query(
+      'table_customers',
+      where: 'id = ?',
+      whereArgs: [customerId],
+    );
+
+    if (existingCustomers.isEmpty) {
+      await _db.insert('table_customers', mappedCustomer);
+    } else {
+      final localSynced = existingCustomers.first['synced'] as int? ?? 1;
+      if (localSynced == 1) {
+        await _db.update('table_customers', mappedCustomer,
+            where: 'id = ?', whereArgs: [customerId]);
+      }
+    }
+
+    // Sincronizar pedidos do cliente
+    final orders = customer['orders'] as List<dynamic>? ?? [];
+    for (final order in orders) {
+      if (order is! Map<String, dynamic>) continue;
+      await _mergeTableOrder(sessionId, customerId, order);
+    }
+  }
+
+  // Mesclar pedido de mesa do servidor com local
+  Future<void> _mergeTableOrder(String sessionId, String tableCustomerId, Map<String, dynamic> order) async {
+    final orderId = order['id']?.toString();
+    if (orderId == null) return;
+
+    final mappedOrder = {
+      'id': orderId,
+      'session_id': sessionId,
+      'table_customer_id': tableCustomerId,
+      'product_id': order['productId'] ?? order['product_id'],
+      'qty_units': order['qtyUnits'] ?? order['qty_units'] ?? 1,
+      'is_muntu': (order['isMuntu'] == true || order['is_muntu'] == 1) ? 1 : 0,
+      'unit_price': order['unitPrice'] ?? order['unit_price'] ?? 0,
+      'subtotal': order['subtotal'] ?? 0,
+      'total': order['total'] ?? 0,
+      'status': order['status'] ?? 'pending',
+      'ordered_by': order['orderedBy'] ?? order['ordered_by'],
+      'ordered_at': order['orderedAt'] ?? order['ordered_at'],
+      'synced': 1,
+    };
+
+    final existingOrders = await _db.query(
+      'table_orders',
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+
+    if (existingOrders.isEmpty) {
+      await _db.insert('table_orders', mappedOrder);
+    } else {
+      final localSynced = existingOrders.first['synced'] as int? ?? 1;
+      if (localSynced == 1) {
+        await _db.update('table_orders', mappedOrder,
+            where: 'id = ?', whereArgs: [orderId]);
+      }
     }
   }
 

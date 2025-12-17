@@ -123,6 +123,9 @@ class TablesProvider extends ChangeNotifier {
           'total_amount': 0,
           'paid_amount': 0,
           'opened_at': now,
+          'created_at': now,
+          'updated_at': now,
+          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
@@ -253,6 +256,8 @@ class TablesProvider extends ChangeNotifier {
           'paid_amount': 0,
           'payment_status': 'pending',
           'created_at': now,
+          'updated_at': now,
+          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
@@ -319,6 +324,8 @@ class TablesProvider extends ChangeNotifier {
           'status': 'pending',
           'ordered_by': orderedBy,
           'ordered_at': now,
+          'updated_at': now,
+          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
@@ -339,6 +346,7 @@ class TablesProvider extends ChangeNotifier {
               (_currentCustomers[customerIndex]['subtotal'] ?? 0) + total;
           _currentCustomers[customerIndex]['total'] =
               (_currentCustomers[customerIndex]['total'] ?? 0) + total;
+          _currentCustomers[customerIndex]['updated_at'] = now;
 
           await _db.update(
             'table_customers',
@@ -352,6 +360,7 @@ class TablesProvider extends ChangeNotifier {
         if (_currentSession != null) {
           _currentSession!['total_amount'] =
               (_currentSession!['total_amount'] ?? 0) + total;
+          _currentSession!['updated_at'] = now;
 
           await _db.update(
             'table_sessions',
@@ -922,6 +931,8 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final now = DateTime.now().toIso8601String();
+      
       if (_sync.isOnline) {
         final result = await _api.createTable(
           branchId: branchId,
@@ -944,6 +955,9 @@ class TablesProvider extends ChangeNotifier {
           'area': area,
           'status': 'available',
           'is_active': 1,
+          'created_at': now,
+          'updated_at': now,
+          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
