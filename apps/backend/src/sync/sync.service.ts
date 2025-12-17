@@ -197,7 +197,7 @@ export class SyncService {
     const since = new Date(lastSync);
 
     // Get all changes since lastSync
-    const [sales, customers, inventory, products, debts, payments] = await Promise.all([
+    const [sales, customers, inventory, products, debts, payments, tables, tableSessions] = await Promise.all([
       this.prisma.sale.findMany({
         where: { branchId, updatedAt: { gte: since } },
         include: { items: true, payments: true },
@@ -220,6 +220,23 @@ export class SyncService {
           createdAt: { gte: since }
         },
       }),
+      // Tabelas
+      this.prisma.table.findMany({
+        where: { branchId, updatedAt: { gte: since } },
+      }),
+      // Sessões de mesas com clientes e pedidos
+      this.prisma.tableSession.findMany({
+        where: { branchId, updatedAt: { gte: since } },
+        include: {
+          customers: {
+            include: {
+              orders: true,
+              payments: true,
+            },
+          },
+          payments: true,
+        },
+      }),
     ]);
 
     return {
@@ -231,6 +248,8 @@ export class SyncService {
         products,
         debts,
         payments,
+        tables,
+        tableSessions,
       },
     };
   }
@@ -309,6 +328,10 @@ export class SyncService {
       product: 'product',
       debt: 'debt',
       payment: 'payment',
+      table: 'table',
+      table_session: 'tableSession',
+      table_customer: 'tableCustomer',
+      table_order: 'tableOrder',
     };
     return mapping[entity] || null;
   }

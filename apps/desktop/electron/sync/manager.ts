@@ -940,6 +940,7 @@ export class SyncManager {
         { name: 'purchases', endpoint: '/purchases' },
         { name: 'sales', endpoint: '/sales' },
         { name: 'tables', endpoint: '/tables' },
+        { name: 'table_sessions', endpoint: '/tables/sessions' },
       ];
       
       for (const entity of entities) {
@@ -1726,6 +1727,109 @@ export class SyncManager {
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar table ${item.id}:`, e?.message);
+          }
+        }
+      },
+      
+      table_sessions: (items) => {
+        // Sessões de mesa - sincronizar do servidor para o desktop
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.prepare(`SELECT id FROM table_sessions WHERE id = ?`).get(item.id);
+            
+            // Não sobrescrever se há alterações locais pendentes
+            if (this.hasLocalPendingChanges('table_sessions', item.id, existing, item)) {
+              continue;
+            }
+            
+            if (existing) {
+              // Atualizar sessão existente
+              this.dbManager.prepare(`
+                UPDATE table_sessions SET
+                  status = ?,
+                  closed_by = ?,
+                  closed_at = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(
+                item.status || 'open',
+                item.closedBy || item.closed_by || null,
+                item.closedAt || item.closed_at || null,
+                item.id
+              );
+              console.log(`📝 Sessão de mesa atualizada: ${item.id}`);
+            } else {
+              // Criar nova sessão
+              this.dbManager.prepare(`
+                INSERT INTO table_sessions (id, table_id, branch_id, status, opened_by, opened_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(
+                item.id,
+                item.tableId || item.table_id,
+                item.branchId || item.branch_id || 'main-branch',
+                item.status || 'open',
+                item.openedBy || item.opened_by || 'system',
+                item.openedAt || item.opened_at || new Date().toISOString()
+              );
+              console.log(`➕ Sessão de mesa criada: ${item.id}`);
+            }
+            
+            // Sincronizar clientes da sessão
+            if (item.customers && Array.isArray(item.customers)) {
+              for (const customer of item.customers) {
+                try {
+                  const existingCustomer = this.dbManager.prepare(`SELECT id FROM table_customers WHERE id = ?`).get(customer.id);
+                  
+                  if (!existingCustomer) {
+                    this.dbManager.prepare(`
+                      INSERT INTO table_customers (id, session_id, customer_id, customer_name, status, added_by, synced, created_at, updated_at)
+                      VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+                    `).run(
+                      customer.id,
+                      item.id,
+                      customer.customerId || customer.customer_id || null,
+                      customer.customerName || customer.customer_name,
+                      customer.status || 'active',
+                      customer.addedBy || customer.added_by || 'system'
+                    );
+                    console.log(`   ➕ Cliente de mesa: ${customer.customerName || customer.customer_name}`);
+                  }
+                  
+                  // Sincronizar pedidos do cliente
+                  if (customer.orders && Array.isArray(customer.orders)) {
+                    for (const order of customer.orders) {
+                      try {
+                        const existingOrder = this.dbManager.prepare(`SELECT id FROM table_orders WHERE id = ?`).get(order.id);
+                        
+                        if (!existingOrder) {
+                          this.dbManager.prepare(`
+                            INSERT INTO table_orders (id, session_id, table_customer_id, product_id, qty_units, unit_price, is_muntu, status, ordered_by, synced, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+                          `).run(
+                            order.id,
+                            item.id,
+                            customer.id,
+                            order.productId || order.product_id,
+                            order.qtyUnits || order.qty_units || 1,
+                            order.unitPrice || order.unit_price || 0,
+                            order.isMuntu || order.is_muntu ? 1 : 0,
+                            order.status || 'pending',
+                            order.orderedBy || order.ordered_by || 'system'
+                          );
+                        }
+                      } catch (orderError: any) {
+                        console.error(`   ❌ Erro ao criar pedido de mesa:`, orderError?.message);
+                      }
+                    }
+                  }
+                } catch (customerError: any) {
+                  console.error(`   ❌ Erro ao criar cliente de mesa:`, customerError?.message);
+                }
+              }
+            }
+          } catch (e: any) {
+            console.error(`Erro ao mesclar table_session ${item.id}:`, e?.message);
           }
         }
       },

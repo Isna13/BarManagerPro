@@ -46,6 +46,15 @@ export class TablesController {
 
   // ==================== SESSÕES ====================
 
+  @Get('sessions')
+  findAllSessions(
+    @Query('branchId') branchId?: string, 
+    @Query('status') status?: string,
+    @Query('updatedAfter') updatedAfter?: string
+  ) {
+    return this.tablesService.findAllSessions(branchId, status, updatedAfter);
+  }
+
   @Post('sessions/open')
   openSession(@Body() data: { tableId: string; branchId: string; openedBy: string }) {
     return this.tablesService.openSession(data.tableId, data.branchId, data.openedBy);

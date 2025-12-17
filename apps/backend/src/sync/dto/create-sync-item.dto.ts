@@ -13,6 +13,10 @@ export enum SyncEntity {
   PRODUCT = 'product',
   DEBT = 'debt',
   PAYMENT = 'payment',
+  TABLE = 'table',
+  TABLE_SESSION = 'table_session',
+  TABLE_CUSTOMER = 'table_customer',
+  TABLE_ORDER = 'table_order',
 }
 
 export class CreateSyncItemDto {

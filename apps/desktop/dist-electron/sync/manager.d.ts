@@ -95,8 +95,14 @@ export declare class SyncManager {
     /**
      * Verifica se um item local tem alterações pendentes (não sincronizadas)
      * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
+     *
+     * FASE 3: Agora também detecta e registra conflitos
      */
     private hasLocalPendingChanges;
+    /**
+     * FASE 3: Registra conflito se os dados locais e do servidor são diferentes
+     */
+    private registerConflictIfNeeded;
     /**
      * Mescla dados recebidos do servidor com dados locais
      * Estratégia: servidor tem prioridade, MAS respeita alterações locais não sincronizadas

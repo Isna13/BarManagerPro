@@ -96,6 +96,46 @@ export class TablesService {
     });
   }
 
+  /**
+   * Lista todas as sessões de mesa
+   * Usado para sincronização Electron ↔ Railway ↔ Mobile
+   */
+  async findAllSessions(branchId?: string, status?: string, updatedAfter?: string) {
+    const where: any = {};
+    
+    if (branchId) {
+      where.branchId = branchId;
+    }
+    
+    if (status) {
+      where.status = status;
+    }
+    
+    // Suporte para sincronização delta
+    if (updatedAfter) {
+      where.updatedAt = { gte: new Date(updatedAfter) };
+    }
+    
+    return this.prisma.tableSession.findMany({
+      where,
+      include: {
+        table: true,
+        customers: {
+          include: {
+            customer: true,
+            orders: {
+              include: {
+                product: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { openedAt: 'desc' },
+      take: 100, // Limitar para evitar payload muito grande
+    });
+  }
+
   async remove(id: string) {
     const table = await this.prisma.table.findUnique({
       where: { id },

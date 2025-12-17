@@ -89,7 +89,8 @@ class TablesProvider extends ChangeNotifier {
           orderBy: 'number ASC',
         );
         debugPrint('🍽️ Mesas do banco local: ${results.length}');
-        _tables = results;
+        // Criar cópias mutáveis de cada mapa
+        _tables = results.map((e) => Map<String, dynamic>.from(e)).toList();
 
         // Carregar sessões ativas para cada mesa
         for (int i = 0; i < _tables.length; i++) {
@@ -102,7 +103,8 @@ class TablesProvider extends ChangeNotifier {
           );
 
           if (sessions.isNotEmpty) {
-            _tables[i]['current_session'] = sessions.first;
+            _tables[i]['current_session'] =
+                Map<String, dynamic>.from(sessions.first);
           }
         }
       }
@@ -112,7 +114,7 @@ class TablesProvider extends ChangeNotifier {
       // Fallback para banco local
       try {
         final results = await _db.query('tables', orderBy: 'number ASC');
-        _tables = results;
+        _tables = results.map((e) => Map<String, dynamic>.from(e)).toList();
       } catch (_) {}
     } finally {
       _isLoading = false;
@@ -169,9 +171,11 @@ class TablesProvider extends ChangeNotifier {
         );
       }
 
-      // Atualizar status da mesa
+      // Atualizar status da mesa - criar cópia mutável se necessário
       final tableIndex = _tables.indexWhere((t) => t['id'] == tableId);
       if (tableIndex >= 0) {
+        // Garantir que o mapa é mutável
+        _tables[tableIndex] = Map<String, dynamic>.from(_tables[tableIndex]);
         _tables[tableIndex]['status'] = 'occupied';
         _tables[tableIndex]['current_session'] = _currentSession;
       }
@@ -524,6 +528,9 @@ class TablesProvider extends ChangeNotifier {
       'paid_amount': session['paidAmount'] ?? session['paid_amount'] ?? 0,
       'opened_at': session['openedAt'] ?? session['opened_at'],
       'closed_at': session['closedAt'] ?? session['closed_at'],
+      'created_at': session['createdAt'] ?? session['created_at'],
+      'updated_at': session['updatedAt'] ?? session['updated_at'],
+      'source': session['source'],
       'synced': 1,
     };
 
@@ -918,6 +925,93 @@ class TablesProvider extends ChangeNotifier {
           sessionId: sessionId,
           distributions: distributions,
           splitBy: splitBy,
+        );
+      } else {
+        // Implementação offline - transferir clientes para outras mesas
+        final now = DateTime.now().toIso8601String();
+
+        for (final distribution in distributions) {
+          final targetTableId = distribution['tableId'] as String;
+          final customerIds =
+              List<String>.from(distribution['customerIds'] ?? []);
+
+          // Verificar se a mesa destino já tem sessão aberta
+          final existingSessions = await _db.query(
+            'table_sessions',
+            where: 'table_id = ? AND status = ?',
+            whereArgs: [targetTableId, 'open'],
+            limit: 1,
+          );
+
+          String targetSessionId;
+          if (existingSessions.isNotEmpty) {
+            targetSessionId = existingSessions.first['id'];
+          } else {
+            // Criar nova sessão na mesa destino
+            targetSessionId = _uuid.v4();
+            final newSession = {
+              'id': targetSessionId,
+              'table_id': targetTableId,
+              'branch_id': _currentSession?['branch_id'] ?? 'main-branch',
+              'session_number': 'S${DateTime.now().millisecondsSinceEpoch}',
+              'status': 'open',
+              'opened_by': splitBy,
+              'total_amount': 0,
+              'paid_amount': 0,
+              'opened_at': now,
+              'created_at': now,
+              'updated_at': now,
+              'source': 'mobile',
+              'synced': 0,
+            };
+            await _db.insert('table_sessions', newSession);
+
+            await _sync.markForSync(
+              entityType: 'table_sessions',
+              entityId: targetSessionId,
+              action: 'create',
+              data: newSession,
+            );
+          }
+
+          // Transferir cada cliente
+          for (final customerId in customerIds) {
+            // Atualizar session_id do cliente
+            await _db.update(
+              'table_customers',
+              {
+                'session_id': targetSessionId,
+                'updated_at': now,
+                'synced': 0,
+              },
+              where: 'id = ?',
+              whereArgs: [customerId],
+            );
+
+            // Transferir pedidos do cliente
+            await _db.update(
+              'table_orders',
+              {
+                'session_id': targetSessionId,
+                'updated_at': now,
+                'synced': 0,
+              },
+              where: 'table_customer_id = ?',
+              whereArgs: [customerId],
+            );
+          }
+        }
+
+        // Marcar operação para sync
+        await _sync.markForSync(
+          entityType: 'table_split',
+          entityId: sessionId,
+          action: 'split',
+          data: {
+            'sessionId': sessionId,
+            'distributions': distributions,
+            'splitBy': splitBy,
+          },
         );
       }
 

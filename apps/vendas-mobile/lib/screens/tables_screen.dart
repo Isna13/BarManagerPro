@@ -4,6 +4,7 @@ import '../utils/currency_helper.dart';
 import '../providers/auth_provider.dart';
 import '../providers/products_provider.dart';
 import '../providers/tables_provider.dart';
+import '../providers/customers_provider.dart';
 
 class TablesScreen extends StatefulWidget {
   const TablesScreen({super.key});
@@ -847,37 +848,38 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
 
   Future<void> _showAddCustomerDialog(TablesProvider tables) async {
     _customerNameController.clear();
+    _selectedCustomerId = null;
 
-    final result = await showDialog<String>(
+    // Carregar clientes cadastrados
+    final customersProvider = context.read<CustomersProvider>();
+    await customersProvider.loadCustomers();
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Adicionar Cliente'),
-        content: TextField(
-          controller: _customerNameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Nome do Cliente',
-            prefixIcon: Icon(Icons.person),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_customerNameController.text.isNotEmpty) {
-                Navigator.pop(ctx, _customerNameController.text);
-              }
-            },
-            child: const Text('Adicionar'),
-          ),
-        ],
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _AddCustomerSheet(
+        customersProvider: customersProvider,
+        onSelectRegistered: (customer) {
+          Navigator.pop(ctx, {
+            'type': 'registered',
+            'customerId': customer['id'],
+            'customerName':
+                customer['name'] ?? customer['fullName'] ?? 'Cliente',
+          });
+        },
+        onAddManual: (name) {
+          Navigator.pop(ctx, {
+            'type': 'manual',
+            'customerName': name,
+          });
+        },
       ),
     );
 
-    if (result == null || result.isEmpty) return;
+    if (result == null) return;
 
     final auth = context.read<AuthProvider>();
     final session = tables.currentSession;
@@ -886,7 +888,8 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
 
     final success = await tables.addCustomer(
       sessionId: session['id'],
-      customerName: result,
+      customerName: result['customerName'],
+      customerId: result['type'] == 'registered' ? result['customerId'] : null,
       addedBy: auth.userId ?? '',
     );
 
@@ -912,108 +915,32 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Adicionar Pedido - $customerName',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            Expanded(
-              child: GridView.builder(
-                controller: scrollController,
-                padding: const EdgeInsets.all(12),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  childAspectRatio: 0.85,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: products.filteredProducts.length,
-                itemBuilder: (context, index) {
-                  final product = products.filteredProducts[index];
-                  final productId = product['id'];
-                  final name = product['name'] ?? '';
-                  final price =
-                      product['price_unit'] ?? product['priceUnit'] ?? 0;
-                  final stock = products.getProductStock(productId);
-
-                  return Card(
-                    child: InkWell(
-                      onTap: stock > 0
-                          ? () =>
-                              _addOrderToCustomer(customerId, product, tables)
-                          : null,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.local_drink,
-                              size: 32,
-                              color: stock > 0 ? Colors.blue : Colors.grey,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              name,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              CurrencyHelper.format(price),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+      builder: (context) => _AddOrderSheet(
+        customerId: customerId,
+        customerName: customerName,
+        tables: tables,
+        products: products,
+        onOrderAdded: () {
+          // Fechar modal e mostrar confirmação
+        },
       ),
     );
   }
 
-  Future<void> _addOrderToCustomer(String customerId,
-      Map<String, dynamic> product, TablesProvider tables) async {
+  Future<void> _addOrderToCustomer(
+      String customerId, Map<String, dynamic> product, TablesProvider tables,
+      {bool isMuntu = false}) async {
     final auth = context.read<AuthProvider>();
     final session = tables.currentSession;
 
     if (session == null) return;
+
+    final priceField = isMuntu ? 'price_muntu' : 'price_unit';
+    final price = product[priceField] ??
+        product['priceMuntu'] ??
+        product['priceUnit'] ??
+        product['price_unit'] ??
+        0;
 
     final success = await tables.addOrder(
       sessionId: session['id'],
@@ -1021,8 +948,8 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       productId: product['id'],
       productName: product['name'] ?? '',
       quantity: 1,
-      unitPrice: product['price_unit'] ?? product['priceUnit'] ?? 0,
-      isMuntu: false,
+      unitPrice: price,
+      isMuntu: isMuntu,
       orderedBy: auth.userId ?? '',
     );
 
@@ -1031,7 +958,8 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${product['name']} adicionado!'),
+          content: Text(
+              '${product['name']}${isMuntu ? ' (Muntu)' : ''} adicionado!'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 1),
         ),
@@ -2214,5 +2142,660 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     } catch (_) {
       return dateStr;
     }
+  }
+}
+
+/// Widget para adicionar cliente - com busca de cadastrados ou manual
+class _AddCustomerSheet extends StatefulWidget {
+  final CustomersProvider customersProvider;
+  final Function(Map<String, dynamic>) onSelectRegistered;
+  final Function(String) onAddManual;
+
+  const _AddCustomerSheet({
+    required this.customersProvider,
+    required this.onSelectRegistered,
+    required this.onAddManual,
+  });
+
+  @override
+  State<_AddCustomerSheet> createState() => _AddCustomerSheetState();
+}
+
+class _AddCustomerSheetState extends State<_AddCustomerSheet> {
+  final _searchController = TextEditingController();
+  final _manualNameController = TextEditingController();
+  bool _showManualInput = false;
+  String _searchQuery = '';
+
+  List<Map<String, dynamic>> get _filteredCustomers {
+    if (_searchQuery.isEmpty) return widget.customersProvider.customers;
+    final query = _searchQuery.toLowerCase();
+    return widget.customersProvider.customers.where((c) {
+      final name = (c['name'] ?? c['fullName'] ?? '').toString().toLowerCase();
+      final phone = (c['phone'] ?? '').toString().toLowerCase();
+      return name.contains(query) || phone.contains(query);
+    }).toList();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _manualNameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Column(
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Título
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Adicionar Cliente',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+
+          // Toggle entre buscar e adicionar manual
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() => _showManualInput = false),
+                    icon: const Icon(Icons.search),
+                    label: const Text('Buscar Cadastrado'),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: !_showManualInput
+                          ? Theme.of(context).primaryColor.withOpacity(0.1)
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() => _showManualInput = true),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Digitar Nome'),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: _showManualInput
+                          ? Theme.of(context).primaryColor.withOpacity(0.1)
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          if (_showManualInput) ...[
+            // Input manual
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _manualNameController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome do Cliente',
+                      prefixIcon: Icon(Icons.person),
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (value) {
+                      if (value.isNotEmpty) {
+                        widget.onAddManual(value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        if (_manualNameController.text.isNotEmpty) {
+                          widget.onAddManual(_manualNameController.text);
+                        }
+                      },
+                      icon: const Icon(Icons.check),
+                      label: const Text('Adicionar'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            // Busca de clientes cadastrados
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Buscar por nome ou telefone...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Lista de clientes
+            Expanded(
+              child: _filteredCustomers.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.people_outline,
+                              size: 48, color: Colors.grey[400]),
+                          const SizedBox(height: 8),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'Nenhum cliente cadastrado'
+                                : 'Nenhum cliente encontrado',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          const SizedBox(height: 16),
+                          TextButton.icon(
+                            onPressed: () =>
+                                setState(() => _showManualInput = true),
+                            icon: const Icon(Icons.person_add),
+                            label: const Text('Adicionar manualmente'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: _filteredCustomers.length,
+                      itemBuilder: (context, index) {
+                        final customer = _filteredCustomers[index];
+                        final name = customer['name'] ??
+                            customer['fullName'] ??
+                            'Sem nome';
+                        final phone = customer['phone'] ?? '';
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.blue.shade100,
+                            child: Text(
+                              name.isNotEmpty ? name[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                          title: Text(name),
+                          subtitle: phone.isNotEmpty ? Text(phone) : null,
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => widget.onSelectRegistered(customer),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Widget para adicionar pedido - com busca, Muntu e carrinho
+class _AddOrderSheet extends StatefulWidget {
+  final String customerId;
+  final String customerName;
+  final TablesProvider tables;
+  final ProductsProvider products;
+  final VoidCallback onOrderAdded;
+
+  const _AddOrderSheet({
+    required this.customerId,
+    required this.customerName,
+    required this.tables,
+    required this.products,
+    required this.onOrderAdded,
+  });
+
+  @override
+  State<_AddOrderSheet> createState() => _AddOrderSheetState();
+}
+
+class _AddOrderSheetState extends State<_AddOrderSheet> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  final List<Map<String, dynamic>> _cart = [];
+
+  List<Map<String, dynamic>> get _filteredProducts {
+    final products = widget.products.filteredProducts;
+    if (_searchQuery.isEmpty) return products;
+    final query = _searchQuery.toLowerCase();
+    return products.where((p) {
+      final name = (p['name'] ?? '').toString().toLowerCase();
+      final sku = (p['sku'] ?? '').toString().toLowerCase();
+      return name.contains(query) || sku.contains(query);
+    }).toList();
+  }
+
+  int get _cartTotal {
+    return _cart.fold(0, (sum, item) => sum + (item['total'] as int));
+  }
+
+  void _addToCart(Map<String, dynamic> product, bool isMuntu) {
+    final priceField = isMuntu ? 'price_muntu' : 'price_unit';
+    final price = product[priceField] ??
+        product['priceMuntu'] ??
+        product['priceUnit'] ??
+        product['price_unit'] ??
+        0;
+
+    // Verificar se já existe no carrinho
+    final existingIndex = _cart.indexWhere((item) =>
+        item['productId'] == product['id'] && item['isMuntu'] == isMuntu);
+
+    if (existingIndex >= 0) {
+      setState(() {
+        _cart[existingIndex]['quantity']++;
+        _cart[existingIndex]['total'] = _cart[existingIndex]['quantity'] *
+            _cart[existingIndex]['unitPrice'];
+      });
+    } else {
+      setState(() {
+        _cart.add({
+          'productId': product['id'],
+          'productName': product['name'] ?? '',
+          'quantity': 1,
+          'unitPrice': price,
+          'total': price,
+          'isMuntu': isMuntu,
+        });
+      });
+    }
+  }
+
+  void _removeFromCart(int index) {
+    setState(() {
+      if (_cart[index]['quantity'] > 1) {
+        _cart[index]['quantity']--;
+        _cart[index]['total'] =
+            _cart[index]['quantity'] * _cart[index]['unitPrice'];
+      } else {
+        _cart.removeAt(index);
+      }
+    });
+  }
+
+  Future<void> _confirmOrders() async {
+    if (_cart.isEmpty) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final session = widget.tables.currentSession;
+    if (session == null) return;
+
+    bool allSuccess = true;
+    for (final item in _cart) {
+      final success = await widget.tables.addOrder(
+        sessionId: session['id'],
+        tableCustomerId: widget.customerId,
+        productId: item['productId'],
+        productName: item['productName'],
+        quantity: item['quantity'],
+        unitPrice: item['unitPrice'],
+        isMuntu: item['isMuntu'],
+        orderedBy: auth.userId ?? '',
+      );
+      if (!success) allSuccess = false;
+    }
+
+    if (!mounted) return;
+
+    if (allSuccess) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${_cart.length} item(s) adicionado(s)!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.tables.error ?? 'Erro ao adicionar pedidos'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Column(
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Pedido - ${widget.customerName}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (_cart.isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${_cart.length} itens',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Busca
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Buscar produtos...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              onChanged: (value) => setState(() => _searchQuery = value),
+            ),
+          ),
+
+          // Lista de produtos
+          Expanded(
+            child: GridView.builder(
+              controller: scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.75,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: _filteredProducts.length,
+              itemBuilder: (context, index) {
+                final product = _filteredProducts[index];
+                return _buildProductCard(product);
+              },
+            ),
+          ),
+
+          // Carrinho
+          if (_cart.isNotEmpty) ...[
+            const Divider(height: 1),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 150),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _cart.length,
+                itemBuilder: (context, index) {
+                  final item = _cart[index];
+                  return ListTile(
+                    dense: true,
+                    leading: CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Colors.blue.shade100,
+                      child: Text(
+                        item['quantity'].toString(),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      '${item['productName']}${item['isMuntu'] ? ' (Muntu)' : ''}',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      CurrencyHelper.format(item['unitPrice']),
+                      style: const TextStyle(fontSize: 12, color: Colors.green),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          CurrencyHelper.format(item['total']),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle,
+                              color: Colors.red, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => _removeFromCart(index),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+
+          // Footer com total e botão confirmar
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Total', style: TextStyle(fontSize: 12)),
+                      Text(
+                        CurrencyHelper.format(_cartTotal),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _cart.isNotEmpty ? _confirmOrders : null,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Confirmar Pedido'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductCard(Map<String, dynamic> product) {
+    final productId = product['id'];
+    final name = product['name'] ?? '';
+    final priceUnit = product['price_unit'] ?? product['priceUnit'] ?? 0;
+    final priceMuntu = product['price_muntu'] ?? product['priceMuntu'];
+    final hasMuntu = priceMuntu != null && priceMuntu > 0;
+    final stock = widget.products.getProductStock(productId);
+    final isAvailable = stock > 0;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Ícone
+            Icon(
+              Icons.local_drink,
+              size: 32,
+              color: isAvailable ? Colors.blue : Colors.grey,
+            ),
+            const SizedBox(height: 4),
+
+            // Nome
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isAvailable ? Colors.black87 : Colors.grey,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+
+            // Estoque
+            Text(
+              'Estoque: $stock',
+              style: TextStyle(
+                fontSize: 10,
+                color: stock > 5
+                    ? Colors.green
+                    : (stock > 0 ? Colors.orange : Colors.red),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Botões de preço
+            if (isAvailable) ...[
+              // Botão Unitário
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _addToCart(product, false),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    minimumSize: const Size(0, 30),
+                  ),
+                  child: Text(
+                    CurrencyHelper.format(priceUnit),
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+
+              // Botão Muntu (se disponível)
+              if (hasMuntu) ...[
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => _addToCart(product, true),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange,
+                      side: const BorderSide(color: Colors.orange),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      minimumSize: const Size(0, 30),
+                    ),
+                    child: Text(
+                      'Muntu ${CurrencyHelper.format(priceMuntu)}',
+                      style: const TextStyle(
+                          fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ] else ...[
+              const Text(
+                'Sem estoque',
+                style: TextStyle(color: Colors.red, fontSize: 11),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

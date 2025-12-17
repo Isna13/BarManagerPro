@@ -25,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -175,6 +175,9 @@ class DatabaseService {
         notes TEXT,
         opened_at TEXT,
         closed_at TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        source TEXT,
         synced INTEGER DEFAULT 0,
         FOREIGN KEY (table_id) REFERENCES tables(id)
       )
@@ -344,7 +347,12 @@ class DatabaseService {
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    // Migrações futuras aqui
+    // Migração da versão 1 para 2: adicionar colunas à table_sessions
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE table_sessions ADD COLUMN created_at TEXT');
+      await db.execute('ALTER TABLE table_sessions ADD COLUMN updated_at TEXT');
+      await db.execute('ALTER TABLE table_sessions ADD COLUMN source TEXT');
+    }
   }
 
   // Métodos genéricos CRUD

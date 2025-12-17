@@ -416,6 +416,15 @@ export declare class DatabaseManager {
      */
     getTableById(id: string): any;
     /**
+     * Atualizar mesa
+     */
+    updateTable(id: string, data: {
+        status?: string;
+        seats?: number;
+        area?: string;
+        isActive?: boolean;
+    }): any;
+    /**
      * Re-sincronizar todas as mesas não sincronizadas
      * Isso adiciona mesas com synced=0 à fila de sync
      */
@@ -771,6 +780,83 @@ export declare class DatabaseManager {
         completed: number;
         byEntity: any[];
     };
+    /**
+     * Registra uma entrada no log de auditoria de sync
+     */
+    logSyncAudit(params: {
+        action: string;
+        entity: string;
+        entityId?: string;
+        direction: 'push' | 'pull';
+        status: 'success' | 'error' | 'conflict';
+        details?: any;
+        errorMessage?: string;
+    }): string;
+    /**
+     * Obtém log de auditoria de sync
+     */
+    getSyncAuditLog(options?: {
+        limit?: number;
+        entity?: string;
+        status?: string;
+    }): any[];
+    /**
+     * Limpa logs antigos de auditoria (mantém últimos 7 dias)
+     */
+    cleanOldAuditLogs(daysToKeep?: number): any;
+    /**
+     * Registra um conflito de sincronização
+     */
+    registerSyncConflict(params: {
+        entity: string;
+        entityId: string;
+        localData: any;
+        serverData: any;
+        serverDeviceId?: string;
+        localTimestamp: Date;
+        serverTimestamp: Date;
+    }): string;
+    /**
+     * Obtém conflitos pendentes de resolução
+     */
+    getPendingConflicts(): any[];
+    /**
+     * Resolve um conflito
+     */
+    resolveConflict(conflictId: string, resolution: 'keep_local' | 'keep_server' | 'merge', resolvedBy?: string): void;
+    /**
+     * Detecta conflito comparando timestamps
+     * Retorna true se houver conflito (ambos modificados após último sync)
+     */
+    detectConflict(entity: string, entityId: string, serverUpdatedAt: Date): {
+        hasConflict: boolean;
+        localData?: any;
+        serverTimestamp: Date;
+    };
+    /**
+     * Atualiza heartbeat do dispositivo atual
+     */
+    updateDeviceHeartbeat(): void;
+    /**
+     * Atualiza última sincronização do dispositivo
+     */
+    updateDeviceLastSync(): void;
+    /**
+     * Obtém lista de dispositivos ativos (heartbeat nos últimos 5 minutos)
+     */
+    getActiveDevices(): any[];
+    /**
+     * Obtém todos os dispositivos registrados
+     */
+    getAllDevices(): any[];
+    /**
+     * Marca dispositivos inativos (sem heartbeat por mais de 1 hora)
+     */
+    markInactiveDevices(): any;
+    /**
+     * Obtém estatísticas de sync por dispositivo
+     */
+    getDeviceSyncStats(deviceId?: string): any;
     close(): void;
 }
 export {};

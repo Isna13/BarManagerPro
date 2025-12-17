@@ -490,8 +490,11 @@ class SyncService {
       await _mergeData('inventory', inventory);
 
       // Baixar mesas
+      debugPrint('🍽️ SyncService: Baixando mesas...');
       final tables = await _api.getTables();
+      debugPrint('🍽️ SyncService: Mesas recebidas: ${tables.length}');
       await _mergeData('tables', tables);
+      debugPrint('🍽️ SyncService: Mesas mescladas no banco local');
 
       // Baixar mesas com sessões ativas (overview)
       try {

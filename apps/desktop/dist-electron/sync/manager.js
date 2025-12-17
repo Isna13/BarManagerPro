@@ -556,6 +556,8 @@ class SyncManager {
             console.log('📭 Nenhum item pendente para sincronização');
             return;
         }
+        // Atualizar heartbeat do dispositivo
+        this.dbManager.updateDeviceHeartbeat();
         // Ordenar itens por prioridade de dependência
         const sortedItems = this.sortByDependency(pendingItems);
         console.log(`📤 Sincronizando ${sortedItems.length} itens (ordenados por dependência):`);
@@ -571,6 +573,15 @@ class SyncManager {
                 const syncResult = await this.syncEntityItem(item, data);
                 if (syncResult.success) {
                     this.dbManager.markSyncItemCompleted(item.id);
+                    // Log de auditoria - sucesso
+                    this.dbManager.logSyncAudit({
+                        action: item.operation,
+                        entity: item.entity,
+                        entityId: item.entity_id,
+                        direction: 'push',
+                        status: 'success',
+                        details: { itemId: item.id },
+                    });
                     console.log(`✅ Sync ${item.entity} concluído`);
                 }
                 else if (syncResult.skip) {
@@ -583,6 +594,15 @@ class SyncManager {
                 hasFailures = true;
                 const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
                 console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
+                // Log de auditoria - erro
+                this.dbManager.logSyncAudit({
+                    action: item.operation,
+                    entity: item.entity,
+                    entityId: item.entity_id,
+                    direction: 'push',
+                    status: 'error',
+                    errorMessage: errorMsg,
+                });
                 // Verificar tipo de erro
                 if (error.response?.status === 401) {
                     console.error('🔒 Erro de autenticação (401) - Token inválido ou expirado');
@@ -603,6 +623,8 @@ class SyncManager {
                 }
             }
         }
+        // Atualizar última sincronização do dispositivo
+        this.dbManager.updateDeviceLastSync();
         // Se houve falhas, tentar re-sincronizar itens falhados
         // (útil quando dependências foram sincronizadas nesta rodada)
         if (hasFailures) {
@@ -771,7 +793,11 @@ class SyncManager {
             'inventory': 40,
             'inventory_item': 40,
             'customer_loyalty': 50,
-            'table_session': 51,
+            // Entidades de mesa (ordenadas por dependência)
+            'table_session': 12, // Sessões dependem de mesas (priority 11)
+            'table_customer': 13, // Clientes de mesa dependem de sessões
+            'table_order': 14, // Pedidos dependem de clientes de mesa
+            'table_payment': 15, // Pagamentos dependem de sessões e clientes
         };
         return items.sort((a, b) => {
             const priorityA = priorityMap[a.entity] || 100;
@@ -797,6 +823,7 @@ class SyncManager {
                 { name: 'debts', endpoint: '/debts' },
                 { name: 'purchases', endpoint: '/purchases' },
                 { name: 'sales', endpoint: '/sales' },
+                { name: 'tables', endpoint: '/tables' },
             ];
             for (const entity of entities) {
                 try {
@@ -841,8 +868,10 @@ class SyncManager {
     /**
      * Verifica se um item local tem alterações pendentes (não sincronizadas)
      * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
+     *
+     * FASE 3: Agora também detecta e registra conflitos
      */
-    hasLocalPendingChanges(entityName, itemId, existing) {
+    hasLocalPendingChanges(entityName, itemId, existing, serverItem) {
         // Se não existe localmente, não há conflito
         if (!existing)
             return false;
@@ -850,6 +879,10 @@ class SyncManager {
         const synced = existing.synced ?? existing.is_synced ?? 1;
         if (synced === 0) {
             console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais pendentes (synced=0)`);
+            // FASE 3: Registrar conflito se temos dados do servidor
+            if (serverItem) {
+                this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+            }
             return true;
         }
         // Verificar se está na fila de sincronização
@@ -857,9 +890,59 @@ class SyncManager {
         const hasPendingSync = pendingItems.some(item => item.entity === entityName.slice(0, -1) && item.entity_id === itemId);
         if (hasPendingSync) {
             console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais (na fila de sync)`);
+            // FASE 3: Registrar conflito se temos dados do servidor
+            if (serverItem) {
+                this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+            }
             return true;
         }
         return false;
+    }
+    /**
+     * FASE 3: Registra conflito se os dados locais e do servidor são diferentes
+     */
+    registerConflictIfNeeded(entityName, itemId, localData, serverData) {
+        try {
+            // Verificar se realmente há diferença significativa
+            const localUpdated = new Date(localData.updated_at || localData.updatedAt || 0);
+            const serverUpdated = new Date(serverData.updated_at || serverData.updatedAt || 0);
+            // Se os timestamps são iguais, não há conflito real
+            if (Math.abs(localUpdated.getTime() - serverUpdated.getTime()) < 1000) {
+                return;
+            }
+            // Registrar o conflito
+            this.dbManager.registerSyncConflict({
+                entity: entityName,
+                entityId: itemId,
+                localData: localData,
+                serverData: serverData,
+                serverDeviceId: serverData._deviceId,
+                localTimestamp: localUpdated,
+                serverTimestamp: serverUpdated,
+            });
+            // Log de auditoria
+            this.dbManager.logSyncAudit({
+                action: 'conflict_detected',
+                entity: entityName,
+                entityId: itemId,
+                direction: 'pull',
+                status: 'conflict',
+                details: {
+                    localUpdated: localUpdated.toISOString(),
+                    serverUpdated: serverUpdated.toISOString(),
+                },
+            });
+            // Emitir evento para UI
+            this.emit('sync:conflict', {
+                entity: entityName,
+                entityId: itemId,
+                localTimestamp: localUpdated,
+                serverTimestamp: serverUpdated,
+            });
+        }
+        catch (error) {
+            console.error(`Erro ao registrar conflito para ${entityName}/${itemId}:`, error.message);
+        }
     }
     /**
      * Mescla dados recebidos do servidor com dados locais
@@ -872,7 +955,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getBranchById(item.id);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('branches', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('branches', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -911,7 +994,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getUserByEmail(item.email);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-                        if (existing && this.hasLocalPendingChanges('users', existing.id, existing)) {
+                        if (existing && this.hasLocalPendingChanges('users', existing.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -939,7 +1022,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getCategoryById(item.id);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('categories', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('categories', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -976,7 +1059,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getProductById(item.id);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('products', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('products', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -1025,7 +1108,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getCustomerById(item.id);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('customers', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('customers', item.id, existing, item)) {
                             continue;
                         }
                         // Mapear name corretamente - backend pode enviar name, fullName ou firstName/lastName
@@ -1086,7 +1169,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getSupplierById(item.id);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('suppliers', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('suppliers', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -1235,7 +1318,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getDebtById ? this.dbManager.getDebtById(item.id) : null;
                         // Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('debts', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('debts', item.id, existing, item)) {
                             continue;
                         }
                         // Calcular valores corretos
@@ -1307,7 +1390,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getPurchaseById ? this.dbManager.getPurchaseById(item.id) : null;
                         // Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('purchases', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('purchases', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -1365,7 +1448,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getTableById ? this.dbManager.getTableById(item.id) : null;
                         // Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('tables', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('tables', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -1404,7 +1487,7 @@ class SyncManager {
                     try {
                         const existing = this.dbManager.getCashBoxById ? this.dbManager.getCashBoxById(item.id) : null;
                         // Não sobrescrever se há alterações locais pendentes
-                        if (this.hasLocalPendingChanges('cash_box', item.id, existing)) {
+                        if (this.hasLocalPendingChanges('cash_box', item.id, existing, item)) {
                             continue;
                         }
                         if (existing) {
@@ -1966,6 +2049,136 @@ class SyncManager {
                     return { success: true };
                 }
                 return { skip: true, success: false, reason: 'Operação de compra não suportada' };
+            // ==================== MESAS E SESSÕES ====================
+            case 'table':
+                // Mesas - usar endpoint POST /tables (já mapeado no default)
+                // Mas garantir que o branchId está correto
+                if (operation === 'create') {
+                    await this.apiClient.post('/tables', {
+                        id: entity_id,
+                        branchId: data.branchId || data.branch_id,
+                        number: data.number,
+                        seats: data.seats || 4,
+                        area: data.area,
+                        isActive: data.isActive !== undefined ? data.isActive : true,
+                    });
+                    console.log('✅ Mesa sincronizada:', entity_id);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Operação de mesa não suportada' };
+            case 'table_session':
+                // Sessões de mesa - usar endpoint /tables/sessions/open ou /tables/sessions/close
+                if (operation === 'create') {
+                    // Verificar se a mesa já foi sincronizada
+                    try {
+                        await this.apiClient.get(`/tables/${data.tableId}`);
+                    }
+                    catch (checkError) {
+                        if (checkError.response?.status === 404) {
+                            console.log(`⏳ Mesa ${data.tableId} ainda não existe no servidor, adiando sessão...`);
+                            throw new Error(`Mesa ${data.tableId} não encontrada - aguardando sync`);
+                        }
+                        throw checkError;
+                    }
+                    await this.apiClient.post('/tables/sessions/open', {
+                        tableId: data.tableId,
+                        branchId: data.branchId || data.branch_id,
+                        openedBy: data.openedBy || data.opened_by || 'system',
+                    });
+                    console.log('✅ Sessão de mesa sincronizada:', entity_id);
+                    return { success: true };
+                }
+                else if (operation === 'update' && (data.status === 'closed' || data.closedBy)) {
+                    await this.apiClient.post('/tables/sessions/close', {
+                        sessionId: entity_id,
+                        closedBy: data.closedBy || data.closed_by || 'system',
+                    });
+                    console.log('✅ Sessão de mesa fechada no backend:', entity_id);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Operação de sessão não suportada' };
+            case 'table_customer':
+                // Clientes de mesa - usar endpoint /tables/customers/add
+                if (operation === 'create' && data.sessionId) {
+                    // Verificar se a sessão existe
+                    try {
+                        await this.apiClient.get(`/tables/sessions/${data.sessionId}`);
+                    }
+                    catch (checkError) {
+                        if (checkError.response?.status === 404) {
+                            console.log(`⏳ Sessão ${data.sessionId} ainda não existe no servidor, adiando cliente...`);
+                            throw new Error(`Sessão ${data.sessionId} não encontrada - aguardando sync`);
+                        }
+                        throw checkError;
+                    }
+                    await this.apiClient.post('/tables/customers/add', {
+                        sessionId: data.sessionId || data.session_id,
+                        customerName: data.customerName || data.customer_name,
+                        customerId: data.customerId || data.customer_id,
+                        addedBy: data.addedBy || data.added_by || 'system',
+                    });
+                    console.log('✅ Cliente de mesa sincronizado:', entity_id);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Operação de cliente de mesa não suportada' };
+            case 'table_order':
+                // Pedidos de mesa - usar endpoint /tables/orders/add
+                if (operation === 'create' && data.sessionId && data.tableCustomerId) {
+                    // Verificar se a sessão existe
+                    try {
+                        await this.apiClient.get(`/tables/sessions/${data.sessionId}`);
+                    }
+                    catch (checkError) {
+                        if (checkError.response?.status === 404) {
+                            console.log(`⏳ Sessão ${data.sessionId} ainda não existe no servidor, adiando pedido...`);
+                            throw new Error(`Sessão ${data.sessionId} não encontrada - aguardando sync`);
+                        }
+                        throw checkError;
+                    }
+                    await this.apiClient.post('/tables/orders/add', {
+                        sessionId: data.sessionId || data.session_id,
+                        tableCustomerId: data.tableCustomerId || data.table_customer_id,
+                        productId: data.productId || data.product_id,
+                        qtyUnits: data.qtyUnits || data.qty_units || 1,
+                        isMuntu: data.isMuntu || data.is_muntu || false,
+                        orderedBy: data.orderedBy || data.ordered_by || 'system',
+                    });
+                    console.log('✅ Pedido de mesa sincronizado:', entity_id);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Operação de pedido de mesa não suportada' };
+            case 'table_payment':
+                // Pagamentos de mesa - usar endpoint /tables/payments/customer ou /tables/payments/session
+                if (operation === 'create' && data.sessionId) {
+                    // Validar método de pagamento
+                    const normalizedMethod = (0, payment_methods_1.tryNormalizePaymentMethod)(data.method);
+                    if (!normalizedMethod) {
+                        console.error(`❌ Pagamento de mesa com método inválido: ${data.method}`);
+                        return { success: false, reason: `Método de pagamento inválido: ${data.method}` };
+                    }
+                    if (data.tableCustomerId) {
+                        // Pagamento de cliente específico
+                        await this.apiClient.post('/tables/payments/customer', {
+                            sessionId: data.sessionId || data.session_id,
+                            tableCustomerId: data.tableCustomerId || data.table_customer_id,
+                            method: normalizedMethod,
+                            amount: data.amount,
+                            processedBy: data.processedBy || data.processed_by || 'system',
+                        });
+                    }
+                    else {
+                        // Pagamento da sessão inteira
+                        await this.apiClient.post('/tables/payments/session', {
+                            sessionId: data.sessionId || data.session_id,
+                            method: normalizedMethod,
+                            amount: data.amount,
+                            processedBy: data.processedBy || data.processed_by || 'system',
+                        });
+                    }
+                    console.log('✅ Pagamento de mesa sincronizado:', entity_id);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Operação de pagamento de mesa não suportada' };
             default:
                 // Entidades normais - usar endpoint padrão
                 const endpoint = this.getEndpoint(entity, operation);

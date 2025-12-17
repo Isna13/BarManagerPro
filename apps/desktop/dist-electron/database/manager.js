@@ -383,6 +383,48 @@ class DatabaseManager {
         processed_at DATETIME
       );
 
+      -- Sync Audit Log (log de auditoria de sincronização)
+      CREATE TABLE IF NOT EXISTS sync_audit_log (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        entity TEXT NOT NULL,
+        entity_id TEXT,
+        direction TEXT NOT NULL,
+        status TEXT NOT NULL,
+        details TEXT,
+        error_message TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Sync Conflicts (conflitos de sincronização)
+      CREATE TABLE IF NOT EXISTS sync_conflicts (
+        id TEXT PRIMARY KEY,
+        entity TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        local_data TEXT NOT NULL,
+        server_data TEXT NOT NULL,
+        local_device_id TEXT NOT NULL,
+        server_device_id TEXT,
+        local_timestamp DATETIME NOT NULL,
+        server_timestamp DATETIME NOT NULL,
+        resolution TEXT,
+        resolved_at DATETIME,
+        resolved_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Device Registry (registro de dispositivos ativos)
+      CREATE TABLE IF NOT EXISTS device_registry (
+        device_id TEXT PRIMARY KEY,
+        device_name TEXT,
+        last_heartbeat DATETIME NOT NULL,
+        last_sync DATETIME,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       -- Customers (cache)
       CREATE TABLE IF NOT EXISTS customers (
         id TEXT PRIMARY KEY,
@@ -3267,6 +3309,48 @@ class DatabaseManager {
         return this.db.prepare('SELECT * FROM tables WHERE id = ?').get(id);
     }
     /**
+     * Atualizar mesa
+     */
+    updateTable(id, data) {
+        const existing = this.getTableById(id);
+        if (!existing) {
+            throw new Error('Mesa não encontrada');
+        }
+        const updates = [];
+        const params = [];
+        if (data.status !== undefined) {
+            updates.push('status = ?');
+            params.push(data.status);
+        }
+        if (data.seats !== undefined) {
+            updates.push('seats = ?');
+            params.push(data.seats);
+        }
+        if (data.area !== undefined) {
+            updates.push('area = ?');
+            params.push(data.area);
+        }
+        if (data.isActive !== undefined) {
+            updates.push('is_active = ?');
+            params.push(data.isActive ? 1 : 0);
+        }
+        if (updates.length > 0) {
+            updates.push('updated_at = datetime("now")');
+            updates.push('synced = 0');
+            params.push(id);
+            this.db.prepare(`
+        UPDATE tables SET ${updates.join(', ')} WHERE id = ?
+      `).run(...params);
+            // Adicionar à fila de sincronização
+            const updated = this.getTableById(id);
+            this.addToSyncQueue('update', 'table', id, {
+                ...updated,
+                source: 'electron',
+            }, 0);
+        }
+        return this.getTableById(id);
+    }
+    /**
      * Re-sincronizar todas as mesas não sincronizadas
      * Isso adiciona mesas com synced=0 à fila de sync
      */
@@ -3490,6 +3574,14 @@ class DatabaseManager {
             description: `Cliente "${data.customerName}" adicionado à mesa`,
             metadata: JSON.stringify({ customerName: data.customerName }),
         });
+        // Adicionar à fila de sincronização (prioridade 2 - depois de sessões)
+        this.addToSyncQueue('create', 'table_customer', id, {
+            id,
+            sessionId: data.sessionId,
+            customerName: data.customerName,
+            customerId: data.customerId,
+            addedBy: data.addedBy,
+        }, 2);
         return this.db.prepare('SELECT * FROM table_customers WHERE id = ?').get(id);
     }
     /**
@@ -3563,6 +3655,16 @@ class DatabaseManager {
                 qtyUnits: data.qtyUnits
             }),
         });
+        // Adicionar à fila de sincronização (prioridade 3 - depois de clientes)
+        this.addToSyncQueue('create', 'table_order', id, {
+            id,
+            sessionId: data.sessionId,
+            tableCustomerId: data.tableCustomerId,
+            productId: data.productId,
+            qtyUnits: data.qtyUnits,
+            isMuntu: data.isMuntu || false,
+            orderedBy: data.orderedBy,
+        }, 3);
         return this.db.prepare(`
       SELECT o.*, p.name as product_name 
       FROM table_orders o
@@ -4250,6 +4352,17 @@ class DatabaseManager {
         reference_number, processed_by
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(tablePaymentId, data.sessionId, data.tableCustomerId, paymentId, data.method, data.amount, data.referenceNumber || null, data.processedBy);
+        // Adicionar pagamento de mesa à fila de sincronização (prioridade 4)
+        this.addToSyncQueue('create', 'table_payment', tablePaymentId, {
+            id: tablePaymentId,
+            sessionId: data.sessionId,
+            tableCustomerId: data.tableCustomerId,
+            paymentId,
+            method: data.method,
+            amount: data.amount,
+            referenceNumber: data.referenceNumber || null,
+            processedBy: data.processedBy,
+        }, 4);
         // Atualizar status dos pedidos para 'paid'
         this.db.prepare(`
       UPDATE table_orders 
@@ -5358,6 +5471,204 @@ class DatabaseManager {
             failed: stats.find(s => s.status === 'failed')?.count || 0,
             completed: stats.find(s => s.status === 'completed')?.count || 0,
             byEntity,
+        };
+    }
+    // ============================================
+    // FASE 3: Sync Audit, Conflicts & Device Registry
+    // ============================================
+    /**
+     * Registra uma entrada no log de auditoria de sync
+     */
+    logSyncAudit(params) {
+        const id = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const deviceId = this.getDeviceId();
+        this.db.prepare(`
+      INSERT INTO sync_audit_log (id, device_id, action, entity, entity_id, direction, status, details, error_message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, deviceId, params.action, params.entity, params.entityId || null, params.direction, params.status, params.details ? JSON.stringify(params.details) : null, params.errorMessage || null);
+        return id;
+    }
+    /**
+     * Obtém log de auditoria de sync
+     */
+    getSyncAuditLog(options) {
+        let query = 'SELECT * FROM sync_audit_log WHERE 1=1';
+        const params = [];
+        if (options?.entity) {
+            query += ' AND entity = ?';
+            params.push(options.entity);
+        }
+        if (options?.status) {
+            query += ' AND status = ?';
+            params.push(options.status);
+        }
+        query += ' ORDER BY created_at DESC';
+        if (options?.limit) {
+            query += ' LIMIT ?';
+            params.push(options.limit);
+        }
+        return this.db.prepare(query).all(...params);
+    }
+    /**
+     * Limpa logs antigos de auditoria (mantém últimos 7 dias)
+     */
+    cleanOldAuditLogs(daysToKeep = 7) {
+        const result = this.db.prepare(`
+      DELETE FROM sync_audit_log 
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+    `).run(daysToKeep);
+        console.log(`🧹 ${result.changes} logs de auditoria antigos removidos`);
+        return result.changes;
+    }
+    /**
+     * Registra um conflito de sincronização
+     */
+    registerSyncConflict(params) {
+        const id = `conflict-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const deviceId = this.getDeviceId();
+        this.db.prepare(`
+      INSERT INTO sync_conflicts (id, entity, entity_id, local_data, server_data, local_device_id, server_device_id, local_timestamp, server_timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, params.entity, params.entityId, JSON.stringify(params.localData), JSON.stringify(params.serverData), deviceId, params.serverDeviceId || null, params.localTimestamp.toISOString(), params.serverTimestamp.toISOString());
+        console.log(`⚠️ Conflito registrado: ${params.entity}/${params.entityId}`);
+        return id;
+    }
+    /**
+     * Obtém conflitos pendentes de resolução
+     */
+    getPendingConflicts() {
+        return this.db.prepare(`
+      SELECT * FROM sync_conflicts 
+      WHERE resolution IS NULL 
+      ORDER BY created_at DESC
+    `).all();
+    }
+    /**
+     * Resolve um conflito
+     */
+    resolveConflict(conflictId, resolution, resolvedBy) {
+        this.db.prepare(`
+      UPDATE sync_conflicts 
+      SET resolution = ?, resolved_at = CURRENT_TIMESTAMP, resolved_by = ?
+      WHERE id = ?
+    `).run(resolution, resolvedBy || 'system', conflictId);
+        console.log(`✅ Conflito ${conflictId} resolvido: ${resolution}`);
+    }
+    /**
+     * Detecta conflito comparando timestamps
+     * Retorna true se houver conflito (ambos modificados após último sync)
+     */
+    detectConflict(entity, entityId, serverUpdatedAt) {
+        try {
+            // Buscar dados locais
+            const localData = this.db.prepare(`SELECT * FROM ${entity} WHERE id = ?`).get(entityId);
+            if (!localData) {
+                return { hasConflict: false, serverTimestamp: serverUpdatedAt };
+            }
+            const localUpdatedAt = new Date(localData.updated_at);
+            const lastSync = this.getLastSyncDate();
+            // Se ambos foram modificados após o último sync, há conflito
+            if (lastSync && localUpdatedAt > lastSync && serverUpdatedAt > lastSync) {
+                return {
+                    hasConflict: true,
+                    localData,
+                    serverTimestamp: serverUpdatedAt
+                };
+            }
+            return { hasConflict: false, serverTimestamp: serverUpdatedAt };
+        }
+        catch (error) {
+            console.error(`Erro ao detectar conflito para ${entity}/${entityId}:`, error);
+            return { hasConflict: false, serverTimestamp: serverUpdatedAt };
+        }
+    }
+    /**
+     * Atualiza heartbeat do dispositivo atual
+     */
+    updateDeviceHeartbeat() {
+        const deviceId = this.getDeviceId();
+        const os = require('os');
+        const deviceName = os.hostname();
+        this.db.prepare(`
+      INSERT INTO device_registry (device_id, device_name, last_heartbeat, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(device_id) DO UPDATE SET
+        device_name = excluded.device_name,
+        last_heartbeat = CURRENT_TIMESTAMP,
+        is_active = 1,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(deviceId, deviceName);
+    }
+    /**
+     * Atualiza última sincronização do dispositivo
+     */
+    updateDeviceLastSync() {
+        const deviceId = this.getDeviceId();
+        this.db.prepare(`
+      UPDATE device_registry 
+      SET last_sync = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE device_id = ?
+    `).run(deviceId);
+    }
+    /**
+     * Obtém lista de dispositivos ativos (heartbeat nos últimos 5 minutos)
+     */
+    getActiveDevices() {
+        return this.db.prepare(`
+      SELECT * FROM device_registry 
+      WHERE last_heartbeat > datetime('now', '-5 minutes')
+      AND is_active = 1
+      ORDER BY last_heartbeat DESC
+    `).all();
+    }
+    /**
+     * Obtém todos os dispositivos registrados
+     */
+    getAllDevices() {
+        return this.db.prepare(`
+      SELECT *,
+        CASE 
+          WHEN last_heartbeat > datetime('now', '-5 minutes') THEN 'online'
+          WHEN last_heartbeat > datetime('now', '-1 hour') THEN 'away'
+          ELSE 'offline'
+        END as connection_status
+      FROM device_registry 
+      ORDER BY last_heartbeat DESC
+    `).all();
+    }
+    /**
+     * Marca dispositivos inativos (sem heartbeat por mais de 1 hora)
+     */
+    markInactiveDevices() {
+        const result = this.db.prepare(`
+      UPDATE device_registry 
+      SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE last_heartbeat < datetime('now', '-1 hour')
+      AND is_active = 1
+    `).run();
+        if (result.changes > 0) {
+            console.log(`📴 ${result.changes} dispositivo(s) marcado(s) como inativo(s)`);
+        }
+        return result.changes;
+    }
+    /**
+     * Obtém estatísticas de sync por dispositivo
+     */
+    getDeviceSyncStats(deviceId) {
+        const targetDevice = deviceId || this.getDeviceId();
+        return {
+            auditLogs: this.db.prepare(`
+        SELECT 
+          status,
+          COUNT(*) as count
+        FROM sync_audit_log 
+        WHERE device_id = ?
+        GROUP BY status
+      `).all(targetDevice),
+            lastSync: this.db.prepare(`
+        SELECT last_sync FROM device_registry WHERE device_id = ?
+      `).get(targetDevice),
+            pendingItems: this.getPendingSyncCount(''),
         };
     }
     close() {

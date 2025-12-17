@@ -145,6 +145,22 @@ declare const api: {
         stopConnectionMonitor: () => Promise<any>;
         getDetailedStatus: () => Promise<any>;
         getDeviceId: () => Promise<any>;
+        getAuditLog: (options?: {
+            limit?: number;
+            entity?: string;
+            status?: string;
+        }) => Promise<any>;
+        getConflicts: () => Promise<any>;
+        resolveConflict: (conflictId: string, resolution: "keep_local" | "keep_server" | "merge") => Promise<any>;
+        getActiveDevices: () => Promise<any>;
+        getAllDevices: () => Promise<any>;
+        updateHeartbeat: () => Promise<any>;
+        onConflict: (callback: (data: {
+            entity: string;
+            entityId: string;
+            localTimestamp: Date;
+            serverTimestamp: Date;
+        }) => void) => () => Electron.IpcRenderer;
         onConnectionChange: (callback: (data: {
             isOnline: boolean;
         }) => void) => () => Electron.IpcRenderer;

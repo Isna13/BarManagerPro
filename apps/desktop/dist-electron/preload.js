@@ -188,6 +188,21 @@ const api = {
         // Sync status and device info
         getDetailedStatus: () => electron_1.ipcRenderer.invoke('sync:getDetailedStatus'),
         getDeviceId: () => electron_1.ipcRenderer.invoke('sync:getDeviceId'),
+        // FASE 3: Audit log
+        getAuditLog: (options) => electron_1.ipcRenderer.invoke('sync:getAuditLog', options),
+        // FASE 3: Conflict management
+        getConflicts: () => electron_1.ipcRenderer.invoke('sync:getConflicts'),
+        resolveConflict: (conflictId, resolution) => electron_1.ipcRenderer.invoke('sync:resolveConflict', conflictId, resolution),
+        // FASE 3: Device registry
+        getActiveDevices: () => electron_1.ipcRenderer.invoke('sync:getActiveDevices'),
+        getAllDevices: () => electron_1.ipcRenderer.invoke('sync:getAllDevices'),
+        updateHeartbeat: () => electron_1.ipcRenderer.invoke('sync:updateHeartbeat'),
+        // FASE 3: Conflict event listener
+        onConflict: (callback) => {
+            const handler = (_, data) => callback(data);
+            electron_1.ipcRenderer.on('sync:conflict', handler);
+            return () => electron_1.ipcRenderer.removeListener('sync:conflict', handler);
+        },
         onConnectionChange: (callback) => {
             const handler = (_, data) => callback(data);
             electron_1.ipcRenderer.on('sync:connectionChange', handler);

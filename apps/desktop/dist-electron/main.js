@@ -376,6 +376,9 @@ electron_1.ipcMain.handle('cashbox:getHistory', async (_, filters) => {
 electron_1.ipcMain.handle('tables:create', async (_, data) => {
     return dbManager.createTable(data);
 });
+electron_1.ipcMain.handle('tables:update', async (_, { id, data }) => {
+    return dbManager.updateTable(id, data);
+});
 electron_1.ipcMain.handle('tables:list', async (_, filters) => {
     return dbManager.getTables(filters);
 });
@@ -597,6 +600,63 @@ electron_1.ipcMain.handle('sync:getDeviceId', async () => {
     try {
         const deviceId = dbManager?.getDeviceId() || 'unknown';
         return { success: true, deviceId };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+// FASE 3: Sync Audit Log
+electron_1.ipcMain.handle('sync:getAuditLog', async (_, options) => {
+    try {
+        const logs = dbManager?.getSyncAuditLog(options) || [];
+        return { success: true, data: logs };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+// FASE 3: Sync Conflicts
+electron_1.ipcMain.handle('sync:getConflicts', async () => {
+    try {
+        const conflicts = dbManager?.getPendingConflicts() || [];
+        return { success: true, data: conflicts };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:resolveConflict', async (_, conflictId, resolution) => {
+    try {
+        dbManager?.resolveConflict(conflictId, resolution);
+        return { success: true };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+// FASE 3: Device Registry
+electron_1.ipcMain.handle('sync:getActiveDevices', async () => {
+    try {
+        const devices = dbManager?.getActiveDevices() || [];
+        return { success: true, data: devices };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:getAllDevices', async () => {
+    try {
+        const devices = dbManager?.getAllDevices() || [];
+        return { success: true, data: devices };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:updateHeartbeat', async () => {
+    try {
+        dbManager?.updateDeviceHeartbeat();
+        return { success: true };
     }
     catch (error) {
         return { success: false, error: error.message };
