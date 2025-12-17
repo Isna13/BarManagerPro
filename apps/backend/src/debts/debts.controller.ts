@@ -14,6 +14,11 @@ export class DebtsController {
     return this.debtsService.create(createDto, user.userId);
   }
 
+  @Post('customers-pending')
+  findPendingByCustomers(@Body() body: { customerIds: string[] }) {
+    return this.debtsService.findPendingByCustomers(body.customerIds);
+  }
+
   @Post(':id/pay')
   payDebt(@Param('id') id: string, @Body() payDto: PayDebtDto) {
     return this.debtsService.payDebt(id, payDto);

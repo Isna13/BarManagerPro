@@ -21,27 +21,33 @@ class _TablesScreenState extends State<TablesScreen> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (tables.tables.isEmpty) {
-          return _buildEmptyState();
-        }
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            final auth = context.read<AuthProvider>();
-            await tables.loadTables(branchId: auth.branchId);
-          },
-          child: GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
-              childAspectRatio: 1,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: tables.tables.length,
-            itemBuilder: (context, index) {
-              return _buildTableCard(tables.tables[index], tables);
-            },
+        return Scaffold(
+          body: tables.tables.isEmpty
+              ? _buildEmptyState()
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    final auth = context.read<AuthProvider>();
+                    await tables.loadTables(branchId: auth.branchId);
+                  },
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount:
+                          MediaQuery.of(context).size.width > 600 ? 4 : 2,
+                      childAspectRatio: 1,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: tables.tables.length,
+                    itemBuilder: (context, index) {
+                      return _buildTableCard(tables.tables[index], tables);
+                    },
+                  ),
+                ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => _showCreateTableDialog(tables),
+            child: const Icon(Icons.add),
+            tooltip: 'Criar nova mesa',
           ),
         );
       },
@@ -274,6 +280,100 @@ class _TablesScreenState extends State<TablesScreen> {
       ),
     );
   }
+
+  /// Criar nova mesa
+  Future<void> _showCreateTableDialog(TablesProvider tables) async {
+    final numberController = TextEditingController();
+    final seatsController = TextEditingController(text: '4');
+    final areaController = TextEditingController();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Criar Nova Mesa'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                labelText: 'Número da Mesa *',
+                hintText: 'Ex: 01, A1, VIP1',
+                prefixIcon: Icon(Icons.table_restaurant),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: seatsController,
+              decoration: const InputDecoration(
+                labelText: 'Lugares',
+                prefixIcon: Icon(Icons.people),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: areaController,
+              decoration: const InputDecoration(
+                labelText: 'Área (opcional)',
+                hintText: 'Ex: Terraço, Interior, VIP',
+                prefixIcon: Icon(Icons.location_on),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (numberController.text.isNotEmpty) {
+                Navigator.pop(ctx, {
+                  'number': numberController.text,
+                  'seats': int.tryParse(seatsController.text) ?? 4,
+                  'area': areaController.text.isNotEmpty
+                      ? areaController.text
+                      : null,
+                });
+              }
+            },
+            child: const Text('Criar'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.createTable(
+      branchId: auth.branchId ?? '',
+      number: result['number'],
+      seats: result['seats'],
+      area: result['area'],
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mesa ${result['number']} criada com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tables.error!),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 }
 
 class TableSessionSheet extends StatefulWidget {
@@ -388,6 +488,13 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                       ),
                     ],
                   ),
+                  const SizedBox(width: 8),
+                  // Botão fechar mesa
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: () => _closeTable(tables),
+                    tooltip: 'Fechar mesa',
+                  ),
                 ],
               ),
             ),
@@ -443,6 +550,62 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                         foregroundColor: Colors.white,
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Menu de ações avançadas
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'Mais opções',
+                    onSelected: (value) => _handleAdvancedAction(value, tables),
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'transfer_table',
+                        child: ListTile(
+                          leading: Icon(Icons.swap_horiz, color: Colors.blue),
+                          title: Text('Transferir Mesa'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'transfer_customers',
+                        child: ListTile(
+                          leading: Icon(Icons.people_alt, color: Colors.purple),
+                          title: Text('Transferir Clientes'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'merge_tables',
+                        child: ListTile(
+                          leading: Icon(Icons.call_merge, color: Colors.teal),
+                          title: Text('Unir com Outra Mesa'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                      if (customers.length > 1)
+                        const PopupMenuItem(
+                          value: 'split_table',
+                          child: ListTile(
+                            leading:
+                                Icon(Icons.call_split, color: Colors.orange),
+                            title: Text('Separar Mesa'),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
+                        ),
+                      const PopupMenuItem(
+                        value: 'history',
+                        child: ListTile(
+                          leading: Icon(Icons.history, color: Colors.grey),
+                          title: Text('Histórico'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -573,29 +736,69 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                     radius: 16,
                     backgroundColor: isOrderPaid
                         ? Colors.green.shade100
-                        : Colors.grey.shade100,
+                        : status == 'cancelled'
+                            ? Colors.red.shade100
+                            : Colors.grey.shade100,
                     child: Text(
                       qty.toString(),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: isOrderPaid ? Colors.green : Colors.grey[700],
+                        color: isOrderPaid
+                            ? Colors.green
+                            : status == 'cancelled'
+                                ? Colors.red
+                                : Colors.grey[700],
                       ),
                     ),
                   ),
                   title: Text(
                     productName,
                     style: TextStyle(
-                      decoration:
-                          isOrderPaid ? TextDecoration.lineThrough : null,
+                      decoration: isOrderPaid || status == 'cancelled'
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: status == 'cancelled' ? Colors.red : null,
                     ),
                   ),
-                  trailing: Text(
-                    CurrencyHelper.format(orderTotal),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isOrderPaid ? Colors.green : Colors.black87,
-                    ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        CurrencyHelper.format(orderTotal),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isOrderPaid
+                              ? Colors.green
+                              : status == 'cancelled'
+                                  ? Colors.red
+                                  : Colors.black87,
+                        ),
+                      ),
+                      // Botão transferir item (só se houver mais de 1 cliente)
+                      if (!isOrderPaid &&
+                          status != 'cancelled' &&
+                          tables.currentCustomers.length > 1)
+                        IconButton(
+                          icon: const Icon(Icons.swap_horiz,
+                              color: Colors.blue, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => _showTransferItemDialog(
+                              order, customerId, tables),
+                          tooltip: 'Transferir para outro cliente',
+                        ),
+                      // Botão cancelar pedido
+                      if (!isOrderPaid && status != 'cancelled')
+                        IconButton(
+                          icon: const Icon(Icons.cancel,
+                              color: Colors.red, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => _cancelOrder(order, tables),
+                          tooltip: 'Cancelar pedido',
+                        ),
+                    ],
                   ),
                 );
               },
@@ -848,6 +1051,10 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                 _paymentButton(ctx, 'card', 'Cartão', Icons.credit_card),
                 _paymentButton(
                     ctx, 'mobile_money', 'Mobile Money', Icons.phone_android),
+                _paymentButton(
+                    ctx, 'orange', 'Orange Money', Icons.phone_android),
+                _paymentButton(
+                    ctx, 'vale', 'Vale (Crédito)', Icons.credit_score),
               ],
             ),
           ],
@@ -862,6 +1069,45 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     );
 
     if (method == null) return;
+
+    // Validação para Vale (crédito)
+    if (method == 'vale') {
+      // Buscar dados do cliente para verificar se é cadastrado
+      final customer = tables.currentCustomers.firstWhere(
+        (c) => c['id'] == customerId,
+        orElse: () => {},
+      );
+      final registeredCustomerId =
+          customer['customer_id'] ?? customer['customerId'];
+
+      if (registeredCustomerId == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Vale só disponível para clientes cadastrados!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Carregar informações de crédito
+      await tables.loadCustomerCredit(registeredCustomerId);
+      final availableCredit = tables.getAvailableCredit(registeredCustomerId);
+
+      if (amount > availableCredit) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Crédito insuficiente! Disponível: ${CurrencyHelper.format(availableCredit)}',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
 
     final auth = context.read<AuthProvider>();
     final session = tables.currentSession;
@@ -926,6 +1172,333 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     );
   }
 
+  /// Transferir item para outro cliente
+  Future<void> _showTransferItemDialog(Map<String, dynamic> order,
+      String fromCustomerId, TablesProvider tables) async {
+    final productName = order['product_name'] ?? 'Produto';
+    final qty = order['qty_units'] ?? 1;
+
+    // Filtrar clientes exceto o atual
+    final otherCustomers = tables.currentCustomers
+        .where((c) => c['id'] != fromCustomerId)
+        .toList();
+
+    if (otherCustomers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há outros clientes para transferir'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String? selectedCustomerId;
+    int transferQty = qty;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Transferir Item'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Produto: $productName'),
+              Text('Quantidade: $qty'),
+              const SizedBox(height: 16),
+              const Text('Transferir para:'),
+              const SizedBox(height: 8),
+              ...otherCustomers.map((c) => RadioListTile<String>(
+                    title: Text(
+                        c['customer_name'] ?? c['customerName'] ?? 'Cliente'),
+                    value: c['id'],
+                    groupValue: selectedCustomerId,
+                    onChanged: (v) =>
+                        setDialogState(() => selectedCustomerId = v),
+                    dense: true,
+                  )),
+              if (qty > 1) ...[
+                const SizedBox(height: 16),
+                const Text('Quantidade a transferir:'),
+                Slider(
+                  value: transferQty.toDouble(),
+                  min: 1,
+                  max: qty.toDouble(),
+                  divisions: qty - 1 > 0 ? qty - 1 : 1,
+                  label: transferQty.toString(),
+                  onChanged: (v) =>
+                      setDialogState(() => transferQty = v.round()),
+                ),
+                Text('$transferQty de $qty'),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: selectedCustomerId != null
+                  ? () => Navigator.pop(ctx, {
+                        'toCustomerId': selectedCustomerId,
+                        'qty': transferQty,
+                      })
+                  : null,
+              child: const Text('Transferir'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.transferOrder(
+      orderId: order['id'],
+      fromCustomerId: fromCustomerId,
+      toCustomerId: result['toCustomerId'],
+      qtyUnits: result['qty'],
+      transferredBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Item transferido com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tables.error!),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Criar nova mesa
+  Future<void> _showCreateTableDialog(TablesProvider tables) async {
+    final numberController = TextEditingController();
+    final seatsController = TextEditingController(text: '4');
+    final areaController = TextEditingController();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Criar Nova Mesa'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                labelText: 'Número da Mesa *',
+                hintText: 'Ex: 01, A1, VIP1',
+                prefixIcon: Icon(Icons.table_restaurant),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: seatsController,
+              decoration: const InputDecoration(
+                labelText: 'Lugares',
+                prefixIcon: Icon(Icons.people),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: areaController,
+              decoration: const InputDecoration(
+                labelText: 'Área (opcional)',
+                hintText: 'Ex: Terraço, Interior, VIP',
+                prefixIcon: Icon(Icons.location_on),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (numberController.text.isNotEmpty) {
+                Navigator.pop(ctx, {
+                  'number': numberController.text,
+                  'seats': int.tryParse(seatsController.text) ?? 4,
+                  'area': areaController.text.isNotEmpty
+                      ? areaController.text
+                      : null,
+                });
+              }
+            },
+            child: const Text('Criar'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.createTable(
+      branchId: auth.branchId ?? '',
+      number: result['number'],
+      seats: result['seats'],
+      area: result['area'],
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mesa ${result['number']} criada com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tables.error!),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Cancelar pedido com confirmação
+  Future<void> _cancelOrder(
+      Map<String, dynamic> order, TablesProvider tables) async {
+    final productName = order['product_name'] ?? 'Produto';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancelar Pedido'),
+        content: Text(
+          'Cancelar "$productName"?\n\nO estoque será restaurado automaticamente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Não'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sim, Cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.cancelOrder(
+      orderId: order['id'],
+      cancelledBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pedido cancelado! Estoque restaurado.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tables.error!),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Fechar mesa
+  Future<void> _closeTable(TablesProvider tables) async {
+    final session = tables.currentSession;
+    if (session == null) return;
+
+    final totalAmount = session['total_amount'] ?? session['totalAmount'] ?? 0;
+    final paidAmount = session['paid_amount'] ?? session['paidAmount'] ?? 0;
+    final pending = totalAmount - paidAmount;
+
+    if (pending > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Há ${CurrencyHelper.format(pending)} pendente de pagamento!',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Fechar Mesa'),
+        content: const Text('Deseja fechar esta mesa?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Não'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sim, Fechar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.closeTable(
+      sessionId: session['id'],
+      closedBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.pop(context); // Fechar bottom sheet
+      await tables.loadTables(branchId: auth.branchId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mesa fechada com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tables.error!),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _showPaymentOptions(TablesProvider tables) {
     final pendingCustomers = tables.currentCustomers.where((c) {
       final status = c['payment_status'] ?? c['paymentStatus'] ?? 'pending';
@@ -984,5 +1557,641 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
         ),
       ),
     );
+  }
+
+  /// Handler para ações avançadas do menu
+  void _handleAdvancedAction(String action, TablesProvider tables) {
+    switch (action) {
+      case 'transfer_table':
+        _showTransferTableDialog(tables);
+        break;
+      case 'transfer_customers':
+        _showTransferCustomersDialog(tables);
+        break;
+      case 'merge_tables':
+        _showMergeTablesDialog(tables);
+        break;
+      case 'split_table':
+        _showSplitTableDialog(tables);
+        break;
+      case 'history':
+        _showSessionHistory(tables);
+        break;
+    }
+  }
+
+  /// Transferir mesa completa para outra mesa
+  Future<void> _showTransferTableDialog(TablesProvider tables) async {
+    final session = tables.currentSession;
+    if (session == null) return;
+
+    // Mesas disponíveis (exceto a atual)
+    final currentTableId = session['table_id'] ?? session['tableId'];
+    final availableTables = tables.tables
+        .where((t) =>
+            t['id'] != currentTableId &&
+            (t['status'] == 'available' || t['status'] == null))
+        .toList();
+
+    if (availableTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há mesas disponíveis para transferência'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final selectedTable = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Transferir Mesa'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Todos os pedidos e clientes serão transferidos.'),
+              const SizedBox(height: 16),
+              const Text('Selecione a mesa de destino:'),
+              const SizedBox(height: 8),
+              ...availableTables.map((t) => ListTile(
+                    leading: const Icon(Icons.table_restaurant),
+                    title: Text('Mesa ${t['number']}'),
+                    subtitle: Text(t['area'] ?? 'Sem área'),
+                    onTap: () => Navigator.pop(ctx, t),
+                    dense: true,
+                  )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedTable == null) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.transferTable(
+      sessionId: session['id'],
+      toTableId: selectedTable['id'],
+      transferredBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.pop(context); // Fechar bottom sheet
+      await tables.loadTables(branchId: auth.branchId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Mesa transferida para Mesa ${selectedTable['number']}!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// Transferir clientes selecionados para outra mesa
+  Future<void> _showTransferCustomersDialog(TablesProvider tables) async {
+    final session = tables.currentSession;
+    if (session == null) return;
+
+    final customers = tables.currentCustomers;
+    if (customers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há clientes para transferir'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Mesas disponíveis ou ocupadas (exceto a atual)
+    final currentTableId = session['table_id'] ?? session['tableId'];
+    final otherTables =
+        tables.tables.where((t) => t['id'] != currentTableId).toList();
+
+    if (otherTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há outras mesas disponíveis'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final selectedCustomerIds = <String>[];
+    String? selectedTableId;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Transferir Clientes'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Selecione os clientes:'),
+                  ...customers.map((c) {
+                    final cId = c['id'];
+                    final cName =
+                        c['customer_name'] ?? c['customerName'] ?? 'Cliente';
+                    return CheckboxListTile(
+                      title: Text(cName),
+                      value: selectedCustomerIds.contains(cId),
+                      onChanged: (v) {
+                        setDialogState(() {
+                          if (v == true) {
+                            selectedCustomerIds.add(cId);
+                          } else {
+                            selectedCustomerIds.remove(cId);
+                          }
+                        });
+                      },
+                      dense: true,
+                    );
+                  }),
+                  const Divider(),
+                  const Text('Mesa de destino:'),
+                  ...otherTables.map((t) {
+                    final isOccupied = t['status'] == 'occupied' ||
+                        t['current_session'] != null ||
+                        t['currentSession'] != null;
+                    return RadioListTile<String>(
+                      title: Text('Mesa ${t['number']}'),
+                      subtitle:
+                          Text(isOccupied ? 'Ocupada (unirá)' : 'Disponível'),
+                      value: t['id'],
+                      groupValue: selectedTableId,
+                      onChanged: (v) =>
+                          setDialogState(() => selectedTableId = v),
+                      dense: true,
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed:
+                  selectedCustomerIds.isNotEmpty && selectedTableId != null
+                      ? () => Navigator.pop(ctx, {
+                            'customerIds': selectedCustomerIds,
+                            'tableId': selectedTableId,
+                          })
+                      : null,
+              child: const Text('Transferir'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.transferCustomers(
+      sessionId: session['id'],
+      customerIds: List<String>.from(result['customerIds']),
+      toTableId: result['tableId'],
+      transferredBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      // Se transferiu todos, fecha o sheet
+      if (selectedCustomerIds.length == customers.length) {
+        Navigator.pop(context);
+      }
+      await tables.loadTables(branchId: auth.branchId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('${selectedCustomerIds.length} cliente(s) transferido(s)!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// Unir com outra mesa ocupada
+  Future<void> _showMergeTablesDialog(TablesProvider tables) async {
+    final session = tables.currentSession;
+    if (session == null) return;
+
+    final currentTableId = session['table_id'] ?? session['tableId'];
+
+    // Outras mesas ocupadas
+    final occupiedTables = tables.tables.where((t) {
+      final tId = t['id'];
+      final hasSession =
+          t['current_session'] != null || t['currentSession'] != null;
+      return tId != currentTableId && hasSession;
+    }).toList();
+
+    if (occupiedTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há outras mesas ocupadas para unir'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Selecionar mesas para unir
+    final selectedSessionIds = <String>[session['id']];
+    String? targetTableId = currentTableId;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Unir Mesas'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Selecione as mesas para unir:'),
+                  const SizedBox(height: 8),
+                  ...occupiedTables.map((t) {
+                    final tSession =
+                        t['current_session'] ?? t['currentSession'];
+                    final tSessionId = tSession?['id'];
+                    if (tSessionId == null) return const SizedBox();
+
+                    return CheckboxListTile(
+                      title: Text('Mesa ${t['number']}'),
+                      subtitle: Text(
+                        'Total: ${CurrencyHelper.format(tSession['total_amount'] ?? tSession['totalAmount'] ?? 0)}',
+                      ),
+                      value: selectedSessionIds.contains(tSessionId),
+                      onChanged: (v) {
+                        setDialogState(() {
+                          if (v == true) {
+                            selectedSessionIds.add(tSessionId);
+                          } else {
+                            selectedSessionIds.remove(tSessionId);
+                          }
+                        });
+                      },
+                      dense: true,
+                    );
+                  }),
+                  const Divider(),
+                  const Text('Mesa de destino:'),
+                  RadioListTile<String>(
+                    title: Text('Mesa atual'),
+                    value: currentTableId,
+                    groupValue: targetTableId,
+                    onChanged: (v) => setDialogState(() => targetTableId = v),
+                    dense: true,
+                  ),
+                  ...occupiedTables.where((t) {
+                    final tSession =
+                        t['current_session'] ?? t['currentSession'];
+                    return selectedSessionIds.contains(tSession?['id']);
+                  }).map((t) => RadioListTile<String>(
+                        title: Text('Mesa ${t['number']}'),
+                        value: t['id'],
+                        groupValue: targetTableId,
+                        onChanged: (v) =>
+                            setDialogState(() => targetTableId = v),
+                        dense: true,
+                      )),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: selectedSessionIds.length >= 2 && targetTableId != null
+                  ? () => Navigator.pop(ctx, {
+                        'sessionIds': selectedSessionIds,
+                        'targetTableId': targetTableId,
+                      })
+                  : null,
+              child: const Text('Unir'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.mergeTables(
+      sessionIds: List<String>.from(result['sessionIds']),
+      targetTableId: result['targetTableId'],
+      mergedBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.pop(context);
+      await tables.loadTables(branchId: auth.branchId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mesas unidas com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// Separar mesa (distribuir clientes em outras mesas)
+  Future<void> _showSplitTableDialog(TablesProvider tables) async {
+    final session = tables.currentSession;
+    if (session == null) return;
+
+    final customers = tables.currentCustomers;
+    if (customers.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Precisa de pelo menos 2 clientes para separar'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final currentTableId = session['table_id'] ?? session['tableId'];
+    final otherTables =
+        tables.tables.where((t) => t['id'] != currentTableId).toList();
+
+    if (otherTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não há outras mesas para separar'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Mapa: customerId -> tableId
+    final distributions = <String, String?>{};
+    for (final c in customers) {
+      distributions[c['id']] = null;
+    }
+
+    final result = await showDialog<List<Map<String, dynamic>>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Separar Mesa'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Distribua os clientes em mesas diferentes:'),
+                  const SizedBox(height: 12),
+                  ...customers.map((c) {
+                    final cId = c['id'];
+                    final cName =
+                        c['customer_name'] ?? c['customerName'] ?? 'Cliente';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(cName,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          DropdownButton<String>(
+                            isExpanded: true,
+                            value: distributions[cId],
+                            hint: const Text('Selecione a mesa'),
+                            items:
+                                otherTables.map<DropdownMenuItem<String>>((t) {
+                              return DropdownMenuItem<String>(
+                                value: t['id'] as String,
+                                child: Text('Mesa ${t['number']}'),
+                              );
+                            }).toList(),
+                            onChanged: (v) {
+                              setDialogState(() => distributions[cId] = v);
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: distributions.values.every((v) => v != null)
+                  ? () {
+                      // Agrupar por tableId
+                      final grouped = <String, List<String>>{};
+                      distributions.forEach((cId, tId) {
+                        if (tId != null) {
+                          grouped.putIfAbsent(tId, () => []).add(cId);
+                        }
+                      });
+                      final result = grouped.entries
+                          .map(
+                              (e) => {'tableId': e.key, 'customerIds': e.value})
+                          .toList();
+                      Navigator.pop(ctx, result);
+                    }
+                  : null,
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null || result.isEmpty) return;
+
+    final auth = context.read<AuthProvider>();
+    final success = await tables.splitTable(
+      sessionId: session['id'],
+      distributions: result,
+      splitBy: auth.userId ?? '',
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.pop(context);
+      await tables.loadTables(branchId: auth.branchId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mesa separada com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (tables.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// Mostrar histórico de ações da sessão
+  Future<void> _showSessionHistory(TablesProvider tables) async {
+    final session = tables.currentSession;
+    if (session == null) return;
+
+    await tables.loadSessionHistory(session['id']);
+    final history = tables.sessionHistory;
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (ctx, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Histórico da Sessão',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: history.isEmpty
+                  ? const Center(child: Text('Nenhum histórico disponível'))
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: history.length,
+                      itemBuilder: (ctx, index) {
+                        final action = history[index];
+                        final actionType =
+                            action['action_type'] ?? action['actionType'] ?? '';
+                        final description = action['description'] ?? '';
+                        final performedAt = action['performed_at'] ??
+                            action['performedAt'] ??
+                            '';
+
+                        IconData icon;
+                        Color color;
+                        switch (actionType) {
+                          case 'open_table':
+                            icon = Icons.login;
+                            color = Colors.green;
+                            break;
+                          case 'add_customer':
+                            icon = Icons.person_add;
+                            color = Colors.blue;
+                            break;
+                          case 'add_order':
+                            icon = Icons.add_shopping_cart;
+                            color = Colors.orange;
+                            break;
+                          case 'cancel_order':
+                            icon = Icons.remove_shopping_cart;
+                            color = Colors.red;
+                            break;
+                          case 'payment':
+                            icon = Icons.payment;
+                            color = Colors.green;
+                            break;
+                          case 'transfer_item':
+                            icon = Icons.swap_horiz;
+                            color = Colors.purple;
+                            break;
+                          default:
+                            icon = Icons.info;
+                            color = Colors.grey;
+                        }
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: color.withOpacity(0.2),
+                            child: Icon(icon, color: color, size: 20),
+                          ),
+                          title: Text(description),
+                          subtitle: Text(_formatDateTime(performedAt)),
+                          dense: true,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDateTime(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return dateStr;
+    }
   }
 }

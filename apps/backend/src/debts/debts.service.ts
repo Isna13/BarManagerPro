@@ -229,6 +229,20 @@ export class DebtsService {
     });
   }
 
+  async findPendingByCustomers(customerIds: string[]) {
+    return this.prisma.debt.findMany({
+      where: { 
+        customerId: { in: customerIds },
+        status: { in: ['pending', 'partial'] },
+      },
+      include: {
+        customer: true,
+        payments: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getOverdue() {
     return this.prisma.debt.findMany({
       where: {

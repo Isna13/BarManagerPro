@@ -4291,6 +4291,15 @@ export class DatabaseManager {
       metadata: JSON.stringify({ customerName: data.customerName }),
     });
     
+    // Adicionar à fila de sincronização (prioridade 2 - depois de sessões)
+    this.addToSyncQueue('create', 'table_customer', id, {
+      id,
+      sessionId: data.sessionId,
+      customerName: data.customerName,
+      customerId: data.customerId,
+      addedBy: data.addedBy,
+    }, 2);
+    
     return this.db.prepare('SELECT * FROM table_customers WHERE id = ?').get(id) as CustomerRow;
   }
 
@@ -4395,6 +4404,17 @@ export class DatabaseManager {
         qtyUnits: data.qtyUnits 
       }),
     });
+    
+    // Adicionar à fila de sincronização (prioridade 3 - depois de clientes)
+    this.addToSyncQueue('create', 'table_order', id, {
+      id,
+      sessionId: data.sessionId,
+      tableCustomerId: data.tableCustomerId,
+      productId: data.productId,
+      qtyUnits: data.qtyUnits,
+      isMuntu: data.isMuntu || false,
+      orderedBy: data.orderedBy,
+    }, 3);
     
     return this.db.prepare(`
       SELECT o.*, p.name as product_name 
@@ -5292,6 +5312,18 @@ export class DatabaseManager {
       data.referenceNumber || null, 
       data.processedBy
     );
+
+    // Adicionar pagamento de mesa à fila de sincronização (prioridade 4)
+    this.addToSyncQueue('create', 'table_payment', tablePaymentId, {
+      id: tablePaymentId,
+      sessionId: data.sessionId,
+      tableCustomerId: data.tableCustomerId,
+      paymentId,
+      method: data.method,
+      amount: data.amount,
+      referenceNumber: data.referenceNumber || null,
+      processedBy: data.processedBy,
+    }, 4);
 
     // Atualizar status dos pedidos para 'paid'
     this.db.prepare(`

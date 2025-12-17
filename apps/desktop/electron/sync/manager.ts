@@ -904,7 +904,12 @@ export class SyncManager {
       'inventory': 40,
       'inventory_item': 40,
       'customer_loyalty': 50,
-      'table_session': 51,
+      
+      // Entidades de mesa (ordenadas por dependência)
+      'table_session': 12, // Sessões dependem de mesas (priority 11)
+      'table_customer': 13, // Clientes de mesa dependem de sessões
+      'table_order': 14, // Pedidos dependem de clientes de mesa
+      'table_payment': 15, // Pagamentos dependem de sessões e clientes
     };
     
     return items.sort((a, b) => {
@@ -934,6 +939,7 @@ export class SyncManager {
         { name: 'debts', endpoint: '/debts' },
         { name: 'purchases', endpoint: '/purchases' },
         { name: 'sales', endpoint: '/sales' },
+        { name: 'tables', endpoint: '/tables' },
       ];
       
       for (const entity of entities) {
@@ -2389,6 +2395,141 @@ export class SyncManager {
           return { success: true };
         }
         return { skip: true, success: false, reason: 'Operação de compra não suportada' };
+      
+      // ==================== MESAS E SESSÕES ====================
+      
+      case 'table':
+        // Mesas - usar endpoint POST /tables (já mapeado no default)
+        // Mas garantir que o branchId está correto
+        if (operation === 'create') {
+          await this.apiClient.post('/tables', {
+            id: entity_id,
+            branchId: data.branchId || data.branch_id,
+            number: data.number,
+            seats: data.seats || 4,
+            area: data.area,
+            isActive: data.isActive !== undefined ? data.isActive : true,
+          });
+          console.log('✅ Mesa sincronizada:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de mesa não suportada' };
+      
+      case 'table_session':
+        // Sessões de mesa - usar endpoint /tables/sessions/open ou /tables/sessions/close
+        if (operation === 'create') {
+          // Verificar se a mesa já foi sincronizada
+          try {
+            await this.apiClient.get(`/tables/${data.tableId}`);
+          } catch (checkError: any) {
+            if (checkError.response?.status === 404) {
+              console.log(`⏳ Mesa ${data.tableId} ainda não existe no servidor, adiando sessão...`);
+              throw new Error(`Mesa ${data.tableId} não encontrada - aguardando sync`);
+            }
+            throw checkError;
+          }
+          
+          await this.apiClient.post('/tables/sessions/open', {
+            tableId: data.tableId,
+            branchId: data.branchId || data.branch_id,
+            openedBy: data.openedBy || data.opened_by || 'system',
+          });
+          console.log('✅ Sessão de mesa sincronizada:', entity_id);
+          return { success: true };
+        } else if (operation === 'update' && (data.status === 'closed' || data.closedBy)) {
+          await this.apiClient.post('/tables/sessions/close', {
+            sessionId: entity_id,
+            closedBy: data.closedBy || data.closed_by || 'system',
+          });
+          console.log('✅ Sessão de mesa fechada no backend:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de sessão não suportada' };
+      
+      case 'table_customer':
+        // Clientes de mesa - usar endpoint /tables/customers/add
+        if (operation === 'create' && data.sessionId) {
+          // Verificar se a sessão existe
+          try {
+            await this.apiClient.get(`/tables/sessions/${data.sessionId}`);
+          } catch (checkError: any) {
+            if (checkError.response?.status === 404) {
+              console.log(`⏳ Sessão ${data.sessionId} ainda não existe no servidor, adiando cliente...`);
+              throw new Error(`Sessão ${data.sessionId} não encontrada - aguardando sync`);
+            }
+            throw checkError;
+          }
+          
+          await this.apiClient.post('/tables/customers/add', {
+            sessionId: data.sessionId || data.session_id,
+            customerName: data.customerName || data.customer_name,
+            customerId: data.customerId || data.customer_id,
+            addedBy: data.addedBy || data.added_by || 'system',
+          });
+          console.log('✅ Cliente de mesa sincronizado:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de cliente de mesa não suportada' };
+      
+      case 'table_order':
+        // Pedidos de mesa - usar endpoint /tables/orders/add
+        if (operation === 'create' && data.sessionId && data.tableCustomerId) {
+          // Verificar se a sessão existe
+          try {
+            await this.apiClient.get(`/tables/sessions/${data.sessionId}`);
+          } catch (checkError: any) {
+            if (checkError.response?.status === 404) {
+              console.log(`⏳ Sessão ${data.sessionId} ainda não existe no servidor, adiando pedido...`);
+              throw new Error(`Sessão ${data.sessionId} não encontrada - aguardando sync`);
+            }
+            throw checkError;
+          }
+          
+          await this.apiClient.post('/tables/orders/add', {
+            sessionId: data.sessionId || data.session_id,
+            tableCustomerId: data.tableCustomerId || data.table_customer_id,
+            productId: data.productId || data.product_id,
+            qtyUnits: data.qtyUnits || data.qty_units || 1,
+            isMuntu: data.isMuntu || data.is_muntu || false,
+            orderedBy: data.orderedBy || data.ordered_by || 'system',
+          });
+          console.log('✅ Pedido de mesa sincronizado:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de pedido de mesa não suportada' };
+      
+      case 'table_payment':
+        // Pagamentos de mesa - usar endpoint /tables/payments/customer ou /tables/payments/session
+        if (operation === 'create' && data.sessionId) {
+          // Validar método de pagamento
+          const normalizedMethod = tryNormalizePaymentMethod(data.method);
+          if (!normalizedMethod) {
+            console.error(`❌ Pagamento de mesa com método inválido: ${data.method}`);
+            return { success: false, reason: `Método de pagamento inválido: ${data.method}` };
+          }
+          
+          if (data.tableCustomerId) {
+            // Pagamento de cliente específico
+            await this.apiClient.post('/tables/payments/customer', {
+              sessionId: data.sessionId || data.session_id,
+              tableCustomerId: data.tableCustomerId || data.table_customer_id,
+              method: normalizedMethod,
+              amount: data.amount,
+              processedBy: data.processedBy || data.processed_by || 'system',
+            });
+          } else {
+            // Pagamento da sessão inteira
+            await this.apiClient.post('/tables/payments/session', {
+              sessionId: data.sessionId || data.session_id,
+              method: normalizedMethod,
+              amount: data.amount,
+              processedBy: data.processedBy || data.processed_by || 'system',
+            });
+          }
+          console.log('✅ Pagamento de mesa sincronizado:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de pagamento de mesa não suportada' };
         
       default:
         // Entidades normais - usar endpoint padrão

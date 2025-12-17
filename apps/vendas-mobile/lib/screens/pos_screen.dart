@@ -2760,220 +2760,274 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                      colors: [Colors.amber.shade500, Colors.amber.shade600]),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.receipt_long_rounded,
-                        color: Colors.white, size: 28),
-                    SizedBox(width: 12),
-                    Text('Confirmar Vale',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Informações do cliente
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.person, color: Colors.blue.shade700),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Cliente',
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.blue.shade600)),
-                          Text(
-                            _selectedCustomer!['name'] ?? 'Cliente',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue.shade900),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Valor do Vale
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Valor do Vale',
-                        style: TextStyle(color: Colors.green.shade700)),
-                    Text(
-                      CurrencyHelper.format(_cartTotal),
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade700),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Crédito disponível e restante
-              Row(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 400,
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        children: [
-                          Text('Crédito Atual',
+                  // Header
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 16, horizontal: 20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        Colors.amber.shade500,
+                        Colors.amber.shade600
+                      ]),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.receipt_long_rounded,
+                            color: Colors.white, size: 26),
+                        SizedBox(width: 10),
+                        Flexible(
+                          child: Text('Confirmar Vale',
                               style: TextStyle(
-                                  fontSize: 11, color: Colors.grey.shade600)),
-                          const SizedBox(height: 4),
-                          Text(
-                            CurrencyHelper.format(availableCredit),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.amber.shade200),
-                      ),
-                      child: Column(
-                        children: [
-                          Text('Restante Após',
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.amber.shade700)),
-                          const SizedBox(height: 4),
-                          Text(
-                            CurrencyHelper.format(remainingAfter),
+                  const SizedBox(height: 20),
+
+                  // Informações do cliente
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.person,
+                            color: Colors.blue.shade700, size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Cliente',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blue.shade600)),
+                              Text(
+                                _selectedCustomer!['name'] ?? 'Cliente',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade900),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Valor do Vale
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 16, horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Column(
+                      children: [
+                        Text('Valor do Vale',
                             style: TextStyle(
+                                fontSize: 13, color: Colors.green.shade700)),
+                        const SizedBox(height: 6),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            CurrencyHelper.format(_cartTotal),
+                            style: TextStyle(
+                                fontSize: 26,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.amber.shade800),
+                                color: Colors.green.shade700),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
-              // Aviso
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.warning_rounded,
-                        color: Colors.orange.shade700, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Esta operação criará uma dívida registrada. O cliente deverá quitar o valor.',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.orange.shade800),
+                  // Crédito disponível e restante
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('Crédito Atual',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600),
+                                  textAlign: TextAlign.center),
+                              const SizedBox(height: 6),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  CurrencyHelper.format(availableCredit),
+                                  style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.shade200),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('Restante Após',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.amber.shade700),
+                                  textAlign: TextAlign.center),
+                              const SizedBox(height: 6),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  CurrencyHelper.format(remainingAfter),
+                                  style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.amber.shade800),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
 
-              // Botões
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancelar'),
+                  // Aviso
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_rounded,
+                            color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Esta operação criará uma dívida registrada. O cliente deverá quitar o valor.',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.orange.shade800),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [
-                          Colors.amber.shade500,
-                          Colors.amber.shade600
-                        ]),
-                        borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 20),
+
+                  // Botões
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Cancelar',
+                              style: TextStyle(fontSize: 14)),
+                        ),
                       ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            _processSale('vale');
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 14),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.check_circle, color: Colors.white),
-                                SizedBox(width: 8),
-                                Text('Confirmar Vale',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold)),
-                              ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [
+                              Colors.amber.shade500,
+                              Colors.amber.shade600
+                            ]),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _processSale('vale');
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.check_circle,
+                                        color: Colors.white, size: 20),
+                                    SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text('Confirmar Vale',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold),
+                                          overflow: TextOverflow.ellipsis),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),

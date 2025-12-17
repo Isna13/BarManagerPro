@@ -21,6 +21,11 @@ export class LoyaltyController {
   constructor(private readonly loyaltyService: LoyaltyService) {}
 
   // Points management
+  @Post('points')
+  addPointsAlt(@Body() addPointsDto: AddPointsDto) {
+    return this.loyaltyService.addPoints(addPointsDto);
+  }
+
   @Post('points/add')
   addPoints(@Body() addPointsDto: AddPointsDto) {
     return this.loyaltyService.addPoints(addPointsDto);

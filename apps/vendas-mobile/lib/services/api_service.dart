@@ -348,6 +348,208 @@ class ApiService {
     }
   }
 
+  // Fechar sessão da mesa
+  Future<dynamic> closeTableSession({
+    required String sessionId,
+    required String closedBy,
+  }) async {
+    try {
+      final response = await _dio.post('/tables/sessions/close', data: {
+        'sessionId': sessionId,
+        'closedBy': closedBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Cancelar pedido
+  Future<dynamic> cancelTableOrder({
+    required String orderId,
+    required String cancelledBy,
+  }) async {
+    try {
+      final response = await _dio.post('/tables/orders/cancel', data: {
+        'orderId': orderId,
+        'cancelledBy': cancelledBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Limpar pedidos pagos
+  Future<dynamic> clearPaidOrders({
+    required String sessionId,
+    required String tableCustomerId,
+    required String clearedBy,
+  }) async {
+    try {
+      final response =
+          await _dio.post('/tables/payments/clear-paid-orders', data: {
+        'sessionId': sessionId,
+        'tableCustomerId': tableCustomerId,
+        'clearedBy': clearedBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Transferir item entre clientes
+  Future<dynamic> transferTableOrder({
+    required String orderId,
+    required String fromCustomerId,
+    required String toCustomerId,
+    required int qtyUnits,
+    required String transferredBy,
+  }) async {
+    try {
+      final response = await _dio.post('/tables/orders/transfer', data: {
+        'orderId': orderId,
+        'fromCustomerId': fromCustomerId,
+        'toCustomerId': toCustomerId,
+        'qtyUnits': qtyUnits,
+        'transferredBy': transferredBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Transferir mesa
+  Future<dynamic> transferTable({
+    required String sessionId,
+    required String toTableId,
+    required String transferredBy,
+  }) async {
+    try {
+      final response = await _dio.post('/tables/sessions/transfer', data: {
+        'sessionId': sessionId,
+        'toTableId': toTableId,
+        'transferredBy': transferredBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Transferir clientes para outra mesa
+  Future<dynamic> transferCustomers({
+    required String sessionId,
+    required List<String> customerIds,
+    required String toTableId,
+    required String transferredBy,
+  }) async {
+    try {
+      final response =
+          await _dio.post('/tables/sessions/transfer-customers', data: {
+        'sessionId': sessionId,
+        'customerIds': customerIds,
+        'toTableId': toTableId,
+        'transferredBy': transferredBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Unir mesas
+  Future<dynamic> mergeTables({
+    required List<String> sessionIds,
+    required String targetTableId,
+    required String mergedBy,
+  }) async {
+    try {
+      final response = await _dio.post('/tables/sessions/merge', data: {
+        'sessionIds': sessionIds,
+        'targetTableId': targetTableId,
+        'mergedBy': mergedBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Separar mesa
+  Future<dynamic> splitTable({
+    required String sessionId,
+    required List<Map<String, dynamic>> distributions,
+    required String splitBy,
+  }) async {
+    try {
+      final response = await _dio.post('/tables/sessions/split', data: {
+        'sessionId': sessionId,
+        'distributions': distributions,
+        'splitBy': splitBy,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Histórico de ações da sessão
+  Future<List<dynamic>> getSessionHistory(String sessionId) async {
+    try {
+      final response = await _dio.get('/tables/sessions/$sessionId/actions');
+      return response.data is List ? response.data : [];
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Criar nova mesa
+  Future<dynamic> createTable({
+    required String branchId,
+    required String number,
+    int seats = 4,
+    String? area,
+  }) async {
+    try {
+      final response = await _dio.post('/tables', data: {
+        'branchId': branchId,
+        'number': number,
+        'seats': seats,
+        'area': area,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Buscar informações de crédito do cliente
+  Future<Map<String, dynamic>?> getCustomerCredit(String customerId) async {
+    try {
+      final response = await _dio.get('/customers/$customerId');
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw _handleError(e);
+    }
+  }
+
+  // Buscar vales pendentes de clientes
+  Future<List<dynamic>> getCustomersPendingDebts(
+      List<String> customerIds) async {
+    try {
+      final response = await _dio.post('/debts/customers-pending', data: {
+        'customerIds': customerIds,
+      });
+      return response.data is List ? response.data : [];
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // ==================== VENDAS ====================
   Future<dynamic> createSale(Map<String, dynamic> saleData) async {
     try {
