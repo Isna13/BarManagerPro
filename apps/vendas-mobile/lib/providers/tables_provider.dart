@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
@@ -33,10 +34,211 @@ class TablesProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  int _asInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  Future<Map<String, int>?> _getLocalProductPricing(String productId) async {
+    try {
+      final rows = await _db.rawQuery(
+        'SELECT price_unit, muntu_quantity, muntu_price FROM products WHERE id = ? LIMIT 1',
+        [productId],
+      );
+      if (rows.isEmpty) return null;
+
+      final row = rows.first;
+      return {
+        'price_unit': _asInt(row['price_unit']),
+        'muntu_quantity': _asInt(row['muntu_quantity']),
+        'muntu_price': _asInt(row['muntu_price']),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int> _computeOrderTotal({
+    required String productId,
+    required int qtyUnits,
+    required int fallbackUnitPrice,
+    required bool isMuntu,
+  }) async {
+    final pricing = await _getLocalProductPricing(productId);
+    final unitPrice = pricing?['price_unit'] ?? fallbackUnitPrice;
+
+    if (!isMuntu) {
+      return unitPrice * qtyUnits;
+    }
+
+    final muntuQty = pricing?['muntu_quantity'] ?? 0;
+    final muntuPrice = pricing?['muntu_price'] ?? 0;
+    if (muntuQty <= 0 || muntuPrice <= 0) {
+      return unitPrice * qtyUnits;
+    }
+
+    final sets = qtyUnits ~/ muntuQty;
+    final remainder = qtyUnits % muntuQty;
+    return (sets * muntuPrice) + (remainder * unitPrice);
+  }
+
+  Future<void> _recalculateSessionAndCustomersTotals(
+    String sessionId, {
+    required String now,
+  }) async {
+    // Recalcular total da sessão
+    final sessionSum = await _db.rawQuery(
+      'SELECT COALESCE(SUM(total), 0) as total_amount FROM table_orders WHERE session_id = ?',
+      [sessionId],
+    );
+    final totalAmount =
+        sessionSum.isNotEmpty ? _asInt(sessionSum.first['total_amount']) : 0;
+
+    await _db.update(
+      'table_sessions',
+      {
+        'total_amount': totalAmount,
+        'updated_at': now,
+        'synced': 0,
+      },
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+
+    // Recalcular totais por cliente
+    // Zerar primeiro para evitar sobras quando cliente fica sem pedidos
+    await _db.update(
+      'table_customers',
+      {
+        'subtotal': 0,
+        'total': 0,
+        'updated_at': now,
+        'synced': 0,
+      },
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+
+    final customerSums = await _db.rawQuery(
+      'SELECT table_customer_id, COALESCE(SUM(total), 0) as total_amount '
+      'FROM table_orders WHERE session_id = ? GROUP BY table_customer_id',
+      [sessionId],
+    );
+
+    for (final row in customerSums) {
+      final tableCustomerId = row['table_customer_id']?.toString();
+      if (tableCustomerId == null) continue;
+      final customerTotal = _asInt(row['total_amount']);
+
+      await _db.update(
+        'table_customers',
+        {
+          'subtotal': customerTotal,
+          'total': customerTotal,
+          'updated_at': now,
+          'synced': 0,
+        },
+        where: 'id = ?',
+        whereArgs: [tableCustomerId],
+      );
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadTablesFromLocalDb({
+    String? branchId,
+  }) async {
+    final results = await _db.query(
+      'tables',
+      where: branchId != null ? 'branch_id = ?' : null,
+      whereArgs: branchId != null ? [branchId] : null,
+      orderBy: 'number ASC',
+    );
+
+    final tables = results.map((e) => Map<String, dynamic>.from(e)).toList();
+
+    for (int i = 0; i < tables.length; i++) {
+      final tableId = tables[i]['id'];
+      final sessions = await _db.query(
+        'table_sessions',
+        where: 'table_id = ? AND status = ?',
+        whereArgs: [tableId, 'open'],
+        limit: 1,
+      );
+
+      if (sessions.isNotEmpty) {
+        tables[i]['current_session'] =
+            Map<String, dynamic>.from(sessions.first);
+      } else {
+        tables[i].remove('current_session');
+      }
+    }
+
+    return tables;
+  }
+
+  Future<void> _reconcileLocalSyncedOpenSessionsAgainstServerOverview(
+    List<Map<String, dynamic>> overviewTables, {
+    required String now,
+    String? branchId,
+  }) async {
+    final serverOpenSessionIds = <String>{};
+    for (final t in overviewTables) {
+      final currentSession = t['currentSession'];
+      if (currentSession is Map<String, dynamic>) {
+        final sid = currentSession['id']?.toString();
+        if (sid != null && sid.isNotEmpty) {
+          serverOpenSessionIds.add(sid);
+        }
+      }
+    }
+
+    final localOpenSyncedSessions = await _db.query(
+      'table_sessions',
+      where: branchId != null
+          ? "branch_id = ? AND status = 'open' AND synced = 1"
+          : "status = 'open' AND synced = 1",
+      whereArgs: branchId != null ? [branchId] : null,
+    );
+
+    for (final s in localOpenSyncedSessions) {
+      final sid = s['id']?.toString();
+      if (sid == null || sid.isEmpty) continue;
+      if (serverOpenSessionIds.contains(sid)) continue;
+
+      await _db.update(
+        'table_sessions',
+        {
+          'status': 'closed',
+          'closed_at': s['closed_at'] ?? now,
+          'updated_at': now,
+          'synced': 1,
+        },
+        where: 'id = ?',
+        whereArgs: [sid],
+      );
+    }
+  }
+
   Future<void> loadTables({String? branchId}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
+
+    if (branchId == null || branchId.isEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final savedBranchId = prefs.getString('branch_id');
+        if (savedBranchId != null && savedBranchId.isNotEmpty) {
+          branchId = savedBranchId;
+          debugPrint(
+              '🍽️ loadTables: branchId carregado do SharedPreferences: $branchId');
+        }
+      } catch (_) {
+        // Sem branchId persistido; segue com null.
+      }
+    }
 
     debugPrint(
         '🍽️ loadTables chamado - branchId: $branchId, isOnline: ${_sync.isOnline}');
@@ -44,13 +246,42 @@ class TablesProvider extends ChangeNotifier {
     try {
       if (_sync.isOnline) {
         debugPrint('🍽️ Online - buscando mesas da API...');
+        final now = DateTime.now().toIso8601String();
+
         // Primeiro, buscar todas as mesas da API (não requer branchId)
         final allTables = await _api.getTables(branchId: branchId);
         debugPrint('🍽️ Mesas recebidas da API: ${allTables.length}');
-        _tables = allTables.map((e) => Map<String, dynamic>.from(e)).toList();
+        final fetchedTables =
+            allTables.map((e) => Map<String, dynamic>.from(e)).toList();
+
+        // Fallback adicional: se ainda não temos branchId, inferir pelo payload das mesas.
+        if ((branchId == null || branchId.isEmpty) &&
+            fetchedTables.isNotEmpty) {
+          final inferred = (fetchedTables.first['branchId'] ??
+                  fetchedTables.first['branch_id'])
+              ?.toString();
+          if (inferred != null && inferred.isNotEmpty) {
+            branchId = inferred;
+            debugPrint(
+                '🍽️ loadTables: branchId inferido do payload das mesas: $branchId');
+
+            // Persistir para chamadas futuras (ex.: usuário pode vir sem branchId)
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              final existing = prefs.getString('branch_id');
+              if (existing == null || existing.isEmpty) {
+                await prefs.setString('branch_id', branchId);
+                debugPrint(
+                    '🍽️ loadTables: branchId persistido no SharedPreferences: $branchId');
+              }
+            } catch (_) {
+              // Ignorar falha de persistência
+            }
+          }
+        }
 
         // Salvar localmente
-        for (final table in _tables) {
+        for (final table in fetchedTables) {
           await _saveTableLocally(table);
 
           // Se mesa tem sessão ativa, salvar também
@@ -60,61 +291,50 @@ class TablesProvider extends ChangeNotifier {
         }
 
         // Se temos branchId, tentar buscar overview com sessões detalhadas
+        List<Map<String, dynamic>>? overviewTables;
         if (branchId != null && branchId.isNotEmpty) {
+          debugPrint(
+              '🍽️ loadTables: buscando overview para branchId=$branchId');
           try {
             final results = await _api.getTablesOverview(branchId);
             if (results.isNotEmpty) {
-              _tables =
+              overviewTables =
                   results.map((e) => Map<String, dynamic>.from(e)).toList();
 
-              for (final table in _tables) {
+              for (final table in overviewTables) {
                 await _saveTableLocally(table);
                 if (table['currentSession'] != null) {
                   await _saveSessionLocally(table['currentSession']);
                 }
               }
+
+              await _reconcileLocalSyncedOpenSessionsAgainstServerOverview(
+                overviewTables,
+                now: now,
+                branchId: branchId,
+              );
             }
           } catch (e) {
             // Ignorar erro no overview, já temos as mesas básicas
             debugPrint('Aviso: Não foi possível buscar overview: $e');
           }
+        } else {
+          debugPrint('🍽️ loadTables: sem branchId, pulando overview');
         }
+
+        // Fonte única para UI: banco local (com sessões abertas anexadas)
+        _tables = await _loadTablesFromLocalDb(branchId: branchId);
       } else {
         debugPrint('🍽️ Offline - carregando do banco local...');
-        // Carregar do banco local
-        final results = await _db.query(
-          'tables',
-          where: branchId != null ? 'branch_id = ?' : null,
-          whereArgs: branchId != null ? [branchId] : null,
-          orderBy: 'number ASC',
-        );
-        debugPrint('🍽️ Mesas do banco local: ${results.length}');
-        // Criar cópias mutáveis de cada mapa
-        _tables = results.map((e) => Map<String, dynamic>.from(e)).toList();
-
-        // Carregar sessões ativas para cada mesa
-        for (int i = 0; i < _tables.length; i++) {
-          final tableId = _tables[i]['id'];
-          final sessions = await _db.query(
-            'table_sessions',
-            where: 'table_id = ? AND status = ?',
-            whereArgs: [tableId, 'open'],
-            limit: 1,
-          );
-
-          if (sessions.isNotEmpty) {
-            _tables[i]['current_session'] =
-                Map<String, dynamic>.from(sessions.first);
-          }
-        }
+        _tables = await _loadTablesFromLocalDb(branchId: branchId);
+        debugPrint('🍽️ Mesas do banco local: ${_tables.length}');
       }
     } catch (e) {
       _error = e.toString();
 
       // Fallback para banco local
       try {
-        final results = await _db.query('tables', orderBy: 'number ASC');
-        _tables = results.map((e) => Map<String, dynamic>.from(e)).toList();
+        _tables = await _loadTablesFromLocalDb(branchId: branchId);
       } catch (_) {}
     } finally {
       _isLoading = false;
@@ -130,6 +350,17 @@ class TablesProvider extends ChangeNotifier {
     _isLoading = true;
     _error = null;
     notifyListeners();
+
+    // Garantir persistência do branchId para outras telas/serviços (overview, sync, etc)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final existing = prefs.getString('branch_id');
+      if (existing == null || existing.isEmpty || existing != branchId) {
+        await prefs.setString('branch_id', branchId);
+      }
+    } catch (_) {
+      // Ignorar falha de persistência
+    }
 
     try {
       final now = DateTime.now().toIso8601String();
@@ -157,7 +388,6 @@ class TablesProvider extends ChangeNotifier {
           'opened_at': now,
           'created_at': now,
           'updated_at': now,
-          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
@@ -292,7 +522,6 @@ class TablesProvider extends ChangeNotifier {
           'payment_status': 'pending',
           'created_at': now,
           'updated_at': now,
-          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
@@ -329,7 +558,15 @@ class TablesProvider extends ChangeNotifier {
     try {
       final now = DateTime.now().toIso8601String();
       final id = _uuid.v4();
-      final total = unitPrice * quantity;
+      final total = await _computeOrderTotal(
+        productId: productId,
+        qtyUnits: quantity,
+        fallbackUnitPrice: unitPrice,
+        isMuntu: isMuntu,
+      );
+
+      final localPricing = await _getLocalProductPricing(productId);
+      final storedUnitPrice = localPricing?['price_unit'] ?? unitPrice;
 
       Map<String, dynamic> order;
 
@@ -343,7 +580,26 @@ class TablesProvider extends ChangeNotifier {
           orderedBy: orderedBy,
         );
         order = Map<String, dynamic>.from(result);
+        // Garantir que product_name está na ordem
+        order['product_name'] = productName;
         await _saveOrderLocally(order);
+
+        // Atualizar totais mesmo quando online
+        final orderTotal =
+            order['total'] != null ? _asInt(order['total']) : total;
+        final customerIndex =
+            _currentCustomers.indexWhere((c) => c['id'] == tableCustomerId);
+        if (customerIndex >= 0) {
+          _currentCustomers[customerIndex]['subtotal'] =
+              (_currentCustomers[customerIndex]['subtotal'] ?? 0) + orderTotal;
+          _currentCustomers[customerIndex]['total'] =
+              (_currentCustomers[customerIndex]['total'] ?? 0) + orderTotal;
+        }
+
+        if (_currentSession != null) {
+          _currentSession!['total_amount'] =
+              (_currentSession!['total_amount'] ?? 0) + orderTotal;
+        }
       } else {
         order = {
           'id': id,
@@ -353,14 +609,13 @@ class TablesProvider extends ChangeNotifier {
           'product_name': productName,
           'qty_units': quantity,
           'is_muntu': isMuntu ? 1 : 0,
-          'unit_price': unitPrice,
+          'unit_price': storedUnitPrice,
           'subtotal': total,
           'total': total,
           'status': 'pending',
           'ordered_by': orderedBy,
           'ordered_at': now,
           'updated_at': now,
-          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 
@@ -777,6 +1032,10 @@ class TablesProvider extends ChangeNotifier {
     required String transferredBy,
   }) async {
     try {
+      if (qtyUnits <= 0) {
+        throw Exception('Quantidade inválida');
+      }
+
       if (_sync.isOnline) {
         await _api.transferTableOrder(
           orderId: orderId,
@@ -789,6 +1048,122 @@ class TablesProvider extends ChangeNotifier {
         // Recarregar sessão para refletir mudanças
         if (_currentSession != null) {
           await loadSession(_currentSession!['id']);
+        }
+      } else {
+        final now = DateTime.now().toIso8601String();
+
+        final orders = await _db.query(
+          'table_orders',
+          where: 'id = ?',
+          whereArgs: [orderId],
+          limit: 1,
+        );
+        if (orders.isEmpty) {
+          throw Exception('Pedido não encontrado');
+        }
+
+        final order = orders.first;
+        final sessionId = (order['session_id'] ?? '').toString();
+        final currentQty = _asInt(order['qty_units']);
+        if (qtyUnits > currentQty) {
+          throw Exception('Quantidade maior que disponível');
+        }
+
+        final productId = (order['product_id'] ?? '').toString();
+        final isMuntu = (order['is_muntu'] == 1);
+        final unitPricePerUnit = _asInt(order['unit_price']);
+
+        final pricing = await _getLocalProductPricing(productId);
+        final effectiveUnitPricePerUnit = unitPricePerUnit > 0
+            ? unitPricePerUnit
+            : _asInt(pricing?['price_unit'] ?? 0);
+
+        if (qtyUnits == currentQty) {
+          // Transferência total: mover o pedido para outro cliente
+          await _db.update(
+            'table_orders',
+            {
+              'table_customer_id': toCustomerId,
+              'updated_at': now,
+              'synced': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [orderId],
+          );
+        } else {
+          // Transferência parcial: dividir em 2 pedidos (localmente)
+          final remainingQty = currentQty - qtyUnits;
+
+          final remainingTotal = await _computeOrderTotal(
+            productId: productId,
+            qtyUnits: remainingQty,
+            fallbackUnitPrice: effectiveUnitPricePerUnit,
+            isMuntu: isMuntu,
+          );
+
+          await _db.update(
+            'table_orders',
+            {
+              'qty_units': remainingQty,
+              'unit_price': effectiveUnitPricePerUnit,
+              'subtotal': remainingTotal,
+              'total': remainingTotal,
+              'updated_at': now,
+              'synced': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [orderId],
+          );
+
+          final newOrderId = _uuid.v4();
+          final transferredTotal = await _computeOrderTotal(
+            productId: productId,
+            qtyUnits: qtyUnits,
+            fallbackUnitPrice: effectiveUnitPricePerUnit,
+            isMuntu: isMuntu,
+          );
+
+          await _db.insert('table_orders', {
+            'id': newOrderId,
+            'session_id': sessionId,
+            'table_customer_id': toCustomerId,
+            'product_id': productId,
+            'qty_units': qtyUnits,
+            'is_muntu': isMuntu ? 1 : 0,
+            'unit_price': effectiveUnitPricePerUnit,
+            'unit_cost': _asInt(order['unit_cost']),
+            'subtotal': transferredTotal,
+            'total': transferredTotal,
+            'status': order['status'] ?? 'pending',
+            'notes': order['notes'],
+            'ordered_by': order['ordered_by'] ?? transferredBy,
+            'ordered_at': order['ordered_at'] ?? now,
+            'updated_at': now,
+            'synced': 0,
+          });
+        }
+
+        // Recalcular totais locais
+        await _recalculateSessionAndCustomersTotals(sessionId, now: now);
+
+        // Enfileirar operação para sincronização
+        await _sync.markForSync(
+          entityType: 'table_order_transfer',
+          entityId: orderId,
+          action: 'transfer',
+          data: {
+            'orderId': orderId,
+            'fromCustomerId': fromCustomerId,
+            'toCustomerId': toCustomerId,
+            'qtyUnits': qtyUnits,
+            'transferredBy': transferredBy,
+            'sessionId': sessionId,
+          },
+        );
+
+        // Atualizar estado em memória
+        if (_currentSession != null && _currentSession!['id'] == sessionId) {
+          await loadSession(sessionId);
         }
       }
 
@@ -920,18 +1295,64 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final now = DateTime.now().toIso8601String();
+
+      // Descobrir branch_id da sessão de origem (se possível)
+      String branchId = _currentSession?['branch_id'] ??
+          _currentSession?['branchId'] ??
+          'main-branch';
+      try {
+        final originSession = await _db.query(
+          'table_sessions',
+          where: 'id = ?',
+          whereArgs: [sessionId],
+          limit: 1,
+        );
+        if (originSession.isNotEmpty) {
+          branchId = originSession.first['branch_id'] ??
+              originSession.first['branchId'] ??
+              branchId;
+        }
+      } catch (_) {}
+
+      // Converter payload da UI (agrupado por mesa) para o formato do backend
+      final flatDistributions = <Map<String, dynamic>>[];
+      final targetTableIds = <String>[];
+      for (final distribution in distributions) {
+        final targetTableId = (distribution['tableId'] ?? '').toString();
+        if (targetTableId.isEmpty) continue;
+        targetTableIds.add(targetTableId);
+        final customerIds =
+            List<String>.from(distribution['customerIds'] ?? []);
+        for (final customerId in customerIds) {
+          if (customerId.isEmpty) continue;
+          flatDistributions.add({
+            'customerId': customerId,
+            'targetTableId': targetTableId,
+          });
+        }
+      }
+
+      if (flatDistributions.isEmpty) {
+        throw Exception('Selecione pelo menos um cliente para separar');
+      }
+
       if (_sync.isOnline) {
+        // Online: delegar ao backend (fonte da verdade) e recarregar
         await _api.splitTable(
           sessionId: sessionId,
-          distributions: distributions,
+          distributions: flatDistributions,
           splitBy: splitBy,
         );
+
+        await loadTables(branchId: branchId);
       } else {
-        // Implementação offline - transferir clientes para outras mesas
-        final now = DateTime.now().toIso8601String();
+        // Offline: aplicar localmente e enfileirar operação de split
+        final affectedSessionIds = <String>{sessionId};
 
         for (final distribution in distributions) {
-          final targetTableId = distribution['tableId'] as String;
+          final targetTableId = (distribution['tableId'] ?? '').toString();
+          if (targetTableId.isEmpty) continue;
           final customerIds =
               List<String>.from(distribution['customerIds'] ?? []);
 
@@ -947,12 +1368,12 @@ class TablesProvider extends ChangeNotifier {
           if (existingSessions.isNotEmpty) {
             targetSessionId = existingSessions.first['id'];
           } else {
-            // Criar nova sessão na mesa destino
+            // Criar nova sessão local apenas para UI (será reconciliada no sync)
             targetSessionId = _uuid.v4();
             final newSession = {
               'id': targetSessionId,
               'table_id': targetTableId,
-              'branch_id': _currentSession?['branch_id'] ?? 'main-branch',
+              'branch_id': branchId,
               'session_number': 'S${DateTime.now().millisecondsSinceEpoch}',
               'status': 'open',
               'opened_by': splitBy,
@@ -961,22 +1382,25 @@ class TablesProvider extends ChangeNotifier {
               'opened_at': now,
               'created_at': now,
               'updated_at': now,
-              'source': 'mobile',
               'synced': 0,
             };
             await _db.insert('table_sessions', newSession);
-
-            await _sync.markForSync(
-              entityType: 'table_sessions',
-              entityId: targetSessionId,
-              action: 'create',
-              data: newSession,
-            );
           }
+
+          affectedSessionIds.add(targetSessionId);
 
           // Transferir cada cliente
           for (final customerId in customerIds) {
-            // Atualizar session_id do cliente
+            final rows = await _db.rawQuery(
+              'SELECT id FROM table_customers '
+              'WHERE session_id = ? AND (id = ? OR customer_id = ?) '
+              'LIMIT 1',
+              [sessionId, customerId, customerId],
+            );
+            if (rows.isEmpty) continue;
+            final tableCustomerRowId = rows.first['id']?.toString();
+            if (tableCustomerRowId == null) continue;
+
             await _db.update(
               'table_customers',
               {
@@ -985,10 +1409,9 @@ class TablesProvider extends ChangeNotifier {
                 'synced': 0,
               },
               where: 'id = ?',
-              whereArgs: [customerId],
+              whereArgs: [tableCustomerRowId],
             );
 
-            // Transferir pedidos do cliente
             await _db.update(
               'table_orders',
               {
@@ -996,21 +1419,26 @@ class TablesProvider extends ChangeNotifier {
                 'updated_at': now,
                 'synced': 0,
               },
-              where: 'table_customer_id = ?',
-              whereArgs: [customerId],
+              where: 'session_id = ? AND table_customer_id = ?',
+              whereArgs: [sessionId, tableCustomerRowId],
             );
           }
         }
 
-        // Marcar operação para sync
+        for (final sid in affectedSessionIds) {
+          await _recalculateSessionAndCustomersTotals(sid, now: now);
+        }
+
         await _sync.markForSync(
           entityType: 'table_split',
           entityId: sessionId,
           action: 'split',
           data: {
             'sessionId': sessionId,
-            'distributions': distributions,
+            'distributions': flatDistributions,
             'splitBy': splitBy,
+            'branchId': branchId,
+            'targetTableIds': targetTableIds,
           },
         );
       }
@@ -1023,6 +1451,7 @@ class TablesProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('❌ Erro no splitTable: $e');
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -1082,7 +1511,6 @@ class TablesProvider extends ChangeNotifier {
           'is_active': 1,
           'created_at': now,
           'updated_at': now,
-          'source': 'mobile', // Origem da ação
           'synced': 0,
         };
 

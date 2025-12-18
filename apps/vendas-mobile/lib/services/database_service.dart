@@ -25,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -210,6 +210,7 @@ class DatabaseService {
         session_id TEXT NOT NULL,
         table_customer_id TEXT NOT NULL,
         product_id TEXT NOT NULL,
+        product_name TEXT,
         qty_units INTEGER DEFAULT 1,
         is_muntu INTEGER DEFAULT 0,
         unit_price INTEGER DEFAULT 0,
@@ -353,6 +354,16 @@ class DatabaseService {
       await db.execute('ALTER TABLE table_sessions ADD COLUMN updated_at TEXT');
       await db.execute('ALTER TABLE table_sessions ADD COLUMN source TEXT');
     }
+
+    // Migração da versão 2 para 3: adicionar product_name em table_orders
+    if (oldVersion < 3) {
+      try {
+        await db
+            .execute('ALTER TABLE table_orders ADD COLUMN product_name TEXT');
+      } catch (_) {
+        // Coluna já existe ou tabela não existe; ignorar.
+      }
+    }
   }
 
   // Métodos genéricos CRUD
@@ -494,6 +505,62 @@ class DatabaseService {
 
   Future<void> markAsSynced(String table, String id) async {
     await update(table, {'synced': 1}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> remapTableSessionId({
+    required String oldSessionId,
+    required String newSessionId,
+  }) async {
+    if (oldSessionId == newSessionId) return;
+
+    final db = await database;
+    await db.transaction((txn) async {
+      final existing = await txn.query(
+        'table_sessions',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [newSessionId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        // Já existe sessão local com esse ID; não sobrescrever.
+        return;
+      }
+
+      await txn.update(
+        'table_customers',
+        {'session_id': newSessionId},
+        where: 'session_id = ?',
+        whereArgs: [oldSessionId],
+      );
+
+      await txn.update(
+        'table_orders',
+        {'session_id': newSessionId},
+        where: 'session_id = ?',
+        whereArgs: [oldSessionId],
+      );
+
+      // Se existir tabela de pagamentos de mesa no SQLite, remapear também.
+      try {
+        await txn.update(
+          'table_payments',
+          {'session_id': newSessionId},
+          where: 'session_id = ?',
+          whereArgs: [oldSessionId],
+        );
+      } catch (_) {
+        // tabela não existe neste build; ignorar
+      }
+
+      // Por último, trocar o ID da sessão.
+      await txn.update(
+        'table_sessions',
+        {'id': newSessionId},
+        where: 'id = ?',
+        whereArgs: [oldSessionId],
+      );
+    });
   }
 
   // Limpar banco (para debug)

@@ -24,10 +24,17 @@ class ApiService {
         }
         return handler.next(options);
       },
-      onError: (error, handler) {
+      onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           // Token expirado - limpar e redirecionar para login
           _token = null;
+
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('auth_token');
+          } catch (_) {
+            // Ignorar falha ao limpar prefs
+          }
         }
         return handler.next(error);
       },
@@ -79,6 +86,15 @@ class ApiService {
       _token = token;
       final response = await _dio.get('/auth/profile');
       return response.statusCode == 200;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        _token = null;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('auth_token');
+        } catch (_) {}
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -268,12 +284,14 @@ class ApiService {
     required String tableId,
     required String branchId,
     required String openedBy,
+    String? sessionId,
   }) async {
     try {
       final response = await _dio.post('/tables/sessions/open', data: {
         'tableId': tableId,
         'branchId': branchId,
         'openedBy': openedBy,
+        if (sessionId != null && sessionId.isNotEmpty) 'sessionId': sessionId,
       });
       return response.data;
     } on DioException catch (e) {
@@ -286,6 +304,7 @@ class ApiService {
     required String customerName,
     String? customerId,
     required String addedBy,
+    String? tableCustomerId,
   }) async {
     try {
       final response = await _dio.post('/tables/customers/add', data: {
@@ -293,6 +312,8 @@ class ApiService {
         'customerName': customerName,
         'customerId': customerId,
         'addedBy': addedBy,
+        if (tableCustomerId != null && tableCustomerId.isNotEmpty)
+          'tableCustomerId': tableCustomerId,
       });
       return response.data;
     } on DioException catch (e) {
@@ -307,6 +328,7 @@ class ApiService {
     required int qtyUnits,
     required bool isMuntu,
     required String orderedBy,
+    String? orderId,
   }) async {
     try {
       final response = await _dio.post('/tables/orders/add', data: {
@@ -316,6 +338,7 @@ class ApiService {
         'qtyUnits': qtyUnits,
         'isMuntu': isMuntu,
         'orderedBy': orderedBy,
+        if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
       });
       return response.data;
     } on DioException catch (e) {

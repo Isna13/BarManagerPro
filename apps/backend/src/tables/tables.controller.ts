@@ -56,8 +56,22 @@ export class TablesController {
   }
 
   @Post('sessions/open')
-  openSession(@Body() data: { tableId: string; branchId: string; openedBy: string }) {
-    return this.tablesService.openSession(data.tableId, data.branchId, data.openedBy);
+  openSession(
+    @Body()
+    data: {
+      tableId: string;
+      branchId: string;
+      openedBy: string;
+      sessionId?: string;
+      id?: string;
+    },
+  ) {
+    return this.tablesService.openSession(
+      data.tableId,
+      data.branchId,
+      data.openedBy,
+      data.sessionId ?? data.id,
+    );
   }
 
   @Get('sessions/:sessionId')
@@ -98,8 +112,24 @@ export class TablesController {
   // ==================== CLIENTES ====================
 
   @Post('customers/add')
-  addCustomer(@Body() data: { sessionId: string; customerName: string; customerId?: string; addedBy: string }) {
-    return this.tablesService.addCustomer(data.sessionId, data.customerName, data.customerId, data.addedBy);
+  addCustomer(
+    @Body()
+    data: {
+      sessionId: string;
+      customerName: string;
+      customerId?: string;
+      addedBy: string;
+      tableCustomerId?: string;
+      id?: string;
+    },
+  ) {
+    return this.tablesService.addCustomer(
+      data.sessionId,
+      data.customerName,
+      data.customerId,
+      data.addedBy,
+      data.tableCustomerId ?? data.id,
+    );
   }
 
   // ==================== PEDIDOS ====================
@@ -111,7 +141,9 @@ export class TablesController {
     productId: string; 
     qtyUnits: number; 
     isMuntu: boolean; 
-    orderedBy: string 
+    orderedBy: string;
+    orderId?: string;
+    id?: string;
   }) {
     return this.tablesService.addOrder(
       data.sessionId, 
@@ -119,7 +151,8 @@ export class TablesController {
       data.productId, 
       data.qtyUnits, 
       data.isMuntu, 
-      data.orderedBy
+      data.orderedBy,
+      data.orderId ?? data.id,
     );
   }
 

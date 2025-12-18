@@ -224,9 +224,24 @@ export class TablesService {
 
   // ==================== SESSÕES ====================
 
-  async openSession(tableId: string, branchId: string, openedBy: string) {
+  async openSession(
+    tableId: string,
+    branchId: string,
+    openedBy: string,
+    sessionId?: string,
+  ) {
     // Verificar se a mesa existe
     const table = await this.findOne(tableId);
+
+    // Se o ID foi fornecido e a sessão já existe, retornar (idempotência para sync)
+    if (sessionId) {
+      const existingById = await this.prisma.tableSession.findUnique({
+        where: { id: sessionId },
+      });
+      if (existingById) {
+        return existingById;
+      }
+    }
 
     // Verificar se já tem sessão aberta
     const existingSession = await this.prisma.tableSession.findFirst({
@@ -234,21 +249,27 @@ export class TablesService {
     });
 
     if (existingSession) {
-      throw new BadRequestException('Mesa já possui sessão aberta');
+      // Idempotência: para sync/offline, se já existe sessão aberta nesta mesa,
+      // retornar a sessão existente em vez de falhar.
+      return existingSession;
     }
 
     const sessionNumber = `S${Date.now()}`;
     
-    const session = await this.prisma.tableSession.create({
-      data: {
-        tableId,
-        branchId,
-        sessionNumber,
-        openedBy,
-        status: 'open',
-        openedAt: new Date(),
-      },
-    });
+    const data: any = {
+      tableId,
+      branchId,
+      sessionNumber,
+      openedBy,
+      status: 'open',
+      openedAt: new Date(),
+    };
+
+    if (sessionId) {
+      data.id = sessionId;
+    }
+
+    const session = await this.prisma.tableSession.create({ data });
 
     // Registrar ação
     await this.logAction(session.id, 'OPEN_SESSION', openedBy, 'Sessão aberta');
@@ -473,17 +494,37 @@ export class TablesService {
 
   // ==================== CLIENTES ====================
 
-  async addCustomer(sessionId: string, customerName: string, customerId: string | undefined, addedBy: string) {
+  async addCustomer(
+    sessionId: string,
+    customerName: string,
+    customerId: string | undefined,
+    addedBy: string,
+    tableCustomerId?: string,
+  ) {
     const session = await this.getSession(sessionId);
 
-    const customer = await this.prisma.tableCustomer.create({
-      data: {
-        sessionId,
-        customerName,
-        customerId,
-        orderSequence: session.customers.length + 1,
-      },
-    });
+    // Se o ID foi fornecido e já existe, retornar (idempotência para sync)
+    if (tableCustomerId) {
+      const existingById = await this.prisma.tableCustomer.findUnique({
+        where: { id: tableCustomerId },
+      });
+      if (existingById) {
+        return existingById;
+      }
+    }
+
+    const data: any = {
+      sessionId,
+      customerName,
+      customerId,
+      orderSequence: session.customers.length + 1,
+    };
+
+    if (tableCustomerId) {
+      data.id = tableCustomerId;
+    }
+
+    const customer = await this.prisma.tableCustomer.create({ data });
 
     // Registrar ação
     await this.logAction(sessionId, 'ADD_CUSTOMER', addedBy, `Cliente "${customerName}" adicionado`);
@@ -499,8 +540,29 @@ export class TablesService {
     productId: string, 
     qtyUnits: number, 
     isMuntu: boolean, 
-    orderedBy: string
+    orderedBy: string,
+    orderId?: string,
   ) {
+    // Idempotência: se o ID foi fornecido e já existe, retornar
+    if (orderId) {
+      const existingById = await this.prisma.tableOrder.findUnique({
+        where: { id: orderId },
+        include: { product: true },
+      });
+      if (existingById) {
+        return existingById;
+      }
+    }
+
+    // Validar sessão / cliente para evitar erro 500 por constraint
+    await this.getSession(sessionId);
+    const tableCustomer = await this.prisma.tableCustomer.findUnique({
+      where: { id: tableCustomerId },
+    });
+    if (!tableCustomer) {
+      throw new NotFoundException('Cliente da mesa não encontrado');
+    }
+
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new NotFoundException('Produto não encontrado');
@@ -516,20 +578,26 @@ export class TablesService {
       total = (sets * product.muntuPrice) + (remainder * product.priceUnit);
     }
 
+    const orderData: any = {
+      sessionId,
+      tableCustomerId,
+      productId,
+      qtyUnits,
+      isMuntu,
+      unitPrice,
+      unitCost: product.costUnit,
+      subtotal: total,
+      total,
+      orderedBy,
+      orderedAt: new Date(),
+    };
+
+    if (orderId) {
+      orderData.id = orderId;
+    }
+
     const order = await this.prisma.tableOrder.create({
-      data: {
-        sessionId,
-        tableCustomerId,
-        productId,
-        qtyUnits,
-        isMuntu,
-        unitPrice,
-        unitCost: product.costUnit,
-        subtotal: total,
-        total,
-        orderedBy,
-        orderedAt: new Date(),
-      },
+      data: orderData,
       include: { product: true },
     });
 

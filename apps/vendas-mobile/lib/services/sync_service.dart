@@ -74,6 +74,20 @@ class SyncService {
       return;
     }
 
+    // Se não há token em memória, tentar restaurar do SharedPreferences.
+    // Se falhar, não adianta tentar sincronizar (vai dar Unauthorized em cascata).
+    if (!_api.hasToken) {
+      final ok = await _api.validateToken();
+      if (!ok) {
+        debugPrint('🔒 Sem autenticação válida, sincronização cancelada');
+        _syncStatusController.add(SyncStatus(
+            isSyncing: false,
+            message: 'Sessão expirada. Faça login novamente.',
+            success: false));
+        return;
+      }
+    }
+
     debugPrint('🔄 Iniciando sincronização completa...');
     _isSyncing = true;
     _syncStatusController
@@ -97,6 +111,12 @@ class SyncService {
           SyncStatus(isSyncing: false, message: 'Sincronizado', success: true));
     } catch (e) {
       debugPrint('❌ Erro na sincronização: $e');
+      if (e.toString().contains('Unauthorized')) {
+        _syncStatusController.add(SyncStatus(
+            isSyncing: false,
+            message: 'Sessão expirada. Faça login novamente.',
+            success: false));
+      }
       _syncStatusController.add(
           SyncStatus(isSyncing: false, message: 'Erro: $e', success: false));
     } finally {
@@ -128,10 +148,17 @@ class SyncService {
           } catch (_) {}
         }
 
-        // Para ajustes de estoque, usar dados do sync_queue
-        if (entityType == 'inventory' &&
-            action == 'adjust' &&
-            syncData != null) {
+        // Para operações que não são uma tabela local, usar dados do sync_queue
+        final usesQueueData =
+            (entityType == 'inventory' && action == 'adjust') ||
+                (entityType == 'table_split' && action == 'split') ||
+                (entityType == 'table_order_transfer' && action == 'transfer');
+
+        if (usesQueueData) {
+          if (syncData == null) {
+            throw Exception(
+                'Dados ausentes no sync_queue para $entityType/$entityId');
+          }
           await _sendToServer(entityType, action, syncData);
           await _db.markSyncItemProcessed(item['id'] as int);
           continue;
@@ -329,11 +356,34 @@ class SyncService {
       case 'table_sessions':
         if (action == 'create') {
           debugPrint('📋 Sincronizando sessão de mesa: ${data['id']}');
-          await _api.openTable(
+          final localSessionId =
+              (data['id'] ?? data['session_id'] ?? data['sessionId'])
+                  ?.toString();
+
+          final opened = await _api.openTable(
             tableId: data['table_id'] ?? data['tableId'] ?? '',
             branchId: data['branch_id'] ?? data['branchId'] ?? '',
             openedBy: data['opened_by'] ?? data['openedBy'] ?? 'mobile',
+            sessionId: localSessionId,
           );
+
+          final serverSessionId = (opened is Map && opened['id'] != null)
+              ? opened['id'].toString()
+              : null;
+
+          if (localSessionId != null &&
+              localSessionId.isNotEmpty &&
+              serverSessionId != null &&
+              serverSessionId.isNotEmpty &&
+              serverSessionId != localSessionId) {
+            debugPrint(
+                '🔁 Remapeando sessionId local → servidor: $localSessionId → $serverSessionId');
+            await _db.remapTableSessionId(
+              oldSessionId: localSessionId,
+              newSessionId: serverSessionId,
+            );
+          }
+
           debugPrint('✅ Sessão de mesa sincronizada: ${data['id']}');
 
           // Marcar sessão como sincronizada
@@ -341,7 +391,7 @@ class SyncService {
             'table_sessions',
             {'synced': 1},
             where: 'id = ?',
-            whereArgs: [data['id']],
+            whereArgs: [serverSessionId ?? data['id']],
           );
         } else if (action == 'update' &&
             (data['status'] == 'closed' || data['closed_by'] != null)) {
@@ -363,6 +413,10 @@ class SyncService {
                 data['customer_name'] ?? data['customerName'] ?? 'Cliente',
             customerId: data['customer_id'] ?? data['customerId'],
             addedBy: data['added_by'] ?? data['addedBy'] ?? 'mobile',
+            tableCustomerId: (data['id'] ??
+                    data['table_customer_id'] ??
+                    data['tableCustomerId'])
+                ?.toString(),
           );
           debugPrint('✅ Cliente de mesa sincronizado: ${data['id']}');
 
@@ -387,6 +441,8 @@ class SyncService {
             qtyUnits: data['qty_units'] ?? data['qtyUnits'] ?? 1,
             isMuntu: (data['is_muntu'] == 1 || data['isMuntu'] == true),
             orderedBy: data['ordered_by'] ?? data['orderedBy'] ?? 'mobile',
+            orderId:
+                (data['id'] ?? data['order_id'] ?? data['orderId'])?.toString(),
           );
           debugPrint('✅ Pedido de mesa sincronizado: ${data['id']}');
 
@@ -424,7 +480,164 @@ class SyncService {
           debugPrint('✅ Pagamento de mesa sincronizado: ${data['id']}');
         }
         break;
+
+      // ==================== OPERAÇÕES DE MESAS (QUEUE-BASED) ====================
+      case 'table_split':
+        if (action == 'split') {
+          final sessionId =
+              (data['sessionId'] ?? data['session_id'] ?? '').toString();
+          final splitBy =
+              (data['splitBy'] ?? data['split_by'] ?? 'mobile').toString();
+          final branchId = (data['branchId'] ?? data['branch_id'])?.toString();
+          final distributionsRaw = data['distributions'];
+          final distributions = (distributionsRaw is List)
+              ? distributionsRaw
+                  .map((e) => Map<String, dynamic>.from(e as Map))
+                  .toList()
+              : <Map<String, dynamic>>[];
+
+          if (sessionId.isEmpty || distributions.isEmpty) {
+            throw Exception('Payload inválido para table_split');
+          }
+
+          debugPrint('📋 Sincronizando split de mesa: $sessionId');
+          await _api.splitTable(
+            sessionId: sessionId,
+            distributions: distributions,
+            splitBy: splitBy,
+          );
+          debugPrint('✅ Split sincronizado: $sessionId');
+
+          // Reconciliar estado local: remover duplicatas locais não sincronizadas
+          // e baixar sessões atualizadas do servidor.
+          try {
+            await _refreshTableSessionFromServer(sessionId);
+
+            final targetTableIdsRaw = data['targetTableIds'];
+            final targetTableIds = (targetTableIdsRaw is List)
+                ? targetTableIdsRaw
+                    .map((e) => e.toString())
+                    .where((e) => e.isNotEmpty)
+                    .toList()
+                : <String>[];
+
+            if (branchId != null && branchId.isNotEmpty) {
+              final overview = await _api.getTablesOverview(branchId);
+              for (final table in overview) {
+                if (table is! Map<String, dynamic>) continue;
+                final tableId = (table['id'] ?? '').toString();
+                if (targetTableIds.isNotEmpty &&
+                    !targetTableIds.contains(tableId)) {
+                  continue;
+                }
+                final currentSession = table['currentSession'];
+                if (currentSession is Map<String, dynamic>) {
+                  final sid = (currentSession['id'] ?? '').toString();
+                  if (sid.isNotEmpty) {
+                    await _refreshTableSessionFromServer(sid);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Aviso: falha ao reconciliar split local: $e');
+          }
+        }
+        break;
+
+      case 'table_order_transfer':
+        if (action == 'transfer') {
+          final orderId =
+              (data['orderId'] ?? data['order_id'] ?? '').toString();
+          final fromCustomerId =
+              (data['fromCustomerId'] ?? data['from_customer_id'] ?? '')
+                  .toString();
+          final toCustomerId =
+              (data['toCustomerId'] ?? data['to_customer_id'] ?? '').toString();
+          final transferredBy =
+              (data['transferredBy'] ?? data['transferred_by'] ?? 'mobile')
+                  .toString();
+          final qtyUnitsRaw = data['qtyUnits'] ?? data['qty_units'] ?? 1;
+          final qtyUnits = qtyUnitsRaw is int
+              ? qtyUnitsRaw
+              : int.tryParse(qtyUnitsRaw.toString()) ?? 1;
+          final sessionId =
+              (data['sessionId'] ?? data['session_id'] ?? '').toString();
+
+          if (orderId.isEmpty ||
+              fromCustomerId.isEmpty ||
+              toCustomerId.isEmpty) {
+            throw Exception('Payload inválido para table_order_transfer');
+          }
+
+          debugPrint(
+              '📋 Sincronizando transferência de item: $orderId ($qtyUnits)');
+          await _api.transferTableOrder(
+            orderId: orderId,
+            fromCustomerId: fromCustomerId,
+            toCustomerId: toCustomerId,
+            qtyUnits: qtyUnits,
+            transferredBy: transferredBy,
+          );
+          debugPrint('✅ Transferência sincronizada: $orderId');
+
+          if (sessionId.isNotEmpty) {
+            try {
+              await _refreshTableSessionFromServer(sessionId);
+            } catch (e) {
+              debugPrint(
+                  '⚠️ Aviso: falha ao reconciliar sessão após transfer: $e');
+            }
+          }
+        }
+        break;
     }
+  }
+
+  Future<void> _refreshTableSessionFromServer(String sessionId) async {
+    final session = await _api.getTableSession(sessionId);
+    if (session is! Map<String, dynamic>) return;
+
+    // Coletar IDs do servidor (clientes e pedidos)
+    final serverCustomerIds = <String>{};
+    final serverOrderIds = <String>{};
+    final customers = session['customers'] as List<dynamic>? ?? [];
+    for (final c in customers) {
+      if (c is! Map<String, dynamic>) continue;
+      final cid = c['id']?.toString();
+      if (cid != null && cid.isNotEmpty) serverCustomerIds.add(cid);
+      final orders = c['orders'] as List<dynamic>? ?? [];
+      for (final o in orders) {
+        if (o is! Map<String, dynamic>) continue;
+        final oid = o['id']?.toString();
+        if (oid != null && oid.isNotEmpty) serverOrderIds.add(oid);
+      }
+    }
+
+    // Remover duplicatas locais não sincronizadas que não existem no servidor
+    if (serverOrderIds.isEmpty) {
+      await _db.delete('table_orders',
+          where: 'session_id = ? AND synced = 0', whereArgs: [sessionId]);
+    } else {
+      final placeholders = serverOrderIds.map((_) => '?').join(',');
+      await _db.rawUpdate(
+        'DELETE FROM table_orders WHERE session_id = ? AND synced = 0 AND id NOT IN ($placeholders)',
+        [sessionId, ...serverOrderIds.toList()],
+      );
+    }
+
+    if (serverCustomerIds.isEmpty) {
+      await _db.delete('table_customers',
+          where: 'session_id = ? AND synced = 0', whereArgs: [sessionId]);
+    } else {
+      final placeholders = serverCustomerIds.map((_) => '?').join(',');
+      await _db.rawUpdate(
+        'DELETE FROM table_customers WHERE session_id = ? AND synced = 0 AND id NOT IN ($placeholders)',
+        [sessionId, ...serverCustomerIds.toList()],
+      );
+    }
+
+    await _mergeTableSession(session);
   }
 
   /// Mapeia dados da venda local para formato do servidor
@@ -498,11 +711,20 @@ class SyncService {
 
       // Baixar mesas com sessões ativas (overview)
       try {
-        // Usar o primeiro branchId disponível das mesas
-        String? branchId;
-        if (tables.isNotEmpty) {
+        // Preferir branchId persistido (mais confiável do que inferir pela lista de mesas)
+        final prefs = await SharedPreferences.getInstance();
+        String? branchId = prefs.getString('branch_id');
+
+        // Fallback: tentar inferir pelo primeiro registro retornado
+        if ((branchId == null || branchId.isEmpty) && tables.isNotEmpty) {
           branchId = (tables.first['branchId'] ?? tables.first['branch_id'])
               ?.toString();
+
+          if (branchId != null && branchId.isNotEmpty) {
+            try {
+              await prefs.setString('branch_id', branchId);
+            } catch (_) {}
+          }
         }
 
         if (branchId != null) {
