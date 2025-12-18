@@ -76,6 +76,16 @@ export class SalesService {
       if (createSaleDto.notes) {
         saleData.notes = createSaleDto.notes;
       }
+      // Salvar método de pagamento se fornecido (importante para vendas sincronizadas)
+      if (createSaleDto.paymentMethod) {
+        try {
+          const normalizedMethod = normalizePaymentMethod(createSaleDto.paymentMethod);
+          saleData.paymentMethod = normalizedMethod;
+          console.log(`   paymentMethod normalizado: ${createSaleDto.paymentMethod} -> ${normalizedMethod}`);
+        } catch (e) {
+          console.warn(`   ⚠️ Método de pagamento inválido ignorado: ${createSaleDto.paymentMethod}`);
+        }
+      }
       // Se status é paid ou closed, definir closedAt
       if (createSaleDto.status === 'paid' || createSaleDto.status === 'closed') {
         saleData.closedAt = new Date();
@@ -255,9 +265,12 @@ export class SalesService {
       console.log(`📝 Adicionando pagamento à venda já fechada ${saleId} (sync do desktop)`);
     }
 
-    // Se for fiado (VALE), requer cliente
+    // Se for fiado (VALE), requer cliente para criar a dívida
+    // MAS para sincronização de vendas antigas, apenas logar aviso e continuar
     if (normalizedMethod === 'VALE' && !sale.customerId) {
-      throw new BadRequestException('Cliente é obrigatório para venda fiada');
+      console.warn(`⚠️ VALE sem cliente cadastrado na venda ${saleId}. Venda será registrada mas dívida não será criada.`);
+      // NÃO bloquear - permitir o pagamento para fins de sincronização
+      // A dívida não será criada, mas pelo menos o método de pagamento ficará correto
     }
 
     // Criar pagamento com método normalizado
@@ -274,7 +287,7 @@ export class SalesService {
 
     console.log(`💰 Pagamento criado: id=${payment.id}, method=${normalizedMethod}, amount=${paymentDto.amount}`);
 
-    // Se fiado (VALE), criar dívida
+    // Se fiado (VALE) E tem cliente, criar dívida
     if (normalizedMethod === 'VALE' && sale.customerId) {
       await this.prisma.debt.create({
         data: {

@@ -400,13 +400,14 @@ model Sale {
   customerName  String?   @map("customer_name") // Nome do cliente para vendas sem cadastro
   cashierId     String    @map("cashier_id")
   cashier       User?     @relation(fields: [cashierId], references: [id])
-  status        String    @default("open")
-  subtotal      Int       @default(0)
-  taxTotal      Int       @default(0) @map("tax_total")
-  discountTotal Int       @default(0) @map("discount_total")
-  total         Int       @default(0)
-  muntuSavings  Int       @default(0) @map("muntu_savings")
-  notes         String?
+  status         String    @default("open")
+  paymentMethod  String?   @map("payment_method")
+  subtotal       Int       @default(0)
+  taxTotal       Int       @default(0) @map("tax_total")
+  discountTotal  Int       @default(0) @map("discount_total")
+  total          Int       @default(0)
+  muntuSavings   Int       @default(0) @map("muntu_savings")
+  notes          String?
   openedAt      DateTime  @default(now()) @map("opened_at")
   closedAt      DateTime? @map("closed_at")
   synced        Boolean   @default(false)

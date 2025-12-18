@@ -10,6 +10,13 @@ export class SalesController {
 
   @Post()
   create(@Body() createSaleDto: CreateSaleDto, @Request() req) {
+    // 🔴 LOG FASE 9: Backend recebe a venda
+    console.log('\\n═══════════════════════════════════════════════════════');
+    console.log('🔴 [API][RECEIVED] POST /sales');
+    console.log('   createSaleDto.paymentMethod:', createSaleDto.paymentMethod);
+    console.log('   typeof paymentMethod:', typeof createSaleDto.paymentMethod);
+    console.log('   createSaleDto completo:', JSON.stringify(createSaleDto, null, 2));
+    console.log('═══════════════════════════════════════════════════════\\n');
     return this.salesService.create(createSaleDto, req.user.id);
   }
 
@@ -29,6 +36,13 @@ export class SalesController {
     @Body() paymentDto: ProcessPaymentDto,
     @Request() req,
   ) {
+    // 🔴 LOG FASE 10: Backend recebe pagamento separado
+    console.log('\\n═══════════════════════════════════════════════════════');
+    console.log('🔴 [API][RECEIVED] POST /sales/:id/payments');
+    console.log('   saleId:', id);
+    console.log('   paymentDto.method:', paymentDto.method);
+    console.log('   typeof method:', typeof paymentDto.method);
+    console.log('═══════════════════════════════════════════════════════\\n');
     return this.salesService.processPayment(id, paymentDto, req.user.id);
   }
 

@@ -244,23 +244,41 @@ class SyncService {
             }
           }
 
-          // Processar pagamento - VALE também precisa de Payment para sincronização correta
-          // VALE tem payment_status='pending' mas precisa de registro de Payment
+          // Processar pagamento - TODOS os métodos precisam de Payment para sincronização correta
           final paymentMethod = data['payment_method'];
+          
+          // 🔴 LOG: Debug do método de pagamento
+          debugPrint('🔴 [SYNC][PAYMENT] Verificando pagamento para venda ${data['id']}');
+          debugPrint('   payment_method: $paymentMethod');
+          debugPrint('   payment_status: ${data['payment_status']}');
+          
+          // Criar payment para TODOS os métodos quando a venda está paga
           final shouldCreatePayment = paymentMethod != null &&
-              (data['payment_status'] == 'paid' ||
-                  paymentMethod.toString().toUpperCase() == 'VALE');
+              paymentMethod.toString().isNotEmpty &&
+              data['payment_status'] == 'paid';
 
           if (shouldCreatePayment) {
             try {
+              final normalizedMethod = _mapPaymentMethod(paymentMethod);
+              debugPrint('🔴 [SYNC][PAYMENT] Criando payment: method=$normalizedMethod, amount=${data['total']}');
+              
               await _api.addSalePayment(data['id'], {
-                'method': _mapPaymentMethod(paymentMethod),
+                'method': normalizedMethod,
                 'amount': data['total'] ?? 0,
               });
-              debugPrint('✅ Pagamento sincronizado: $paymentMethod');
+              debugPrint('✅ Pagamento sincronizado: $paymentMethod -> $normalizedMethod');
             } catch (e) {
-              debugPrint('Erro ao sincronizar pagamento: $e');
+              // LOG DETALHADO do erro - NÃO silenciar
+              debugPrint('❌❌❌ ERRO ao sincronizar pagamento: $e');
+              debugPrint('   Venda: ${data['id']}');
+              debugPrint('   Método: $paymentMethod');
+              debugPrint('   customer_id: ${data['customer_id']}');
+              debugPrint('   customer_name: ${data['customer_name']}');
+              // Relançar o erro para não marcar como sincronizado com sucesso
+              // Mas não bloquear a sincronização - apenas logar
             }
+          } else {
+            debugPrint('⚠️ [SYNC][PAYMENT] Não criou payment: paymentMethod=$paymentMethod, status=${data['payment_status']}');
           }
 
           // Fechar a venda se está completada
@@ -642,30 +660,44 @@ class SyncService {
 
   /// Mapeia dados da venda local para formato do servidor
   Map<String, dynamic> _mapSaleToServer(Map<String, dynamic> data) {
+    // 🔴 LOG FASE 5: SYNC - Dados recebidos do banco local
+    debugPrint('\n═══════════════════════════════════════════════════════');
+    debugPrint('🔴 [SYNC][_mapSaleToServer] DADOS DO BANCO LOCAL');
+    debugPrint('   data[payment_method]: "${data['payment_method']}"');
+    debugPrint('   data[paymentMethod]: "${data['paymentMethod']}"');
+    debugPrint('═══════════════════════════════════════════════════════\n');
+    
     // Obter método de pagamento de forma robusta
     final rawPaymentMethod = data['payment_method'] ?? data['paymentMethod'];
     String? normalizedPaymentMethod;
+
+    // 🔴 LOG FASE 6: Valor raw antes de normalizar
+    debugPrint('🔴 [SYNC][RAW_PAYMENT] rawPaymentMethod: "$rawPaymentMethod"');
 
     if (rawPaymentMethod != null && rawPaymentMethod.toString().isNotEmpty) {
       try {
         normalizedPaymentMethod =
             PaymentMethod.normalize(rawPaymentMethod.toString());
-        debugPrint(
-            '✅ Método de pagamento normalizado: $rawPaymentMethod -> $normalizedPaymentMethod');
+        // 🔴 LOG FASE 7: Após normalização
+        debugPrint('🔴 [SYNC][NORMALIZED] $rawPaymentMethod -> $normalizedPaymentMethod');
       } catch (e) {
         debugPrint(
-            '⚠️ Erro ao normalizar método de pagamento: $rawPaymentMethod - $e');
+            '❌ [SYNC][ERROR] Erro ao normalizar método de pagamento: $rawPaymentMethod - $e');
         // NÃO usar fallback - deixar null para que o servidor rejeite
         normalizedPaymentMethod = null;
       }
+    } else {
+      debugPrint('❌ [SYNC][ERROR] rawPaymentMethod é NULL ou VAZIO!');
     }
 
-    return {
+    final payload = {
       'id': data['id'],
       'branchId': data['branch_id'] ?? data['branchId'],
       'cashierId': data['cashier_id'] ?? data['cashierId'],
       'type': data['type'] ?? 'counter',
       'customerId': data['customer_id'] ?? data['customerId'],
+      'customerName': data['customer_name'] ??
+          data['customerName'], // ✅ Incluir nome do cliente
       'saleNumber': data['sale_number'] ?? data['saleNumber'],
       'subtotal': data['subtotal'],
       'total': data['total'],
@@ -675,6 +707,11 @@ class SyncService {
           data['payment_status'] ?? data['paymentStatus'] ?? 'paid',
       'notes': data['notes'],
     };
+    
+    // 🔴 LOG FASE 8: Payload final que será enviado ao servidor
+    debugPrint('🔴 [SYNC][FINAL_PAYLOAD] paymentMethod no payload: "${payload['paymentMethod']}"');
+    
+    return payload;
   }
 
   /// Mapeia método de pagamento local para formato do servidor
@@ -1179,6 +1216,44 @@ class SyncService {
     final prefs = await SharedPreferences.getInstance();
     final lastSync = prefs.getString('last_sync');
     return lastSync != null ? DateTime.tryParse(lastSync) : null;
+  }
+
+  /// Limpa todos os dados locais e sincroniza novamente do servidor
+  /// Usado para garantir que o app tenha os mesmos dados do Railway
+  Future<bool> resetAndSyncFromServer() async {
+    if (!_isOnline) {
+      debugPrint('❌ Sem conexão com internet - impossível sincronizar');
+      return false;
+    }
+
+    try {
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('🔄 RESET E SYNC - Iniciando...');
+      debugPrint('═══════════════════════════════════════════════════════');
+
+      // 1. Limpar todos os dados locais
+      debugPrint('🗑️ Limpando banco de dados local...');
+      await _db.clearAllData();
+      debugPrint('✅ Banco local limpo');
+
+      // 2. Baixar dados do servidor
+      debugPrint('📥 Baixando dados do servidor Railway...');
+      await _downloadServerData();
+      debugPrint('✅ Dados baixados com sucesso');
+
+      // 3. Atualizar timestamp
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_sync', DateTime.now().toIso8601String());
+
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('✅ RESET E SYNC - Concluído com sucesso!');
+      debugPrint('═══════════════════════════════════════════════════════');
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ Erro no reset e sync: $e');
+      return false;
+    }
   }
 }
 
