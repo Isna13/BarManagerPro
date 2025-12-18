@@ -1529,13 +1529,23 @@ export class SyncManager {
               console.log(`📝 Débito atualizado: ${item.id} (${item.status}, saldo: ${balance})`);
             } else {
               // Criar novo débito
+              // Verificar se o cliente existe localmente
+              const customerId = item.customerId || item.customer_id;
+              const customerExists = this.dbManager.prepare(`SELECT id FROM customers WHERE id = ?`).get(customerId);
+              
+              if (!customerExists) {
+                console.warn(`⚠️ Cliente ${customerId} não existe localmente - débito ${item.id} será pulado`);
+                continue;
+              }
+              
               this.dbManager.prepare(`
-                INSERT INTO debts (id, debt_number, customer_id, original_amount, amount, paid_amount, balance, status, due_date, notes, created_by, synced, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+                INSERT INTO debts (id, debt_number, customer_id, branch_id, original_amount, amount, paid_amount, balance, status, due_date, notes, created_by, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
               `).run(
                 item.id,
                 item.debtNumber || item.debt_number || `DEBT-${Date.now()}`,
-                item.customerId || item.customer_id,
+                customerId,
+                item.branchId || item.branch_id || 'main-branch',
                 item.originalAmount || amount,
                 amount,
                 paidAmount,
