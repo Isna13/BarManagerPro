@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/payment_methods.dart';
 import '../services/api_service.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
@@ -82,6 +83,51 @@ class TablesProvider extends ChangeNotifier {
     final sets = qtyUnits ~/ muntuQty;
     final remainder = qtyUnits % muntuQty;
     return (sets * muntuPrice) + (remainder * unitPrice);
+  }
+
+  /// Decrementa o estoque local de um produto (usado em pedidos offline de mesas)
+  /// NOTA: NÃO faz markForSync porque o servidor já decrementa ao receber o table_orders
+  Future<void> _decrementLocalStock(String productId, int quantity) async {
+    try {
+      // Buscar inventário do produto
+      final invRows = await _db.rawQuery(
+        'SELECT id, branch_id, qty_units FROM inventory WHERE product_id = ? LIMIT 1',
+        [productId],
+      );
+
+      if (invRows.isEmpty) {
+        debugPrint('⚠️ Inventário não encontrado para produto: $productId');
+        return;
+      }
+
+      final inv = invRows.first;
+      final invId = inv['id'];
+      final currentQty = _asInt(inv['qty_units']);
+      final newQty = currentQty - quantity;
+
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📦 DECREMENTO DE ESTOQUE LOCAL (MESA)');
+      debugPrint('   Produto ID: $productId');
+      debugPrint('   Inventário ID: $invId');
+      debugPrint('   Quantidade anterior: $currentQty');
+      debugPrint('   Quantidade vendida: $quantity');
+      debugPrint('   Nova quantidade: $newQty');
+      debugPrint('   ⚠️ Servidor decrementará via table_orders sync');
+      debugPrint('═══════════════════════════════════════════════════════');
+
+      // Atualizar APENAS no banco local - NÃO marcar para sync
+      // O servidor já vai decrementar quando receber o table_orders
+      await _db.update(
+        'inventory',
+        {'qty_units': newQty},
+        where: 'id = ?',
+        whereArgs: [invId],
+      );
+
+      debugPrint('💾 Estoque local decrementado: $productId, novo qty=$newQty');
+    } catch (e) {
+      debugPrint('❌ Erro ao decrementar estoque local: $e');
+    }
   }
 
   Future<void> _recalculateSessionAndCustomersTotals(
@@ -401,14 +447,26 @@ class TablesProvider extends ChangeNotifier {
         );
       }
 
-      // Atualizar status da mesa - criar cópia mutável se necessário
+      // Atualizar status da mesa em memória e no banco local
       final tableIndex = _tables.indexWhere((t) => t['id'] == tableId);
       if (tableIndex >= 0) {
         // Garantir que o mapa é mutável
         _tables[tableIndex] = Map<String, dynamic>.from(_tables[tableIndex]);
         _tables[tableIndex]['status'] = 'occupied';
         _tables[tableIndex]['current_session'] = _currentSession;
+
+        // CORREÇÃO: Persistir status da mesa no banco local
+        await _db.update(
+          'tables',
+          {'status': 'occupied'},
+          where: 'id = ?',
+          whereArgs: [tableId],
+        );
       }
+
+      // Limpar clientes e pedidos anteriores para nova sessão
+      _currentCustomers = [];
+      _currentOrders = [];
 
       _isLoading = false;
       notifyListeners();
@@ -628,6 +686,9 @@ class TablesProvider extends ChangeNotifier {
           data: order,
         );
 
+        // ===== DECREMENTAR ESTOQUE LOCAL (OFFLINE) =====
+        await _decrementLocalStock(productId, quantity);
+
         // Atualizar total do cliente
         final customerIndex =
             _currentCustomers.indexWhere((c) => c['id'] == tableCustomerId);
@@ -683,17 +744,79 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final now = DateTime.now().toIso8601String();
+      final paymentId = _uuid.v4();
+
+      // 🔴 LOG FASE 1: Valor ORIGINAL recebido do botão
+      debugPrint('\n═══════════════════════════════════════════════════════');
+      debugPrint('🔴 [MESAS][PROCESS_PAYMENT] ENTRADA');
+      debugPrint('   method ORIGINAL: "$method"');
+      debugPrint('   method.runtimeType: ${method.runtimeType}');
+      debugPrint('═══════════════════════════════════════════════════════\n');
+
+      // Normalizar método de pagamento para garantir consistência
+      final normalizedMethod = PaymentMethod.normalize(method);
+
+      // 🔴 LOG FASE 2: Após normalização
+      debugPrint('🔴 [MESAS][AFTER_NORMALIZE]');
+      debugPrint('   method ORIGINAL: "$method"');
+      debugPrint('   normalizedMethod: "$normalizedMethod"');
+      debugPrint('   São iguais? ${method == normalizedMethod}');
+
+      // ⚠️ VALIDAÇÃO CRÍTICA: VALE requer cliente cadastrado
+      String? registeredCustomerId;
+      if (tableCustomerId != null) {
+        final tableCustomer = _currentCustomers.firstWhere(
+          (c) => c['id'] == tableCustomerId,
+          orElse: () => <String, dynamic>{},
+        );
+        registeredCustomerId = tableCustomer['customer_id'] as String?;
+      }
+
+      if (normalizedMethod == 'VALE' && registeredCustomerId == null) {
+        _error = 'Vale só disponível para clientes cadastrados!';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
       if (_sync.isOnline) {
         await _api.processTablePayment(
           sessionId: sessionId,
           tableCustomerId: tableCustomerId,
-          method: method,
+          method: normalizedMethod, // ✅ Método normalizado
           amount: amount,
           processedBy: processedBy,
           isSessionPayment: isSessionPayment,
         );
+      } else {
+        // ===== OFFLINE: Salvar pagamento localmente e enfileirar =====
+        final payment = {
+          'id': paymentId,
+          'session_id': sessionId,
+          'table_customer_id': tableCustomerId,
+          'method':
+              normalizedMethod, // ✅ Método normalizado (já definido acima)
+          'amount': amount,
+          'processed_by': processedBy,
+          'processed_at': now,
+          'is_session_payment': isSessionPayment ? 1 : 0,
+          'synced': 0,
+        };
+
+        await _db.insert('table_payments', payment);
+
+        await _sync.markForSync(
+          entityType: 'table_payments',
+          entityId: paymentId,
+          action: 'create',
+          data: payment,
+        );
+        debugPrint(
+            '💾 Pagamento salvo offline: $paymentId, method: $normalizedMethod');
       }
 
+      // ===== Atualizar estado local (online e offline) =====
       if (isSessionPayment) {
         // Pagamento da sessão inteira
         if (_currentSession != null) {
@@ -704,6 +827,18 @@ class TablesProvider extends ChangeNotifier {
           if (_currentSession!['paid_amount'] >= totalAmount) {
             _currentSession!['status'] = 'closed';
           }
+
+          // Atualizar no banco local
+          await _db.update(
+            'table_sessions',
+            {
+              'paid_amount': _currentSession!['paid_amount'],
+              'updated_at': now,
+              'synced': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [sessionId],
+          );
         }
       } else {
         // Pagamento de cliente específico
@@ -724,8 +859,137 @@ class TablesProvider extends ChangeNotifier {
               }
             }
           }
+
+          // Atualizar cliente no banco local
+          await _db.update(
+            'table_customers',
+            {
+              'paid_amount': _currentCustomers[customerIndex]['paid_amount'],
+              'payment_status': _currentCustomers[customerIndex]
+                  ['payment_status'],
+              'updated_at': now,
+              'synced': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [tableCustomerId],
+          );
+        }
+
+        // Atualizar total pago da sessão também
+        if (_currentSession != null) {
+          _currentSession!['paid_amount'] =
+              (_currentSession!['paid_amount'] ?? 0) + amount;
+
+          await _db.update(
+            'table_sessions',
+            {
+              'paid_amount': _currentSession!['paid_amount'],
+              'updated_at': now,
+              'synced': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [sessionId],
+          );
         }
       }
+
+      // ===== CRIAR REGISTRO DE VENDA PARA SINCRONIZAÇÃO =====
+      // Isso garante que a venda de mesa apareça nos relatórios e sincronize com Railway/Electron
+      final saleId = _uuid.v4();
+      final saleNumber =
+          'M${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+      final branchId = _currentSession?['branch_id'] ?? 'main-branch';
+      final tableId = _currentSession?['table_id'];
+
+      // Buscar dados do cliente de mesa para obter customer_id e customer_name
+      String? customerId;
+      String? customerName;
+      if (tableCustomerId != null) {
+        debugPrint('🔍 Buscando cliente com ID: $tableCustomerId');
+        debugPrint(
+            '🔍 _currentCustomers tem ${_currentCustomers.length} clientes');
+
+        final tableCustomer = _currentCustomers.firstWhere(
+          (c) => c['id'] == tableCustomerId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        debugPrint('🔍 tableCustomer encontrado: $tableCustomer');
+
+        customerId = tableCustomer['customer_id'] as String?;
+        customerName = tableCustomer['customer_name'] as String? ??
+            tableCustomer['customerName'] as String?;
+
+        debugPrint('🔍 customer_id: $customerId');
+        debugPrint('🔍 customer_name: $customerName');
+      }
+
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📝 CRIANDO VENDA DE MESA');
+      debugPrint('   Sale ID: $saleId');
+      debugPrint('   Customer ID: $customerId');
+      debugPrint('   Customer Name: $customerName');
+      debugPrint('   Payment Method: $normalizedMethod');
+      // 🔴 LOG FASE 3: ANTES de salvar venda no banco local
+      debugPrint('\n🔴 [MESAS][LOCAL_SAVE] ANTES DE SALVAR VENDA');
+      debugPrint('   saleId: $saleId');
+      debugPrint('   payment_method A SER SALVO: "$normalizedMethod"');
+      debugPrint(
+          '   payment_method.runtimeType: ${normalizedMethod.runtimeType}');
+
+      // Criar venda COM customer_name para garantir identificação correta
+      await _db.insert('sales', {
+        'id': saleId,
+        'sale_number': saleNumber,
+        'branch_id': branchId,
+        'type': 'table',
+        'table_id': tableId,
+        'customer_id': customerId,
+        'customer_name': customerName, // ✅ Adicionado para evitar "avulso"
+        'cashier_id': processedBy,
+        'status': 'completed',
+        'subtotal': amount,
+        'total': amount,
+        'payment_method': normalizedMethod, // ✅ Método normalizado
+        'payment_status': 'paid',
+        'created_at': now,
+        'synced': 0,
+      });
+
+      // 🔴 LOG FASE 4: APÓS salvar venda - verificar o que foi salvo
+      debugPrint('🔴 [MESAS][LOCAL_SAVE] VENDA SALVA COM SUCESSO');
+
+      // Criar itens da venda (baseado nos pedidos do cliente)
+      if (tableCustomerId != null) {
+        final customerOrders = _currentOrders
+            .where((o) =>
+                o['table_customer_id'] == tableCustomerId &&
+                o['status'] == 'paid')
+            .toList();
+
+        for (final order in customerOrders) {
+          await _db.insert('sale_items', {
+            'id': _uuid.v4(),
+            'sale_id': saleId,
+            'product_id': order['product_id'],
+            'qty_units': order['qty_units'] ?? 1,
+            'is_muntu': order['is_muntu'] ?? 0,
+            'unit_price': order['unit_price'] ?? 0,
+            'total': order['total'] ?? 0,
+            'created_at': now,
+            'synced': 0,
+          });
+        }
+      }
+
+      // Marcar venda para sincronização
+      await _sync.markForSync(
+        entityType: 'sales',
+        entityId: saleId,
+        action: 'create',
+      );
+      debugPrint('💾 Venda de mesa criada: $saleId, total: $amount');
+      // ===========================================================
 
       _isLoading = false;
       notifyListeners();
@@ -816,6 +1080,8 @@ class TablesProvider extends ChangeNotifier {
       'table_customer_id':
           order['tableCustomerId'] ?? order['table_customer_id'],
       'product_id': order['productId'] ?? order['product_id'],
+      'product_name':
+          order['productName'] ?? order['product_name'] ?? 'Produto',
       'qty_units': order['qtyUnits'] ?? order['qty_units'] ?? 1,
       'is_muntu': (order['isMuntu'] ?? order['is_muntu']) == true ? 1 : 0,
       'unit_price': order['unitPrice'] ?? order['unit_price'] ?? 0,
