@@ -18,8 +18,25 @@ export class DebtsService {
         },
       });
       if (existing) {
-        console.log('⚠️ Débito já existe, retornando existente:', existing.id);
+        console.log('⚠️ Débito já existe (por ID), retornando existente:', existing.id);
         return existing;
+      }
+    }
+
+    // 🔒 IDEMPOTÊNCIA: Verificar se já existe dívida para esta venda (saleId)
+    // Isso evita duplicação quando Mobile e Backend tentam criar a mesma dívida
+    if (createDto.saleId) {
+      const existingBySale = await this.prisma.debt.findFirst({
+        where: { saleId: createDto.saleId },
+        include: {
+          customer: true,
+          createdByUser: true,
+          payments: true,
+        },
+      });
+      if (existingBySale) {
+        console.log(`⚠️ Débito já existe para venda ${createDto.saleId}, retornando: ${existingBySale.id}`);
+        return existingBySale;
       }
     }
 

@@ -1004,29 +1004,17 @@ class TablesProvider extends ChangeNotifier {
       debugPrint('💾 Venda de mesa criada: $saleId, total: $amount');
 
       // ═══════════════════════════════════════════════════════════════════
-      // ✅ CORREÇÃO: Criar dívida automaticamente para pagamento VALE
-      // Isso garante que toda venda VALE gera uma dívida associada
+      // 🚫 REMOVIDO: Criação de dívida aqui causava DUPLICAÇÃO!
+      // A dívida agora é criada APENAS no backend (sales.service.ts)
+      // quando a venda é sincronizada. Isso garante idempotência.
       // ═══════════════════════════════════════════════════════════════════
       if (normalizedMethod == 'VALE' && customerId != null) {
-        debugPrint('💳 [VALE] Criando dívida para venda $saleId');
+        debugPrint('💳 [VALE] Venda marcada para sync - dívida será criada pelo backend');
         debugPrint('   Cliente: $customerId ($customerName)');
         debugPrint('   Valor: $amount');
-
-        try {
-          await _api.createDebt({
-            'customerId': customerId,
-            'amount': amount,
-            'saleId': saleId,
-            'branchId': branchId,
-            'description': 'Vale referente à venda de mesa $saleNumber',
-          });
-          debugPrint('✅ Dívida criada com sucesso para venda $saleId');
-        } catch (e) {
-          debugPrint('❌ Erro ao criar dívida: $e');
-          // Não bloqueia - a venda foi criada, dívida será sincronizada depois
-        }
+        debugPrint('   SaleId: $saleId');
+        // Dívida será criada automaticamente pelo backend quando a venda for sincronizada
       }
-      // ===========================================================
 
       _isLoading = false;
       notifyListeners();
