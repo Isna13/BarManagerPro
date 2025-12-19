@@ -334,29 +334,41 @@ export class SalesService {
     console.log(`💰 Pagamento criado: id=${payment.id}, method=${normalizedMethod}, amount=${paymentDto.amount}`);
 
     // Se fiado (VALE) E tem cliente, criar dívida
+    // 🔒 VERIFICAÇÃO DE IDEMPOTÊNCIA: Evitar duplicação de dívidas
     if (normalizedMethod === 'VALE' && sale.customerId) {
-      await this.prisma.debt.create({
-        data: {
-          debtNumber: `DEBT-${Date.now()}`,
-          customer: { connect: { id: sale.customerId } },
-          createdByUser: { connect: { id: userId } },
-          originalAmount: sale.total,
-          paidAmount: 0,
-          balance: sale.total,
-          amount: sale.total,
-          status: 'pending',
-        },
+      // Verificar se já existe dívida para esta venda
+      const existingDebt = await this.prisma.debt.findFirst({
+        where: { saleId: sale.id },
       });
 
-      // Atualizar dívida total do cliente
-      await this.prisma.customer.update({
-        where: { id: sale.customerId },
-        data: {
-          currentDebt: {
-            increment: sale.total,
+      if (existingDebt) {
+        console.log(`   ⚠️ Dívida já existe para venda ${sale.id}: ${existingDebt.id} - PULANDO criação`);
+      } else {
+        await this.prisma.debt.create({
+          data: {
+            debtNumber: `DEBT-${Date.now()}`,
+            customer: { connect: { id: sale.customerId } },
+            sale: { connect: { id: sale.id } }, // 🔗 Vincular à venda para rastreabilidade
+            createdByUser: { connect: { id: userId } },
+            originalAmount: sale.total,
+            paidAmount: 0,
+            balance: sale.total,
+            amount: sale.total,
+            status: 'pending',
           },
-        },
-      });
+        });
+        console.log(`   ✅ Dívida criada para venda VALE ${sale.id}`);
+
+        // Atualizar dívida total do cliente
+        await this.prisma.customer.update({
+          where: { id: sale.customerId },
+          data: {
+            currentDebt: {
+              increment: sale.total,
+            },
+          },
+        });
+      }
     }
 
     // Verificar se venda está totalmente paga
