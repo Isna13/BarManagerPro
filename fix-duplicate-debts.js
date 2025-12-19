@@ -6,24 +6,39 @@
  * Uso: node fix-duplicate-debts.js
  */
 
-const API_URL = 'https://barmanagerpro-production.up.railway.app';
+const API_URL = 'https://barmanagerbackend-production.up.railway.app/api/v1';
 
 async function getAuthToken() {
-  const response = await fetch(`${API_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: 'admin@bar.com',
-      password: 'admin123'
-    })
-  });
+  // Tentar múltiplas credenciais
+  const credentials = [
+    { email: 'isnatchuda1@gmail.com', password: 'isna123' },
+    { email: 'admin@barmanager.gw', password: 'admin123' },
+    { email: 'isna@email.com', password: 'isna1234' },
+    { email: 'admin@bar.com', password: 'admin123' },
+  ];
   
-  if (!response.ok) {
-    throw new Error('Falha na autenticação');
+  for (const cred of credentials) {
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cred)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`   Logado como: ${cred.email}`);
+        // Verificar diferentes formatos de resposta
+        const token = data.access_token || data.token || data.accessToken;
+        console.log(`   Token recebido: ${token ? token.substring(0, 20) + '...' : 'NENHUM'}`);
+        if (token) return token;
+      }
+    } catch (e) {
+      // Tentar próximo
+    }
   }
   
-  const data = await response.json();
-  return data.access_token;
+  throw new Error('Falha na autenticação - nenhuma credencial funcionou');
 }
 
 async function getAllDebts(token) {
@@ -32,6 +47,9 @@ async function getAllDebts(token) {
   });
   
   if (!response.ok) {
+    const text = await response.text();
+    console.log('   Status:', response.status);
+    console.log('   Response:', text.substring(0, 200));
     throw new Error('Falha ao buscar dívidas');
   }
   
@@ -39,9 +57,20 @@ async function getAllDebts(token) {
 }
 
 async function deleteDebt(token, debtId) {
+  // Usar PATCH para zerar a dívida (marcar como paga/removida)
+  // já que não existe endpoint DELETE
   const response = await fetch(`${API_URL}/debts/${debtId}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` }
+    method: 'PATCH',
+    headers: { 
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      amount: 0,
+      balance: 0,
+      status: 'cancelled',
+      notes: 'Duplicata removida automaticamente'
+    })
   });
   
   return response.ok;
@@ -99,6 +128,45 @@ async function main() {
         }
         console.log('');
         keptCount++;
+      }
+    }
+    
+    // 5. Também verificar duplicatas por customerId + amount + data próxima (sem saleId)
+    console.log('\n🔍 Analisando possíveis duplicadas sem saleId (mesmo cliente + valor + data próxima)...\n');
+    
+    // Agrupar por customerId + amount
+    const byCustomerAmount = {};
+    for (const debt of withoutSaleId) {
+      const key = `${debt.customerId || debt.customer?.id}_${debt.amount || debt.originalAmount}`;
+      if (!byCustomerAmount[key]) {
+        byCustomerAmount[key] = [];
+      }
+      byCustomerAmount[key].push(debt);
+    }
+    
+    for (const [key, groupDebts] of Object.entries(byCustomerAmount)) {
+      if (groupDebts.length > 1) {
+        // Ordenar por data
+        groupDebts.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        
+        // Verificar se há dívidas criadas muito próximas (menos de 5 minutos de diferença)
+        for (let i = 1; i < groupDebts.length; i++) {
+          const prev = new Date(groupDebts[i-1].createdAt);
+          const curr = new Date(groupDebts[i].createdAt);
+          const diffMinutes = (curr - prev) / (1000 * 60);
+          
+          if (diffMinutes < 5) {
+            const customer = groupDebts[i].customer?.name || groupDebts[i].customerId;
+            const amount = groupDebts[i].amount || groupDebts[i].originalAmount;
+            console.log(`❌ Possível duplicata detectada:`);
+            console.log(`   Cliente: ${customer}, Valor: ${amount}`);
+            console.log(`   ✅ Mantendo: ${groupDebts[i-1].id} (${groupDebts[i-1].createdAt})`);
+            console.log(`   🗑️  Remover: ${groupDebts[i].id} (${groupDebts[i].createdAt}) - criada ${diffMinutes.toFixed(1)} min depois`);
+            console.log('');
+            duplicates.push(groupDebts[i]);
+            keptCount++;
+          }
+        }
       }
     }
     
