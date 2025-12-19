@@ -15,9 +15,10 @@
   "dependencies": {
     "@tanstack/react-query": "^5.14.2",
     "@types/bcryptjs": "^3.0.0",
+    "ajv": "^8.17.1",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.5.0",
+    "better-sqlite3": "9.6.0",
     "date-fns": "^3.0.6",
     "electron-store": "^8.1.0",
     "jspdf": "^3.0.4",
@@ -56,7 +57,19 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "!node_modules/@types",
+      "!node_modules/**/test",
+      "!node_modules/**/tests",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.map"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
     ],
     "win": {
       "target": [

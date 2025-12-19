@@ -61,6 +61,84 @@ class _HomeScreenState extends State<HomeScreen> {
     ]);
   }
 
+  Future<void> _showResetSyncDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Sincronizar do Servidor'),
+          ],
+        ),
+        content: const Text(
+          'Esta ação irá:\n\n'
+          '• Apagar todos os dados locais\n'
+          '• Baixar dados atualizados do servidor Railway\n\n'
+          'Dados não sincronizados serão perdidos.\n\n'
+          'Deseja continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sincronizar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      // Mostrar loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Sincronizando dados do servidor...'),
+            ],
+          ),
+        ),
+      );
+
+      // Executar reset e sync
+      final success = await SyncService.instance.resetAndSyncFromServer();
+
+      if (!mounted) return;
+      Navigator.pop(context); // Fechar loading
+
+      if (success) {
+        // Recarregar dados nos providers
+        await _loadInitialData();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Dados sincronizados com sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Erro ao sincronizar. Verifique a conexão.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWideScreen = MediaQuery.of(context).size.width > 800;
@@ -124,6 +202,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (confirm == true) {
                   await context.read<AuthProvider>().logout();
                 }
+              } else if (value == 'reset_sync') {
+                await _showResetSyncDialog();
               }
             },
             itemBuilder: (context) => [
@@ -147,6 +227,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'reset_sync',
+                child: Row(
+                  children: [
+                    Icon(Icons.sync, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('Sincronizar do Servidor'),
+                  ],
                 ),
               ),
               const PopupMenuDivider(),

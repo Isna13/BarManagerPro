@@ -149,9 +149,12 @@ export default function SalesPage() {
   };
 
   const getPaymentMethodLabel = (method: string) => {
+    // Normalizar para lowercase para suportar backend que retorna UPPERCASE
+    const normalizedMethod = method?.toLowerCase() || '';
     const methods: Record<string, string> = {
       cash: '💵 Dinheiro',
       orange: '🍊 Orange Money',
+      orange_money: '🍊 Orange Money',
       teletaku: '📱 TeleTaku',
       mobile_money: '📱 Mobile Money',
       mixed: '💳 Misto',
@@ -159,13 +162,16 @@ export default function SalesPage() {
       vale: '📝 Vale',
       debt: '📝 Vale',
     };
-    return methods[method] || method;
+    return methods[normalizedMethod] || method;
   };
 
   const getPaymentMethodColor = (method: string) => {
+    // Normalizar para lowercase para suportar backend que retorna UPPERCASE
+    const normalizedMethod = method?.toLowerCase() || '';
     const colors: Record<string, string> = {
       cash: 'bg-green-100 text-green-700',
       orange: 'bg-orange-100 text-orange-700',
+      orange_money: 'bg-orange-100 text-orange-700',
       teletaku: 'bg-purple-100 text-purple-700',
       mobile_money: 'bg-purple-100 text-purple-700',
       mixed: 'bg-blue-100 text-blue-700',
@@ -173,7 +179,7 @@ export default function SalesPage() {
       vale: 'bg-yellow-100 text-yellow-700',
       debt: 'bg-yellow-100 text-yellow-700',
     };
-    return colors[method] || 'bg-gray-100 text-gray-700';
+    return colors[normalizedMethod] || 'bg-gray-100 text-gray-700';
   };
 
   const calculateTotals = () => {

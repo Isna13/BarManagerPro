@@ -10,6 +10,7 @@ import 'providers/sync_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/customers_provider.dart';
 import 'services/database_service.dart';
+import 'services/sync_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -37,6 +38,9 @@ void main() async {
 
   // Inicializar banco de dados local
   await DatabaseService.instance.init();
+
+  // Inicializar serviço de sincronização (monitoramento de conectividade)
+  await SyncService.instance.init();
 
   runApp(const VendasManagerApp());
 }

@@ -43,6 +43,10 @@ const electron_store_1 = __importDefault(require("electron-store"));
 const axios_1 = __importDefault(require("axios"));
 const manager_1 = require("./database/manager");
 const manager_2 = require("./sync/manager");
+// Logs críticos obrigatórios
+console.log('🚀 ELECTRON MAIN STARTED');
+process.on('uncaughtException', (err) => console.error('❌ UNCAUGHT EXCEPTION:', err));
+process.on('unhandledRejection', (reason) => console.error('❌ UNHANDLED REJECTION:', reason));
 const store = new electron_store_1.default();
 let mainWindow = null;
 let dbManager;
@@ -60,12 +64,26 @@ function createWindow() {
         },
         title: 'BarManager Pro - Guiné-Bissau',
     });
-    if (process.env.NODE_ENV === 'development') {
+    // Em desenvolvimento, carrega o Vite dev server
+    // Em produção (ou quando app.isPackaged), carrega o arquivo HTML compilado
+    const isDev = process.env.NODE_ENV === 'development' && !electron_1.app.isPackaged;
+    // Capturar erros de carregamento
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.error('❌ Falha ao carregar:', validatedURL);
+        console.error('❌ Erro:', errorCode, errorDescription);
+    });
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('✅ Página carregada com sucesso');
+    });
+    if (isDev) {
         mainWindow.loadURL('http://localhost:5173');
         mainWindow.webContents.openDevTools();
     }
     else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        const indexPath = path.join(__dirname, '../dist/index.html');
+        mainWindow.loadFile(indexPath).catch(err => {
+            console.error('❌ Erro ao carregar arquivo:', err);
+        });
     }
     mainWindow.on('closed', () => {
         mainWindow = null;
@@ -311,6 +329,17 @@ electron_1.ipcMain.handle('debts:create', async (_, data) => {
     return dbManager.createDebt(data);
 });
 electron_1.ipcMain.handle('debts:list', async (_, filters) => {
+    // CORREÇÃO: Antes de listar dívidas, sincronizar com o servidor
+    // Isso garante que vendas VALE do Mobile apareçam imediatamente
+    try {
+        if (syncManager) {
+            await syncManager.syncDebtsFromServer();
+        }
+    }
+    catch (syncError) {
+        console.warn('⚠️ Não foi possível sincronizar dívidas do servidor:', syncError.message);
+        // Continua mesmo com erro de sync - retorna dados locais
+    }
     return dbManager.getDebts(filters);
 });
 electron_1.ipcMain.handle('debts:getById', async (_, id) => {

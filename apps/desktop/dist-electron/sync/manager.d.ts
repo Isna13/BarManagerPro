@@ -93,6 +93,11 @@ export declare class SyncManager {
     private sortByDependency;
     private pullServerChanges;
     /**
+     * Sincroniza apenas dívidas do servidor para o desktop
+     * Usado quando a aba Dívidas é aberta para garantir dados atualizados
+     */
+    syncDebtsFromServer(): Promise<void>;
+    /**
      * Verifica se um item local tem alterações pendentes (não sincronizadas)
      * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
      *

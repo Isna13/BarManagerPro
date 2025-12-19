@@ -417,8 +417,23 @@ class CashBoxProvider extends ChangeNotifier {
     int? debtAmount,
   }) async {
     if (_currentCashBox == null) {
-      debugPrint('❌ updateCashBoxTotals: caixa é null!');
-      return;
+      debugPrint('❌ updateCashBoxTotals: caixa é null! Tentando carregar...');
+      // Tentar carregar caixa do banco local
+      final localResults = await _db.query(
+        'cash_boxes',
+        where: 'status = ?',
+        whereArgs: ['open'],
+        orderBy: 'opened_at DESC',
+        limit: 1,
+      );
+      if (localResults.isNotEmpty) {
+        _currentCashBox = Map<String, dynamic>.from(localResults.first);
+        debugPrint(
+            '✅ Caixa carregado do banco local: ${_currentCashBox!['id']}');
+      } else {
+        debugPrint('❌ Nenhum caixa aberto encontrado no banco local!');
+        return;
+      }
     }
 
     final id = _currentCashBox!['id'];

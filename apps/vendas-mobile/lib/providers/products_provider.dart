@@ -298,7 +298,10 @@ class ProductsProvider extends ChangeNotifier {
   }
 
   /// Decrementa o estoque de um produto localmente e sincroniza com servidor
-  Future<bool> decrementStock(String productId, int quantity) async {
+  /// Use [syncToServer: false] quando o decremento já está sendo sincronizado
+  /// por outro provider (ex: TablesProvider já faz markForSync)
+  Future<bool> decrementStock(String productId, int quantity,
+      {bool syncToServer = true}) async {
     try {
       final inv = _inventory[productId];
       if (inv == null) {
@@ -313,7 +316,7 @@ class ProductsProvider extends ChangeNotifier {
       final invId = inv['id'];
 
       debugPrint('═══════════════════════════════════════════════════════');
-      debugPrint('📦 DECREMENTO DE ESTOQUE');
+      debugPrint('📦 DECREMENTO DE ESTOQUE ${syncToServer ? '' : '(MEMÓRIA)'}');
       debugPrint('   Produto ID: $productId');
       debugPrint('   Inventário ID: $invId');
       debugPrint('   Branch ID: $branchId');
@@ -325,8 +328,8 @@ class ProductsProvider extends ChangeNotifier {
       // Atualizar em memória
       _inventory[productId]!['qty_units'] = newQty;
 
-      // Atualizar no banco local
-      if (invId != null) {
+      // Atualizar no banco local e sincronizar apenas se solicitado
+      if (invId != null && syncToServer) {
         await _db.update(
           'inventory',
           {'qty_units': newQty, 'synced': 0},

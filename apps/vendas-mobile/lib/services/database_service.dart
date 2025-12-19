@@ -25,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -229,6 +229,23 @@ class DatabaseService {
       )
     ''');
 
+    // Tabela de pagamentos de mesa
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS table_payments (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        table_customer_id TEXT,
+        method TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        processed_by TEXT,
+        processed_at TEXT,
+        is_session_payment INTEGER DEFAULT 0,
+        synced INTEGER DEFAULT 0,
+        FOREIGN KEY (session_id) REFERENCES table_sessions(id),
+        FOREIGN KEY (table_customer_id) REFERENCES table_customers(id)
+      )
+    ''');
+
     // Tabela de vendas
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sales (
@@ -238,6 +255,7 @@ class DatabaseService {
         type TEXT DEFAULT 'counter',
         table_id TEXT,
         customer_id TEXT,
+        customer_name TEXT,
         cashier_id TEXT NOT NULL,
         status TEXT DEFAULT 'pending',
         subtotal INTEGER DEFAULT 0,
@@ -362,6 +380,38 @@ class DatabaseService {
             .execute('ALTER TABLE table_orders ADD COLUMN product_name TEXT');
       } catch (_) {
         // Coluna já existe ou tabela não existe; ignorar.
+      }
+    }
+
+    // Migração da versão 3 para 4: adicionar tabela table_payments
+    if (oldVersion < 4) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS table_payments (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            table_customer_id TEXT,
+            method TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            processed_by TEXT,
+            processed_at TEXT,
+            is_session_payment INTEGER DEFAULT 0,
+            synced INTEGER DEFAULT 0,
+            FOREIGN KEY (session_id) REFERENCES table_sessions(id),
+            FOREIGN KEY (table_customer_id) REFERENCES table_customers(id)
+          )
+        ''');
+      } catch (_) {
+        // Tabela já existe; ignorar.
+      }
+    }
+
+    // Migração da versão 4 para 5: adicionar customer_name em sales
+    if (oldVersion < 5) {
+      try {
+        await db.execute('ALTER TABLE sales ADD COLUMN customer_name TEXT');
+      } catch (_) {
+        // Coluna já existe; ignorar.
       }
     }
   }
@@ -568,6 +618,7 @@ class DatabaseService {
     final db = await database;
     await db.delete('sync_queue');
     await db.delete('payments');
+    await db.delete('table_payments'); // Tabela de pagamentos de mesa
     await db.delete('sale_items');
     await db.delete('sales');
     await db.delete('table_orders');
@@ -580,6 +631,6 @@ class DatabaseService {
     await db.delete('customers');
     await db.delete('products');
     await db.delete('categories');
-    await db.delete('users');
+    // NÃO limpa 'users' para manter login ativo
   }
 }

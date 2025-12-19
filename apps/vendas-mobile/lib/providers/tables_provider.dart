@@ -773,7 +773,7 @@ class TablesProvider extends ChangeNotifier {
         // 🔧 CORREÇÃO: Verificar ambos formatos (snake_case do banco local e camelCase da API)
         registeredCustomerId = tableCustomer['customer_id'] as String? ??
             tableCustomer['customerId'] as String?;
-        
+
         // 🔴 DEBUG: Log para diagnóstico
         debugPrint('🔍 [VALE VALIDATION] tableCustomerId: $tableCustomerId');
         debugPrint('   tableCustomer keys: ${tableCustomer.keys.toList()}');
@@ -925,12 +925,16 @@ class TablesProvider extends ChangeNotifier {
 
         debugPrint('🔍 tableCustomer encontrado: $tableCustomer');
 
-        customerId = tableCustomer['customer_id'] as String?;
+        // 🔧 CORREÇÃO: Verificar ambos formatos (snake_case do banco local e camelCase da API)
+        customerId = tableCustomer['customer_id'] as String? ??
+            tableCustomer['customerId'] as String?;
         customerName = tableCustomer['customer_name'] as String? ??
             tableCustomer['customerName'] as String?;
 
-        debugPrint('🔍 customer_id: $customerId');
-        debugPrint('🔍 customer_name: $customerName');
+        debugPrint('🔍 customer_id (snake): ${tableCustomer['customer_id']}');
+        debugPrint('🔍 customerId (camel): ${tableCustomer['customerId']}');
+        debugPrint('🔍 customerId FINAL: $customerId');
+        debugPrint('🔍 customerName: $customerName');
       }
 
       debugPrint('═══════════════════════════════════════════════════════');
