@@ -132,7 +132,7 @@ async function main() {
     }
     
     // 5. Também verificar duplicatas por customerId + amount + data próxima (sem saleId)
-    console.log('\n🔍 Analisando possíveis duplicadas sem saleId (mesmo cliente + valor + data próxima)...\n');
+    console.log('\n🔍 Analisando possíveis duplicatas sem saleId (mesmo cliente + valor + data próxima)...\n');
     
     // Agrupar por customerId + amount
     const byCustomerAmount = {};
@@ -149,23 +149,56 @@ async function main() {
         // Ordenar por data
         groupDebts.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         
-        // Verificar se há dívidas criadas muito próximas (menos de 5 minutos de diferença)
+        // Verificar se há dívidas criadas muito próximas (menos de 1 segundo de diferença)
         for (let i = 1; i < groupDebts.length; i++) {
           const prev = new Date(groupDebts[i-1].createdAt);
           const curr = new Date(groupDebts[i].createdAt);
-          const diffMinutes = (curr - prev) / (1000 * 60);
+          const diffSeconds = (curr - prev) / 1000;
           
-          if (diffMinutes < 5) {
+          // Usar 5 segundos como janela (duplicatas são criadas em ~0.3s)
+          if (diffSeconds < 5) {
             const customer = groupDebts[i].customer?.name || groupDebts[i].customerId;
             const amount = groupDebts[i].amount || groupDebts[i].originalAmount;
-            console.log(`❌ Possível duplicata detectada:`);
-            console.log(`   Cliente: ${customer}, Valor: ${amount}`);
-            console.log(`   ✅ Mantendo: ${groupDebts[i-1].id} (${groupDebts[i-1].createdAt})`);
-            console.log(`   🗑️  Remover: ${groupDebts[i].id} (${groupDebts[i].createdAt}) - criada ${diffMinutes.toFixed(1)} min depois`);
+            console.log(`❌ Duplicata detectada (${diffSeconds.toFixed(2)}s de diferença):`);
+            console.log(`   Cliente: ${customer}, Valor: ${amount/100} FCFA`);
+            console.log(`   ✅ Mantendo: ${groupDebts[i-1].debtNumber} (${groupDebts[i-1].createdAt})`);
+            console.log(`   🗑️  Remover: ${groupDebts[i].debtNumber} (${groupDebts[i].createdAt})`);
             console.log('');
             duplicates.push(groupDebts[i]);
             keptCount++;
           }
+        }
+      }
+    }
+    
+    // 6. Também analisar TODAS as dívidas por debtNumber timestamp para encontrar pares
+    console.log('\n🔍 Analisando por timestamp no debtNumber...\n');
+    const allDebts = [...debts];
+    allDebts.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    
+    for (let i = 1; i < allDebts.length; i++) {
+      const prev = allDebts[i-1];
+      const curr = allDebts[i];
+      
+      // Mesmo cliente, mesmo valor, menos de 5 segundos de diferença
+      const sameCustomer = (prev.customerId || prev.customer?.id) === (curr.customerId || curr.customer?.id);
+      const sameAmount = (prev.amount || prev.originalAmount) === (curr.amount || curr.originalAmount);
+      const prevTime = new Date(prev.createdAt);
+      const currTime = new Date(curr.createdAt);
+      const diffSeconds = (currTime - prevTime) / 1000;
+      
+      if (sameCustomer && sameAmount && diffSeconds < 5 && diffSeconds > 0) {
+        // Verificar se já não foi adicionada
+        if (!duplicates.find(d => d.id === curr.id)) {
+          const customer = curr.customer?.name || curr.customerId;
+          const amount = curr.amount || curr.originalAmount;
+          console.log(`❌ Duplicata por timestamp (${diffSeconds.toFixed(2)}s):`);
+          console.log(`   Cliente: ${customer}, Valor: ${amount/100} FCFA`);
+          console.log(`   ✅ Mantendo: ${prev.debtNumber}`);
+          console.log(`   🗑️  Remover: ${curr.debtNumber}`);
+          console.log('');
+          duplicates.push(curr);
+          keptCount++;
         }
       }
     }
