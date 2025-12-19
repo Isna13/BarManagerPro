@@ -770,7 +770,16 @@ class TablesProvider extends ChangeNotifier {
           (c) => c['id'] == tableCustomerId,
           orElse: () => <String, dynamic>{},
         );
-        registeredCustomerId = tableCustomer['customer_id'] as String?;
+        // 🔧 CORREÇÃO: Verificar ambos formatos (snake_case do banco local e camelCase da API)
+        registeredCustomerId = tableCustomer['customer_id'] as String? ??
+            tableCustomer['customerId'] as String?;
+        
+        // 🔴 DEBUG: Log para diagnóstico
+        debugPrint('🔍 [VALE VALIDATION] tableCustomerId: $tableCustomerId');
+        debugPrint('   tableCustomer keys: ${tableCustomer.keys.toList()}');
+        debugPrint('   customer_id: ${tableCustomer['customer_id']}');
+        debugPrint('   customerId: ${tableCustomer['customerId']}');
+        debugPrint('   registeredCustomerId: $registeredCustomerId');
       }
 
       if (normalizedMethod == 'VALE' && registeredCustomerId == null) {

@@ -108,6 +108,52 @@ export class SalesService {
       });
       
       console.log('✅ Venda criada:', result.id);
+
+      // 🔴 CORREÇÃO CRÍTICA: Criar dívida automaticamente para vendas VALE sincronizadas
+      // Esta lógica garante que vendas VALE do Mobile/Desktop gerem dívidas no Railway
+      if (saleData.paymentMethod === 'VALE' && saleData.customerId && result.total > 0) {
+        try {
+          // Verificar se já existe dívida para esta venda (evitar duplicação)
+          const existingDebt = await this.prisma.debt.findFirst({
+            where: { saleId: result.id },
+          });
+
+          if (!existingDebt) {
+            const debt = await this.prisma.debt.create({
+              data: {
+                debtNumber: `DEBT-${Date.now()}`,
+                customer: { connect: { id: saleData.customerId } },
+                sale: { connect: { id: result.id } },
+                branch: { connect: { id: saleData.branchId } },
+                createdByUser: { connect: { id: userId } },
+                originalAmount: result.total,
+                amount: result.total,
+                paidAmount: 0,
+                balance: result.total,
+                status: 'pending',
+              },
+            });
+            console.log(`✅ Dívida criada automaticamente: ${debt.id} para venda VALE ${result.id}`);
+
+            // Atualizar dívida total do cliente
+            await this.prisma.customer.update({
+              where: { id: saleData.customerId },
+              data: {
+                currentDebt: {
+                  increment: result.total,
+                },
+              },
+            });
+            console.log(`   ✅ currentDebt do cliente atualizado (+${result.total})`);
+          } else {
+            console.log(`   ⚠️ Dívida já existe para venda ${result.id}: ${existingDebt.id}`);
+          }
+        } catch (debtError: any) {
+          console.error(`   ❌ Erro ao criar dívida para venda VALE: ${debtError.message}`);
+          // Não falhar a venda por erro na dívida, apenas logar
+        }
+      }
+
       return result;
     } catch (error: any) {
       console.error('❌ Erro ao criar venda:', error.message);
