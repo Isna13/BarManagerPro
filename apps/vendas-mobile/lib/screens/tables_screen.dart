@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/products_provider.dart';
 import '../providers/tables_provider.dart';
 import '../providers/customers_provider.dart';
+import '../providers/cash_box_provider.dart';
 
 class TablesScreen extends StatefulWidget {
   const TablesScreen({super.key});
@@ -256,18 +257,16 @@ class _TablesScreenState extends State<TablesScreen> {
     if (!mounted) return;
 
     if (success) {
-      // Recarregar mesas
-      await tables.loadTables(branchId: auth.branchId);
-
-      // Abrir detalhes da sessão
-      final updatedTable = tables.tables.firstWhere(
-        (t) => t['id'] == table['id'],
-        orElse: () => table,
-      );
-      final session =
-          updatedTable['current_session'] ?? updatedTable['currentSession'];
+      // CORREÇÃO: Usar a sessão já criada pelo openTable() em vez de recarregar
+      // Isso evita sobrescrever o estado local com dados incompletos do banco
+      final session = tables.currentSession;
       if (session != null) {
-        _showTableDetails(updatedTable, session, tables);
+        // Atualizar a mesa local com a sessão (já feito pelo openTable, mas garantir)
+        final updatedTable = Map<String, dynamic>.from(table);
+        updatedTable['status'] = 'occupied';
+        updatedTable['current_session'] = session;
+        // skipLoadSession: true porque acabamos de criar a sessão
+        _showTableDetails(updatedTable, session, tables, skipLoadSession: true);
       }
     } else if (tables.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -280,9 +279,15 @@ class _TablesScreenState extends State<TablesScreen> {
   }
 
   void _showTableDetails(Map<String, dynamic> table,
-      Map<String, dynamic> session, TablesProvider tables) {
+      Map<String, dynamic> session, TablesProvider tables,
+      {bool skipLoadSession = false}) {
     final sessionId = session['id'];
-    tables.loadSession(sessionId);
+
+    // CORREÇÃO: Só carrega do banco se necessário (sessão existente que não acabou de ser criada)
+    // Isso evita sobrescrever clientes/pedidos recém-adicionados offline
+    if (!skipLoadSession) {
+      tables.loadSession(sessionId);
+    }
 
     showModalBottomSheet(
       context: context,
@@ -931,24 +936,22 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       String customerId, Map<String, dynamic> product, TablesProvider tables,
       {bool isMuntu = false}) async {
     final auth = context.read<AuthProvider>();
+    final productsProvider = context.read<ProductsProvider>();
     final session = tables.currentSession;
 
     if (session == null) return;
 
-    final priceField = isMuntu ? 'price_muntu' : 'price_unit';
-    final price = product[priceField] ??
-        product['priceMuntu'] ??
-        product['priceUnit'] ??
-        product['price_unit'] ??
-        0;
+    final unitPrice = product['price_unit'] ?? product['priceUnit'] ?? 0;
+    final muntuQty = product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
+    final qtyUnits = isMuntu ? (muntuQty > 0 ? muntuQty : 1) : 1;
 
     final success = await tables.addOrder(
       sessionId: session['id'],
       tableCustomerId: customerId,
       productId: product['id'],
       productName: product['name'] ?? '',
-      quantity: 1,
-      unitPrice: price,
+      quantity: qtyUnits,
+      unitPrice: unitPrice,
       isMuntu: isMuntu,
       orderedBy: auth.userId ?? '',
     );
@@ -956,6 +959,13 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     if (!mounted) return;
 
     if (success) {
+      // ===== ATUALIZAR ESTOQUE NA UI (ProductsProvider) =====
+      // O TablesProvider já decrementou no banco local E já fez markForSync
+      // Aqui só atualizamos a memória para refletir na UI, sem duplicar sync
+      await productsProvider.decrementStock(product['id'], qtyUnits,
+          syncToServer: false);
+      // =======================================================
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -997,11 +1007,9 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
               runSpacing: 8,
               children: [
                 _paymentButton(ctx, 'cash', 'Dinheiro', Icons.money),
-                _paymentButton(ctx, 'card', 'Cartão', Icons.credit_card),
                 _paymentButton(
-                    ctx, 'mobile_money', 'Mobile Money', Icons.phone_android),
-                _paymentButton(
-                    ctx, 'orange', 'Orange Money', Icons.phone_android),
+                    ctx, 'orange_money', 'Orange Money', Icons.phone_android),
+                _paymentButton(ctx, 'teletaku', 'TeleTaku', Icons.phone_iphone),
                 _paymentButton(
                     ctx, 'vale', 'Vale (Crédito)', Icons.credit_score),
               ],
@@ -1020,14 +1028,14 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     if (method == null) return;
 
     // Validação para Vale (crédito)
+    String? registeredCustomerId;
     if (method == 'vale') {
       // Buscar dados do cliente para verificar se é cadastrado
       final customer = tables.currentCustomers.firstWhere(
         (c) => c['id'] == customerId,
         orElse: () => {},
       );
-      final registeredCustomerId =
-          customer['customer_id'] ?? customer['customerId'];
+      registeredCustomerId = customer['customer_id'] ?? customer['customerId'];
 
       if (registeredCustomerId == null) {
         if (!mounted) return;
@@ -1059,6 +1067,8 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     }
 
     final auth = context.read<AuthProvider>();
+    final cashBox = context.read<CashBoxProvider>();
+    final customersProvider = context.read<CustomersProvider>();
     final session = tables.currentSession;
 
     if (session == null) return;
@@ -1075,6 +1085,21 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     if (!mounted) return;
 
     if (success) {
+      // ===== ATUALIZAR TOTAIS DO CAIXA =====
+      if (method == 'cash') {
+        await cashBox.updateCashBoxTotals(cashAmount: amount);
+      } else if (method == 'orange_money' || method == 'teletaku') {
+        await cashBox.updateCashBoxTotals(mobileMoneyAmount: amount);
+      } else if (method == 'vale') {
+        await cashBox.updateCashBoxTotals(debtAmount: amount);
+        // ✅ NOTA: Dívida agora é criada automaticamente no TablesProvider.processPayment()
+        // Não precisa mais chamar updateCustomerDebt() aqui
+      }
+
+      // ===== INCREMENTAR CONTADOR DE VENDAS =====
+      cashBox.incrementSalesCount();
+      // ==========================================
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Pagamento realizado!'),
@@ -1385,11 +1410,16 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     final session = tables.currentSession;
     if (session == null) return;
 
+    if (!mounted) return;
+
+    final auth = context.read<AuthProvider>();
+
     final totalAmount = session['total_amount'] ?? session['totalAmount'] ?? 0;
     final paidAmount = session['paid_amount'] ?? session['paidAmount'] ?? 0;
     final pending = totalAmount - paidAmount;
 
     if (pending > 0) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1400,6 +1430,8 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       );
       return;
     }
+
+    if (!mounted) return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -1421,7 +1453,7 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
 
     if (confirm != true) return;
 
-    final auth = context.read<AuthProvider>();
+    if (!mounted) return;
     final success = await tables.closeTable(
       sessionId: session['id'],
       closedBy: auth.userId ?? '',
@@ -1895,6 +1927,17 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     final session = tables.currentSession;
     if (session == null) return;
 
+    final auth = context.read<AuthProvider>();
+    if ((auth.userId ?? '').isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sem permissão: usuário não autenticado'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final customers = tables.currentCustomers;
     if (customers.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1955,7 +1998,7 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                           DropdownButton<String>(
                             isExpanded: true,
                             value: distributions[cId],
-                            hint: const Text('Selecione a mesa'),
+                            hint: const Text('Manter nesta mesa'),
                             items:
                                 otherTables.map<DropdownMenuItem<String>>((t) {
                               return DropdownMenuItem<String>(
@@ -1981,7 +2024,7 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: distributions.values.every((v) => v != null)
+              onPressed: distributions.values.any((v) => v != null)
                   ? () {
                       // Agrupar por tableId
                       final grouped = <String, List<String>>{};
@@ -2006,7 +2049,6 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
 
     if (result == null || result.isEmpty) return;
 
-    final auth = context.read<AuthProvider>();
     final success = await tables.splitTable(
       sessionId: session['id'],
       distributions: result,
@@ -2191,178 +2233,198 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
       minChildSize: 0.5,
       maxChildSize: 0.95,
       expand: false,
-      builder: (context, scrollController) => Column(
-        children: [
-          // Handle
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+      builder: (context, scrollController) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-          // Título
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Adicionar Cliente',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-
-          // Toggle entre buscar e adicionar manual
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: SafeArea(
+            top: false,
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.only(bottom: 16),
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() => _showManualInput = false),
-                    icon: const Icon(Icons.search),
-                    label: const Text('Buscar Cadastrado'),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: !_showManualInput
-                          ? Theme.of(context).primaryColor.withOpacity(0.1)
-                          : null,
+                // Handle
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() => _showManualInput = true),
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Digitar Nome'),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: _showManualInput
-                          ? Theme.of(context).primaryColor.withOpacity(0.1)
-                          : null,
-                    ),
+
+                // Título
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Adicionar Cliente',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
                   ),
                 ),
+
+                // Toggle entre buscar e adicionar manual
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              setState(() => _showManualInput = false),
+                          icon: const Icon(Icons.search),
+                          label: const Text('Buscar Cadastrado'),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: !_showManualInput
+                                ? Theme.of(context)
+                                    .primaryColor
+                                    .withOpacity(0.1)
+                                : null,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              setState(() => _showManualInput = true),
+                          icon: const Icon(Icons.person_add),
+                          label: const Text('Digitar Nome'),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: _showManualInput
+                                ? Theme.of(context)
+                                    .primaryColor
+                                    .withOpacity(0.1)
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                if (_showManualInput) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _manualNameController,
+                          autofocus: true,
+                          scrollPadding:
+                              EdgeInsets.only(bottom: bottomInset + 120),
+                          decoration: const InputDecoration(
+                            labelText: 'Nome do Cliente',
+                            prefixIcon: Icon(Icons.person),
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (value) {
+                            if (value.isNotEmpty) {
+                              widget.onAddManual(value);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_manualNameController.text.isNotEmpty) {
+                                widget.onAddManual(_manualNameController.text);
+                              }
+                            },
+                            icon: const Icon(Icons.check),
+                            label: const Text('Adicionar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: _searchController,
+                      scrollPadding: EdgeInsets.only(bottom: bottomInset + 120),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por nome ou telefone...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _searchQuery = value),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_filteredCustomers.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.people_outline,
+                                size: 48, color: Colors.grey[400]),
+                            const SizedBox(height: 8),
+                            Text(
+                              _searchQuery.isEmpty
+                                  ? 'Nenhum cliente cadastrado'
+                                  : 'Nenhum cliente encontrado',
+                              style: TextStyle(color: Colors.grey[600]),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  setState(() => _showManualInput = true),
+                              icon: const Icon(Icons.person_add),
+                              label: const Text('Adicionar manualmente'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ..._filteredCustomers.map((customer) {
+                      final name = customer['name'] ??
+                          customer['fullName'] ??
+                          'Sem nome';
+                      final phone = customer['phone'] ?? '';
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.blue.shade100,
+                          child: Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                        title: Text(name),
+                        subtitle: phone.isNotEmpty ? Text(phone) : null,
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => widget.onSelectRegistered(customer),
+                      );
+                    }),
+                ],
               ],
             ),
           ),
-
-          const SizedBox(height: 12),
-
-          if (_showManualInput) ...[
-            // Input manual
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _manualNameController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Nome do Cliente',
-                      prefixIcon: Icon(Icons.person),
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: (value) {
-                      if (value.isNotEmpty) {
-                        widget.onAddManual(value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        if (_manualNameController.text.isNotEmpty) {
-                          widget.onAddManual(_manualNameController.text);
-                        }
-                      },
-                      icon: const Icon(Icons.check),
-                      label: const Text('Adicionar'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            // Busca de clientes cadastrados
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Buscar por nome ou telefone...',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                ),
-                onChanged: (value) => setState(() => _searchQuery = value),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Lista de clientes
-            Expanded(
-              child: _filteredCustomers.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.people_outline,
-                              size: 48, color: Colors.grey[400]),
-                          const SizedBox(height: 8),
-                          Text(
-                            _searchQuery.isEmpty
-                                ? 'Nenhum cliente cadastrado'
-                                : 'Nenhum cliente encontrado',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                          const SizedBox(height: 16),
-                          TextButton.icon(
-                            onPressed: () =>
-                                setState(() => _showManualInput = true),
-                            icon: const Icon(Icons.person_add),
-                            label: const Text('Adicionar manualmente'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      controller: scrollController,
-                      itemCount: _filteredCustomers.length,
-                      itemBuilder: (context, index) {
-                        final customer = _filteredCustomers[index];
-                        final name = customer['name'] ??
-                            customer['fullName'] ??
-                            'Sem nome';
-                        final phone = customer['phone'] ?? '';
-
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.blue.shade100,
-                            child: Text(
-                              name.isNotEmpty ? name[0].toUpperCase() : '?',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
-                              ),
-                            ),
-                          ),
-                          title: Text(name),
-                          subtitle: phone.isNotEmpty ? Text(phone) : null,
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => widget.onSelectRegistered(customer),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -2408,12 +2470,13 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
   }
 
   void _addToCart(Map<String, dynamic> product, bool isMuntu) {
-    final priceField = isMuntu ? 'price_muntu' : 'price_unit';
-    final price = product[priceField] ??
-        product['priceMuntu'] ??
-        product['priceUnit'] ??
-        product['price_unit'] ??
-        0;
+    final unitPrice = product['price_unit'] ?? product['priceUnit'] ?? 0;
+    final muntuPrice = product['muntu_price'] ?? product['muntuPrice'] ?? 0;
+    final muntuQty = product['muntu_quantity'] ?? product['muntuQuantity'] ?? 0;
+
+    final displayPrice = isMuntu ? muntuPrice : unitPrice;
+    final fallbackUnitPrice = unitPrice;
+    final qtyUnitsPerAdd = isMuntu ? (muntuQty > 0 ? muntuQty : 1) : 1;
 
     // Verificar se já existe no carrinho
     final existingIndex = _cart.indexWhere((item) =>
@@ -2431,9 +2494,15 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
           'productId': product['id'],
           'productName': product['name'] ?? '',
           'quantity': 1,
-          'unitPrice': price,
-          'total': price,
+          // unitPrice aqui é o preço exibido/aplicado no tipo selecionado
+          'unitPrice': displayPrice,
+          'total': displayPrice,
           'isMuntu': isMuntu,
+          // Para manter consistência com backend/electron, armazenamos também:
+          // - fallbackUnitPrice: preço unitário real do produto
+          // - qtyUnitsPerItem: para Muntu, quantos units representam 1 Muntu
+          'fallbackUnitPrice': fallbackUnitPrice,
+          'qtyUnitsPerItem': qtyUnitsPerAdd,
         });
       });
     }
@@ -2455,23 +2524,51 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
     if (_cart.isEmpty) return;
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
+    final productsProvider =
+        Provider.of<ProductsProvider>(context, listen: false);
     final session = widget.tables.currentSession;
     if (session == null) return;
 
     bool allSuccess = true;
+    final ordersToDecrement = <Map<String, dynamic>>[];
+
     for (final item in _cart) {
+      final isMuntu = item['isMuntu'] == true;
+      final qty = (item['quantity'] ?? 1) as int;
+      final qtyUnitsPerItem = (item['qtyUnitsPerItem'] ?? 1) as int;
+      final qtyUnits = isMuntu ? (qty * qtyUnitsPerItem) : qty;
+      final fallbackUnitPrice =
+          (item['fallbackUnitPrice'] ?? item['unitPrice']) as int;
+
       final success = await widget.tables.addOrder(
         sessionId: session['id'],
         tableCustomerId: widget.customerId,
         productId: item['productId'],
         productName: item['productName'],
-        quantity: item['quantity'],
-        unitPrice: item['unitPrice'],
-        isMuntu: item['isMuntu'],
+        quantity: qtyUnits,
+        unitPrice: fallbackUnitPrice,
+        isMuntu: isMuntu,
         orderedBy: auth.userId ?? '',
       );
-      if (!success) allSuccess = false;
+      if (!success) {
+        allSuccess = false;
+      } else {
+        // Guardar para atualizar estoque na UI
+        ordersToDecrement.add({
+          'productId': item['productId'],
+          'quantity': qtyUnits,
+        });
+      }
     }
+
+    // ===== ATUALIZAR ESTOQUE NA UI (ProductsProvider) =====
+    // TablesProvider já fez markForSync, só atualizamos memória
+    for (final order in ordersToDecrement) {
+      await productsProvider.decrementStock(
+          order['productId'], order['quantity'],
+          syncToServer: false);
+    }
+    // =======================================================
 
     if (!mounted) return;
 
@@ -2506,190 +2603,198 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
       minChildSize: 0.5,
       maxChildSize: 0.95,
       expand: false,
-      builder: (context, scrollController) => Column(
-        children: [
-          // Handle
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
+      builder: (context, scrollController) => AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
 
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Pedido - ${widget.customerName}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (_cart.isNotEmpty)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
                     child: Text(
-                      '${_cart.length} itens',
+                      'Pedido - ${widget.customerName}',
                       style: const TextStyle(
-                        color: Colors.white,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-              ],
-            ),
-          ),
-
-          // Busca
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Buscar produtos...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              onChanged: (value) => setState(() => _searchQuery = value),
-            ),
-          ),
-
-          // Lista de produtos
-          Expanded(
-            child: GridView.builder(
-              controller: scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.75,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemCount: _filteredProducts.length,
-              itemBuilder: (context, index) {
-                final product = _filteredProducts[index];
-                return _buildProductCard(product);
-              },
-            ),
-          ),
-
-          // Carrinho
-          if (_cart.isNotEmpty) ...[
-            const Divider(height: 1),
-            Container(
-              constraints: const BoxConstraints(maxHeight: 150),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _cart.length,
-                itemBuilder: (context, index) {
-                  final item = _cart[index];
-                  return ListTile(
-                    dense: true,
-                    leading: CircleAvatar(
-                      radius: 14,
-                      backgroundColor: Colors.blue.shade100,
+                  if (_cart.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                       child: Text(
-                        item['quantity'].toString(),
+                        '${_cart.length} itens',
                         style: const TextStyle(
-                          fontSize: 12,
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue,
                         ),
                       ),
                     ),
-                    title: Text(
-                      '${item['productName']}${item['isMuntu'] ? ' (Muntu)' : ''}',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    subtitle: Text(
-                      CurrencyHelper.format(item['unitPrice']),
-                      style: const TextStyle(fontSize: 12, color: Colors.green),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          CurrencyHelper.format(item['total']),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle,
-                              color: Colors.red, size: 20),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () => _removeFromCart(index),
-                        ),
-                      ],
-                    ),
-                  );
+                ],
+              ),
+            ),
+
+            // Busca
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Buscar produtos...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              ),
+            ),
+
+            // Lista de produtos
+            Expanded(
+              child: GridView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: _filteredProducts.length,
+                itemBuilder: (context, index) {
+                  final product = _filteredProducts[index];
+                  return _buildProductCard(product);
                 },
               ),
             ),
-          ],
 
-          // Footer com total e botão confirmar
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Total', style: TextStyle(fontSize: 12)),
-                      Text(
-                        CurrencyHelper.format(_cartTotal),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
+            // Carrinho
+            if (_cart.isNotEmpty) ...[
+              const Divider(height: 1),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _cart.length,
+                  itemBuilder: (context, index) {
+                    final item = _cart[index];
+                    return ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: Colors.blue.shade100,
+                        child: Text(
+                          item['quantity'].toString(),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                      title: Text(
+                        '${item['productName']}${item['isMuntu'] ? ' (Muntu)' : ''}',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        CurrencyHelper.format(item['unitPrice']),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.green),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            CurrencyHelper.format(item['total']),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle,
+                                color: Colors.red, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _removeFromCart(index),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-                ElevatedButton.icon(
-                  onPressed: _cart.isNotEmpty ? _confirmOrders : null,
-                  icon: const Icon(Icons.check),
-                  label: const Text('Confirmar Pedido'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
+              ),
+            ],
+
+            // Footer com total e botão confirmar
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Total', style: TextStyle(fontSize: 12)),
+                        Text(
+                          CurrencyHelper.format(_cartTotal),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _cart.isNotEmpty ? _confirmOrders : null,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Confirmar Pedido'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2698,8 +2803,10 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
     final productId = product['id'];
     final name = product['name'] ?? '';
     final priceUnit = product['price_unit'] ?? product['priceUnit'] ?? 0;
-    final priceMuntu = product['price_muntu'] ?? product['priceMuntu'];
-    final hasMuntu = priceMuntu != null && priceMuntu > 0;
+    final priceMuntu = product['muntu_price'] ?? product['muntuPrice'];
+    final isMuntuEligible =
+        product['is_muntu_eligible'] == 1 || product['isMuntuEligible'] == true;
+    final hasMuntu = isMuntuEligible && priceMuntu != null && priceMuntu > 0;
     final stock = widget.products.getProductStock(productId);
     final isAvailable = stock > 0;
 
@@ -2759,7 +2866,7 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
                     minimumSize: const Size(0, 30),
                   ),
                   child: Text(
-                    CurrencyHelper.format(priceUnit),
+                    'UNITÁRIO ${CurrencyHelper.format(priceUnit)}',
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.bold),
                   ),
@@ -2780,7 +2887,7 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
                       minimumSize: const Size(0, 30),
                     ),
                     child: Text(
-                      'Muntu ${CurrencyHelper.format(priceMuntu)}',
+                      'MUNTU ${CurrencyHelper.format(priceMuntu)}',
                       style: const TextStyle(
                           fontSize: 10, fontWeight: FontWeight.bold),
                     ),

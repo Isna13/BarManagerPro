@@ -928,28 +928,34 @@ export class SyncManager {
       console.log('📅 Última sincronização:', lastSyncDate || 'Nunca sincronizado');
       
       // 2. Pull de cada entidade importante
+      // Algumas entidades precisam de sync completo (não incremental)
+      // CORREÇÃO: customers e debts precisam de fullSync para garantir que todas as dívidas
+      // e seus clientes associados sejam sincronizados, mesmo que sejam registros antigos
       const entities = [
         { name: 'branches', endpoint: '/branches' },
         { name: 'users', endpoint: '/users' },
         { name: 'categories', endpoint: '/categories' },
         { name: 'products', endpoint: '/products' },
-        { name: 'customers', endpoint: '/customers' },
+        { name: 'customers', endpoint: '/customers', fullSync: true }, // Clientes sempre sync completo (necessário para debts)
         { name: 'suppliers', endpoint: '/suppliers' },
         { name: 'inventory', endpoint: '/inventory' },
-        { name: 'debts', endpoint: '/debts' },
+        { name: 'debts', endpoint: '/debts', fullSync: true }, // Dívidas sempre sync completo
         { name: 'purchases', endpoint: '/purchases' },
         { name: 'sales', endpoint: '/sales' },
         { name: 'tables', endpoint: '/tables' },
         { name: 'table_sessions', endpoint: '/tables/sessions' },
       ];
       
+      console.log('🔍 DEBUG: Entidades para sincronizar:', entities.map(e => e.name).join(', '));
+      
       for (const entity of entities) {
         try {
           console.log(`📥 Sincronizando ${entity.name}...`);
           
           // Construir URL com parâmetro de data se houver última sincronização
+          // Entidades com fullSync: true sempre buscam todos os registros
           let url = entity.endpoint;
-          if (lastSyncDate) {
+          if (lastSyncDate && !entity.fullSync) {
             url += `?updatedAfter=${lastSyncDate.toISOString()}`;
           }
           
@@ -980,6 +986,48 @@ export class SyncManager {
       
     } catch (error: any) {
       console.error('❌ Erro geral no pull:', error?.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Sincroniza apenas dívidas do servidor para o desktop
+   * Usado quando a aba Dívidas é aberta para garantir dados atualizados
+   */
+  async syncDebtsFromServer() {
+    if (!this.isOnline) {
+      console.log('📴 Offline - usando dívidas locais');
+      return;
+    }
+
+    try {
+      console.log('📥 Sincronizando dívidas do servidor...');
+      
+      // 1. Primeiro sincronizar clientes (necessário para dívidas)
+      try {
+        const customersResponse = await this.apiClient.get('/customers', { timeout: 15000 });
+        const customers = Array.isArray(customersResponse.data) ? customersResponse.data : customersResponse.data?.data || [];
+        if (customers.length > 0) {
+          await this.mergeEntityData('customers', customers);
+          console.log(`✅ Clientes: ${customers.length} sincronizados`);
+        }
+      } catch (custError: any) {
+        console.warn('⚠️ Erro ao sincronizar clientes:', custError?.message);
+      }
+      
+      // 2. Sincronizar dívidas
+      const debtsResponse = await this.apiClient.get('/debts', { timeout: 15000 });
+      const debts = Array.isArray(debtsResponse.data) ? debtsResponse.data : debtsResponse.data?.data || [];
+      
+      if (debts.length > 0) {
+        await this.mergeEntityData('debts', debts);
+        console.log(`✅ Dívidas: ${debts.length} sincronizadas`);
+      } else {
+        console.log('ℹ️ Nenhuma dívida no servidor');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Erro ao sincronizar dívidas:', error?.message);
       throw error;
     }
   }
@@ -1243,12 +1291,17 @@ export class SyncManager {
       },
       
       customers: (items) => {
+        // LOGS DE RASTREABILIDADE para sincronização de clientes
+        console.log(`\n👥 SYNC CUSTOMERS: Processando ${items.length} clientes do servidor`);
+        let created = 0, updated = 0, skippedNoName = 0, skippedPending = 0;
+        
         for (const item of items) {
           try {
             const existing = this.dbManager.getCustomerById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
             if (this.hasLocalPendingChanges('customers', item.id, existing, item)) {
+              skippedPending++;
               continue;
             }
             
@@ -1258,6 +1311,7 @@ export class SyncManager {
             
             if (!fullName) {
               console.warn(`⚠️ Cliente ${item.id} sem nome válido - pulando`);
+              skippedNoName++;
               continue;
             }
             
@@ -1272,8 +1326,6 @@ export class SyncManager {
               const loyaltyPoints = item.loyaltyPoints ?? item.loyalty_points ?? existingAny.loyalty_points ?? 0;
               const currentDebt = item.currentDebt ?? item.current_debt ?? existingAny.current_debt ?? 0;
               
-              console.log(`📊 Cliente ${fullName}: pontos=${loyaltyPoints}, dívida=${currentDebt}`);
-              
               this.dbManager.updateCustomer(item.id, {
                 name: fullName,
                 email: item.email,
@@ -1287,6 +1339,7 @@ export class SyncManager {
                 synced: 1,
                 last_sync: new Date().toISOString(),
               }, true); // skipSyncQueue = true para evitar loop
+              updated++;
             } else {
               this.dbManager.createCustomer({
                 id: item.id,
@@ -1302,11 +1355,20 @@ export class SyncManager {
                 synced: 1,
                 last_sync: new Date().toISOString(),
               }, true); // skipSyncQueue = true para evitar loop
+              created++;
+              console.log(`   ➕ Cliente criado: ${fullName} (${item.code || 'sem código'})`);
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar customer ${item.id}:`, e?.message);
           }
         }
+        
+        // RESUMO DE SINCRONIZAÇÃO DE CLIENTES
+        console.log(`📊 SYNC CUSTOMERS RESUMO:`);
+        console.log(`   ✅ Criados: ${created}`);
+        console.log(`   📝 Atualizados: ${updated}`);
+        console.log(`   ⚠️ Pulados (sem nome): ${skippedNoName}`);
+        console.log(`   ⏸️ Pulados (alterações locais): ${skippedPending}`);
       },
       
       suppliers: (items) => {
@@ -1486,12 +1548,17 @@ export class SyncManager {
       
       debts: (items) => {
         // Débitos/Vales - sincronizar do servidor para o desktop
+        // LOGS DE RASTREABILIDADE para diagnóstico de sincronização
+        console.log(`\n📋 SYNC DEBTS: Processando ${items.length} dívidas do servidor`);
+        let created = 0, updated = 0, skippedNoCustomer = 0, skippedPending = 0;
+        
         for (const item of items) {
           try {
             const existing = this.dbManager.getDebtById ? this.dbManager.getDebtById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
             if (this.hasLocalPendingChanges('debts', item.id, existing, item)) {
+              skippedPending++;
               continue;
             }
             
@@ -1526,15 +1593,16 @@ export class SyncManager {
                 item.notes || null,
                 item.id
               );
-              console.log(`📝 Débito atualizado: ${item.id} (${item.status}, saldo: ${balance})`);
+              updated++;
             } else {
               // Criar novo débito
               // Verificar se o cliente existe localmente
               const customerId = item.customerId || item.customer_id;
-              const customerExists = this.dbManager.prepare(`SELECT id FROM customers WHERE id = ?`).get(customerId);
+              const customerExists = this.dbManager.prepare(`SELECT id, full_name FROM customers WHERE id = ?`).get(customerId) as { id: string; full_name: string } | undefined;
               
               if (!customerExists) {
-                console.warn(`⚠️ Cliente ${customerId} não existe localmente - débito ${item.id} será pulado`);
+                console.warn(`   ⚠️ PULANDO débito ${item.id}: Cliente ${customerId} não existe localmente`);
+                skippedNoCustomer++;
                 continue;
               }
               
@@ -1555,7 +1623,8 @@ export class SyncManager {
                 item.notes || null,
                 item.createdBy || item.created_by || null
               );
-              console.log(`➕ Débito criado: ${item.id} (${item.status})`);
+              created++;
+              console.log(`   ➕ Débito criado: ${item.id} | Cliente: ${customerExists.full_name} | Status: ${item.status} | Saldo: ${balance/100} FCFA`);
             }
             
             // Sincronizar pagamentos do débito se existirem
@@ -1586,7 +1655,6 @@ export class SyncManager {
                       payment.notes || null,
                       payment.createdAt || new Date().toISOString()
                     );
-                    console.log(`  💰 Pagamento sincronizado: ${payment.id} (${normalizedMethod})`);
                   }
                 } catch (paymentError: any) {
                   console.error(`  ❌ Erro ao sincronizar pagamento ${payment.id}:`, paymentError?.message);
@@ -1596,6 +1664,16 @@ export class SyncManager {
           } catch (e: any) {
             console.error(`Erro ao mesclar debt ${item.id}:`, e?.message);
           }
+        }
+        
+        // RESUMO DE SINCRONIZAÇÃO DE DÍVIDAS
+        console.log(`📊 SYNC DEBTS RESUMO:`);
+        console.log(`   ✅ Criados: ${created}`);
+        console.log(`   📝 Atualizados: ${updated}`);
+        console.log(`   ⚠️ Pulados (sem cliente local): ${skippedNoCustomer}`);
+        console.log(`   ⏸️ Pulados (alterações locais): ${skippedPending}`);
+        if (skippedNoCustomer > 0) {
+          console.log(`   ❗ ATENÇÃO: ${skippedNoCustomer} dívidas não foram sincronizadas porque os clientes não existem localmente!`);
         }
       },
       

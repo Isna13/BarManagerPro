@@ -246,12 +246,13 @@ class SyncService {
 
           // Processar pagamento - TODOS os métodos precisam de Payment para sincronização correta
           final paymentMethod = data['payment_method'];
-          
+
           // 🔴 LOG: Debug do método de pagamento
-          debugPrint('🔴 [SYNC][PAYMENT] Verificando pagamento para venda ${data['id']}');
+          debugPrint(
+              '🔴 [SYNC][PAYMENT] Verificando pagamento para venda ${data['id']}');
           debugPrint('   payment_method: $paymentMethod');
           debugPrint('   payment_status: ${data['payment_status']}');
-          
+
           // Criar payment para TODOS os métodos quando a venda está paga
           final shouldCreatePayment = paymentMethod != null &&
               paymentMethod.toString().isNotEmpty &&
@@ -260,13 +261,15 @@ class SyncService {
           if (shouldCreatePayment) {
             try {
               final normalizedMethod = _mapPaymentMethod(paymentMethod);
-              debugPrint('🔴 [SYNC][PAYMENT] Criando payment: method=$normalizedMethod, amount=${data['total']}');
-              
+              debugPrint(
+                  '🔴 [SYNC][PAYMENT] Criando payment: method=$normalizedMethod, amount=${data['total']}');
+
               await _api.addSalePayment(data['id'], {
                 'method': normalizedMethod,
                 'amount': data['total'] ?? 0,
               });
-              debugPrint('✅ Pagamento sincronizado: $paymentMethod -> $normalizedMethod');
+              debugPrint(
+                  '✅ Pagamento sincronizado: $paymentMethod -> $normalizedMethod');
             } catch (e) {
               // LOG DETALHADO do erro - NÃO silenciar
               debugPrint('❌❌❌ ERRO ao sincronizar pagamento: $e');
@@ -278,7 +281,8 @@ class SyncService {
               // Mas não bloquear a sincronização - apenas logar
             }
           } else {
-            debugPrint('⚠️ [SYNC][PAYMENT] Não criou payment: paymentMethod=$paymentMethod, status=${data['payment_status']}');
+            debugPrint(
+                '⚠️ [SYNC][PAYMENT] Não criou payment: paymentMethod=$paymentMethod, status=${data['payment_status']}');
           }
 
           // Fechar a venda se está completada
@@ -666,7 +670,7 @@ class SyncService {
     debugPrint('   data[payment_method]: "${data['payment_method']}"');
     debugPrint('   data[paymentMethod]: "${data['paymentMethod']}"');
     debugPrint('═══════════════════════════════════════════════════════\n');
-    
+
     // Obter método de pagamento de forma robusta
     final rawPaymentMethod = data['payment_method'] ?? data['paymentMethod'];
     String? normalizedPaymentMethod;
@@ -679,7 +683,8 @@ class SyncService {
         normalizedPaymentMethod =
             PaymentMethod.normalize(rawPaymentMethod.toString());
         // 🔴 LOG FASE 7: Após normalização
-        debugPrint('🔴 [SYNC][NORMALIZED] $rawPaymentMethod -> $normalizedPaymentMethod');
+        debugPrint(
+            '🔴 [SYNC][NORMALIZED] $rawPaymentMethod -> $normalizedPaymentMethod');
       } catch (e) {
         debugPrint(
             '❌ [SYNC][ERROR] Erro ao normalizar método de pagamento: $rawPaymentMethod - $e');
@@ -707,10 +712,11 @@ class SyncService {
           data['payment_status'] ?? data['paymentStatus'] ?? 'paid',
       'notes': data['notes'],
     };
-    
+
     // 🔴 LOG FASE 8: Payload final que será enviado ao servidor
-    debugPrint('🔴 [SYNC][FINAL_PAYLOAD] paymentMethod no payload: "${payload['paymentMethod']}"');
-    
+    debugPrint(
+        '🔴 [SYNC][FINAL_PAYLOAD] paymentMethod no payload: "${payload['paymentMethod']}"');
+
     return payload;
   }
 

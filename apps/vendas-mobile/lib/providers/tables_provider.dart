@@ -989,6 +989,30 @@ class TablesProvider extends ChangeNotifier {
         action: 'create',
       );
       debugPrint('💾 Venda de mesa criada: $saleId, total: $amount');
+
+      // ═══════════════════════════════════════════════════════════════════
+      // ✅ CORREÇÃO: Criar dívida automaticamente para pagamento VALE
+      // Isso garante que toda venda VALE gera uma dívida associada
+      // ═══════════════════════════════════════════════════════════════════
+      if (normalizedMethod == 'VALE' && customerId != null) {
+        debugPrint('💳 [VALE] Criando dívida para venda $saleId');
+        debugPrint('   Cliente: $customerId ($customerName)');
+        debugPrint('   Valor: $amount');
+
+        try {
+          await _api.createDebt({
+            'customerId': customerId,
+            'amount': amount,
+            'saleId': saleId,
+            'branchId': branchId,
+            'description': 'Vale referente à venda de mesa $saleNumber',
+          });
+          debugPrint('✅ Dívida criada com sucesso para venda $saleId');
+        } catch (e) {
+          debugPrint('❌ Erro ao criar dívida: $e');
+          // Não bloqueia - a venda foi criada, dívida será sincronizada depois
+        }
+      }
       // ===========================================================
 
       _isLoading = false;

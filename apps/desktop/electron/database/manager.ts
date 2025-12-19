@@ -491,6 +491,7 @@ export class DatabaseManager {
         sale_id TEXT,
         branch_id TEXT NOT NULL,
         original_amount INTEGER NOT NULL,
+        amount INTEGER DEFAULT 0,
         paid_amount INTEGER DEFAULT 0,
         balance INTEGER NOT NULL,
         status TEXT DEFAULT 'pending',
@@ -906,6 +907,23 @@ export class DatabaseManager {
     } catch (error) {
       console.error('Erro na migration payment_method:', error);
     }
+
+    // Migration 12: Adicionar coluna amount à tabela debts
+    // CRÍTICO: Necessário para sincronização de dívidas do servidor Railway
+    try {
+      const debtsTableInfo: any[] = this.db.pragma('table_info(debts)') as any[];
+      const hasAmount = debtsTableInfo.some((col: any) => col.name === 'amount');
+      
+      if (!hasAmount) {
+        console.log('Executando migration: adicionando coluna amount em debts...');
+        this.db.exec('ALTER TABLE debts ADD COLUMN amount INTEGER DEFAULT 0');
+        // Atualizar registros existentes: amount = original_amount
+        this.db.exec('UPDATE debts SET amount = original_amount WHERE amount IS NULL OR amount = 0');
+        console.log('✅ Migration amount em debts concluída!');
+      }
+    } catch (error) {
+      console.error('Erro na migration amount em debts:', error);
+    }
   }
 
   // ============================================
@@ -1085,7 +1103,17 @@ export class DatabaseManager {
     
     query += ' ORDER BY s.created_at DESC LIMIT 100';
     
-    return this.db.prepare(query).all(...params);
+    const results = this.db.prepare(query).all(...params);
+    
+    // 🔴 LOG FASE 11: Electron lendo vendas do banco
+    console.log('\\n═══════════════════════════════════════════════════════');
+    console.log('🔴 [ELECTRON][getSales] Vendas carregadas do banco local:');
+    results.slice(0, 5).forEach((sale: any) => {
+      console.log(`   Venda ${sale.sale_number}: payment_method="${sale.payment_method}"`);
+    });
+    console.log('═══════════════════════════════════════════════════════\\n');
+    
+    return results;
   }
 
   getSaleById(id: string) {
