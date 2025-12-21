@@ -902,11 +902,55 @@ class SyncService {
     final orderId = order['id']?.toString();
     if (orderId == null) return;
 
+    final productId = order['productId'] ?? order['product_id'];
+
+    // Determinar o product_name correto
+    String? productName = order['productName'] ?? order['product_name'];
+
+    final existingOrders = await _db.query(
+      'table_orders',
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+
+    // Se não temos product_name do servidor, preservar o do banco local
+    if ((productName == null ||
+            productName.isEmpty ||
+            productName == 'Produto') &&
+        existingOrders.isNotEmpty) {
+      final localProductName = existingOrders.first['product_name']?.toString();
+      if (localProductName != null &&
+          localProductName.isNotEmpty &&
+          localProductName != 'Produto') {
+        productName = localProductName;
+      }
+    }
+
+    // Se ainda não temos um nome válido, buscar da tabela de produtos
+    if ((productName == null ||
+            productName.isEmpty ||
+            productName == 'Produto') &&
+        productId != null) {
+      final products = await _db.query(
+        'products',
+        columns: ['name'],
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+      if (products.isNotEmpty && products.first['name'] != null) {
+        productName = products.first['name'].toString();
+      }
+    }
+
+    // Fallback final
+    productName ??= 'Produto';
+
     final mappedOrder = {
       'id': orderId,
       'session_id': sessionId,
       'table_customer_id': tableCustomerId,
-      'product_id': order['productId'] ?? order['product_id'],
+      'product_id': productId,
+      'product_name': productName,
       'qty_units': order['qtyUnits'] ?? order['qty_units'] ?? 1,
       'is_muntu': (order['isMuntu'] == true || order['is_muntu'] == 1) ? 1 : 0,
       'unit_price': order['unitPrice'] ?? order['unit_price'] ?? 0,
@@ -918,11 +962,18 @@ class SyncService {
       'synced': 1,
     };
 
-    final existingOrders = await _db.query(
-      'table_orders',
-      where: 'id = ?',
-      whereArgs: [orderId],
-    );
+    // Preservar display_qty e muntu_quantity do banco local se existirem
+    if (existingOrders.isNotEmpty) {
+      final localOrder = existingOrders.first;
+      if (mappedOrder['display_qty'] == null &&
+          localOrder['display_qty'] != null) {
+        mappedOrder['display_qty'] = localOrder['display_qty'];
+      }
+      if (mappedOrder['muntu_quantity'] == null &&
+          localOrder['muntu_quantity'] != null) {
+        mappedOrder['muntu_quantity'] = localOrder['muntu_quantity'];
+      }
+    }
 
     if (existingOrders.isEmpty) {
       await _db.insert('table_orders', mappedOrder);

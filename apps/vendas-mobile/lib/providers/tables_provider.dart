@@ -502,7 +502,66 @@ class TablesProvider extends ChangeNotifier {
         for (final customer in _currentCustomers) {
           if (customer['orders'] != null) {
             for (final order in customer['orders']) {
-              _currentOrders.add(Map<String, dynamic>.from(order));
+              final orderMap = Map<String, dynamic>.from(order);
+
+              // Buscar dados do banco local se não existirem na resposta da API
+              if (orderMap['id'] != null) {
+                final localOrders = await _db.query(
+                  'table_orders',
+                  where: 'id = ?',
+                  whereArgs: [orderMap['id']],
+                );
+                if (localOrders.isNotEmpty) {
+                  final localOrder = localOrders.first;
+                  // Preservar display_qty do banco local
+                  if (orderMap['display_qty'] == null) {
+                    orderMap['display_qty'] =
+                        localOrder['display_qty'] ?? orderMap['qty_units'] ?? 1;
+                  }
+                  // CORREÇÃO: Preservar product_name do banco local se não vier da API
+                  final apiProductName =
+                      orderMap['productName'] ?? orderMap['product_name'];
+                  if (apiProductName == null || apiProductName.isEmpty) {
+                    final localProductName = localOrder['product_name'];
+                    if (localProductName != null &&
+                        localProductName.isNotEmpty &&
+                        localProductName != 'Produto') {
+                      orderMap['product_name'] = localProductName;
+                    }
+                  }
+                }
+              }
+
+              // Buscar product_name da tabela de produtos se ainda não existir
+              final currentProductName =
+                  orderMap['productName'] ?? orderMap['product_name'];
+              if ((currentProductName == null ||
+                      currentProductName.isEmpty ||
+                      currentProductName == 'Produto') &&
+                  (orderMap['product_id'] ?? orderMap['productId']) != null) {
+                final productId =
+                    orderMap['product_id'] ?? orderMap['productId'];
+                final products = await _db.query(
+                  'products',
+                  columns: ['name'],
+                  where: 'id = ?',
+                  whereArgs: [productId],
+                );
+                if (products.isNotEmpty && products.first['name'] != null) {
+                  orderMap['product_name'] = products.first['name'];
+                }
+              }
+
+              // Enriquecer com muntu_quantity se não existir
+              if (orderMap['muntu_quantity'] == null &&
+                  orderMap['product_id'] != null) {
+                final pricing = await _getLocalProductPricing(
+                    orderMap['product_id'] ?? orderMap['productId']);
+                if (pricing != null) {
+                  orderMap['muntu_quantity'] = pricing['muntu_quantity'] ?? 3;
+                }
+              }
+              _currentOrders.add(orderMap);
             }
           }
         }
@@ -536,6 +595,27 @@ class TablesProvider extends ChangeNotifier {
             where: 'session_id = ?',
             whereArgs: [sessionId],
           );
+
+          // Converter para Map mutável e enriquecer pedidos
+          for (int i = 0; i < _currentOrders.length; i++) {
+            final order = Map<String, dynamic>.from(_currentOrders[i]);
+
+            // Garantir display_qty está presente
+            if (order['display_qty'] == null) {
+              order['display_qty'] = order['qty_units'] ?? 1;
+            }
+
+            // Enriquecer com muntu_quantity do produto se não existir
+            if (order['muntu_quantity'] == null &&
+                order['product_id'] != null) {
+              final pricing =
+                  await _getLocalProductPricing(order['product_id']);
+              if (pricing != null) {
+                order['muntu_quantity'] = pricing['muntu_quantity'] ?? 3;
+              }
+            }
+            _currentOrders[i] = order;
+          }
         }
       }
     } catch (e) {
@@ -612,6 +692,7 @@ class TablesProvider extends ChangeNotifier {
     required int unitPrice,
     required bool isMuntu,
     required String orderedBy,
+    int? displayQty, // Quantidade do carrinho para exibição
   }) async {
     try {
       final now = DateTime.now().toIso8601String();
@@ -625,6 +706,7 @@ class TablesProvider extends ChangeNotifier {
 
       final localPricing = await _getLocalProductPricing(productId);
       final storedUnitPrice = localPricing?['price_unit'] ?? unitPrice;
+      final storedMuntuQuantity = localPricing?['muntu_quantity'] ?? 3;
 
       Map<String, dynamic> order;
 
@@ -638,8 +720,10 @@ class TablesProvider extends ChangeNotifier {
           orderedBy: orderedBy,
         );
         order = Map<String, dynamic>.from(result);
-        // Garantir que product_name está na ordem
+        // Garantir que product_name, muntu_quantity e display_qty estão na ordem
         order['product_name'] = productName;
+        order['muntu_quantity'] = storedMuntuQuantity;
+        order['display_qty'] = displayQty ?? 1; // Quantidade do carrinho
         await _saveOrderLocally(order);
 
         // Atualizar totais mesmo quando online
@@ -666,7 +750,10 @@ class TablesProvider extends ChangeNotifier {
           'product_id': productId,
           'product_name': productName,
           'qty_units': quantity,
+          'display_qty':
+              displayQty ?? 1, // Quantidade do carrinho para exibição
           'is_muntu': isMuntu ? 1 : 0,
+          'muntu_quantity': storedMuntuQuantity,
           'unit_price': storedUnitPrice,
           'subtotal': total,
           'total': total,
@@ -857,16 +944,49 @@ class TablesProvider extends ChangeNotifier {
           _currentCustomers[customerIndex]['paid_amount'] =
               (_currentCustomers[customerIndex]['paid_amount'] ?? 0) + amount;
 
-          final total = _currentCustomers[customerIndex]['total'] ?? 0;
-          if (_currentCustomers[customerIndex]['paid_amount'] >= total) {
-            _currentCustomers[customerIndex]['payment_status'] = 'paid';
-
-            // Marcar pedidos como pagos
-            for (final order in _currentOrders) {
-              if (order['table_customer_id'] == tableCustomerId) {
-                order['status'] = 'paid';
-              }
+          // ✅ CORREÇÃO: Marcar pedidos PENDENTES como pagos quando o valor é igual ao pendente
+          // Calcular total pendente antes de marcar
+          int pendingAmount = 0;
+          final pendingOrders = <Map<String, dynamic>>[];
+          for (final order in _currentOrders) {
+            final orderCustomerId =
+                order['table_customer_id'] ?? order['tableCustomerId'];
+            final status = order['status'] ?? 'pending';
+            if (orderCustomerId == tableCustomerId &&
+                status != 'paid' &&
+                status != 'cancelled') {
+              pendingAmount += (order['total'] as num? ?? 0).toInt();
+              pendingOrders.add(order);
             }
+          }
+
+          // Se o valor pago cobre os pedidos pendentes, marcar como pagos
+          if (amount >= pendingAmount && pendingOrders.isNotEmpty) {
+            for (final order in pendingOrders) {
+              order['status'] = 'paid';
+              // Atualizar no banco local também
+              await _db.update(
+                'table_orders',
+                {'status': 'paid', 'updated_at': now, 'synced': 0},
+                where: 'id = ?',
+                whereArgs: [order['id']],
+              );
+            }
+            debugPrint('✅ ${pendingOrders.length} pedidos marcados como pagos');
+          }
+
+          // Verificar se TODOS os pedidos estão pagos para atualizar status do cliente
+          final hasAnyPending = _currentOrders.any((o) {
+            final orderCustomerId =
+                o['table_customer_id'] ?? o['tableCustomerId'];
+            final status = o['status'] ?? 'pending';
+            return orderCustomerId == tableCustomerId &&
+                status != 'paid' &&
+                status != 'cancelled';
+          });
+
+          if (!hasAnyPending) {
+            _currentCustomers[customerIndex]['payment_status'] = 'paid';
           }
 
           // Atualizar cliente no banco local
@@ -1009,7 +1129,8 @@ class TablesProvider extends ChangeNotifier {
       // quando a venda é sincronizada. Isso garante idempotência.
       // ═══════════════════════════════════════════════════════════════════
       if (normalizedMethod == 'VALE' && customerId != null) {
-        debugPrint('💳 [VALE] Venda marcada para sync - dívida será criada pelo backend');
+        debugPrint(
+            '💳 [VALE] Venda marcada para sync - dívida será criada pelo backend');
         debugPrint('   Cliente: $customerId ($customerName)');
         debugPrint('   Valor: $amount');
         debugPrint('   SaleId: $saleId');
@@ -1042,6 +1163,44 @@ class TablesProvider extends ChangeNotifier {
           status != 'paid' &&
           status != 'cancelled';
     }).toList();
+  }
+
+  /// Calcular total pendente da sessão atual (soma de todos os pedidos pendentes)
+  int get sessionPendingTotal {
+    int total = 0;
+    for (final order in _currentOrders) {
+      final status = order['status'] ?? 'pending';
+      if (status != 'paid' && status != 'cancelled') {
+        total += (order['total'] as num? ?? 0).toInt();
+      }
+    }
+    return total;
+  }
+
+  /// Calcular total pendente para uma mesa específica (baseado em pedidos)
+  int getPendingTotalForTable(String tableId) {
+    // Buscar sessão ativa da mesa
+    final table = _tables.firstWhere(
+      (t) => t['id'] == tableId,
+      orElse: () => <String, dynamic>{},
+    );
+    final session = table['current_session'] ?? table['currentSession'];
+    if (session == null) return 0;
+
+    final sessionId = session['id'];
+
+    // Somar pedidos pendentes desta sessão
+    int total = 0;
+    for (final order in _currentOrders) {
+      final orderSessionId = order['session_id'] ?? order['sessionId'];
+      final status = order['status'] ?? 'pending';
+      if (orderSessionId == sessionId &&
+          status != 'paid' &&
+          status != 'cancelled') {
+        total += (order['total'] as num? ?? 0).toInt();
+      }
+    }
+    return total;
   }
 
   Future<void> _saveTableLocally(Map<String, dynamic> table) async {
@@ -1099,16 +1258,66 @@ class TablesProvider extends ChangeNotifier {
   }
 
   Future<void> _saveOrderLocally(Map<String, dynamic> order) async {
+    // Determinar o product_name correto
+    String? productName = order['productName'] ?? order['product_name'];
+    final productId = order['productId'] ?? order['product_id'];
+
+    // Se não temos um nome válido, buscar do banco local
+    if (productName == null ||
+        productName.isEmpty ||
+        productName == 'Produto') {
+      // Primeiro, tentar obter do pedido existente no banco
+      if (order['id'] != null) {
+        final existingOrders = await _db.query(
+          'table_orders',
+          columns: ['product_name'],
+          where: 'id = ?',
+          whereArgs: [order['id']],
+        );
+        if (existingOrders.isNotEmpty) {
+          final existingName = existingOrders.first['product_name']?.toString();
+          if (existingName != null &&
+              existingName.isNotEmpty &&
+              existingName != 'Produto') {
+            productName = existingName;
+          }
+        }
+      }
+
+      // Se ainda não temos nome, buscar da tabela de produtos
+      if ((productName == null ||
+              productName.isEmpty ||
+              productName == 'Produto') &&
+          productId != null) {
+        final products = await _db.query(
+          'products',
+          columns: ['name'],
+          where: 'id = ?',
+          whereArgs: [productId],
+        );
+        if (products.isNotEmpty && products.first['name'] != null) {
+          productName = products.first['name'].toString();
+        }
+      }
+    }
+
+    // Fallback final apenas se realmente não encontramos nada
+    productName ??= 'Produto';
+
     final mappedData = <String, dynamic>{
       'id': order['id'],
       'session_id': order['sessionId'] ?? order['session_id'],
       'table_customer_id':
           order['tableCustomerId'] ?? order['table_customer_id'],
-      'product_id': order['productId'] ?? order['product_id'],
-      'product_name':
-          order['productName'] ?? order['product_name'] ?? 'Produto',
+      'product_id': productId,
+      'product_name': productName,
       'qty_units': order['qtyUnits'] ?? order['qty_units'] ?? 1,
+      'display_qty': order['displayQty'] ??
+          order['display_qty'] ??
+          1, // Quantidade do carrinho
       'is_muntu': (order['isMuntu'] ?? order['is_muntu']) == true ? 1 : 0,
+      'muntu_quantity': order['muntuQuantity'] ??
+          order['muntu_quantity'], // Unidades por Muntu
       'unit_price': order['unitPrice'] ?? order['unit_price'] ?? 0,
       'subtotal': order['subtotal'] ?? 0,
       'total': order['total'] ?? 0,
@@ -1226,6 +1435,13 @@ class TablesProvider extends ChangeNotifier {
     required String cancelledBy,
   }) async {
     try {
+      // Buscar o pedido ANTES de qualquer operação para poder atualizar totais
+      final orderIndex = _currentOrders.indexWhere((o) => o['id'] == orderId);
+      Map<String, dynamic>? orderToCancel;
+      if (orderIndex >= 0) {
+        orderToCancel = Map<String, dynamic>.from(_currentOrders[orderIndex]);
+      }
+
       if (_sync.isOnline) {
         await _api.cancelTableOrder(
           orderId: orderId,
@@ -1233,7 +1449,6 @@ class TablesProvider extends ChangeNotifier {
         );
       } else {
         // Atualizar localmente
-        final orderIndex = _currentOrders.indexWhere((o) => o['id'] == orderId);
         if (orderIndex >= 0) {
           final order = _currentOrders[orderIndex];
           order['status'] = 'cancelled';
@@ -1252,23 +1467,25 @@ class TablesProvider extends ChangeNotifier {
             action: 'update',
             data: order,
           );
+        }
+      }
 
-          // Atualizar total do cliente
-          final customerId =
-              order['table_customer_id'] ?? order['tableCustomerId'];
-          final orderTotal = order['total'] ?? 0;
-          final customerIndex =
-              _currentCustomers.indexWhere((c) => c['id'] == customerId);
-          if (customerIndex >= 0) {
-            _currentCustomers[customerIndex]['total'] =
-                (_currentCustomers[customerIndex]['total'] ?? 0) - orderTotal;
-          }
+      // ✅ SEMPRE atualizar totais locais (online e offline) para atualização em tempo real
+      if (orderToCancel != null) {
+        final customerId = orderToCancel['table_customer_id'] ??
+            orderToCancel['tableCustomerId'];
+        final orderTotal = orderToCancel['total'] ?? 0;
+        final customerIndex =
+            _currentCustomers.indexWhere((c) => c['id'] == customerId);
+        if (customerIndex >= 0) {
+          _currentCustomers[customerIndex]['total'] =
+              (_currentCustomers[customerIndex]['total'] ?? 0) - orderTotal;
+        }
 
-          // Atualizar total da sessão
-          if (_currentSession != null) {
-            _currentSession!['total_amount'] =
-                (_currentSession!['total_amount'] ?? 0) - orderTotal;
-          }
+        // Atualizar total da sessão
+        if (_currentSession != null) {
+          _currentSession!['total_amount'] =
+              (_currentSession!['total_amount'] ?? 0) - orderTotal;
         }
       }
 
@@ -1321,6 +1538,10 @@ class TablesProvider extends ChangeNotifier {
     required String toCustomerId,
     required int qtyUnits,
     required String transferredBy,
+    int? displayQty, // Quantidade para exibição (Muntus ou unidades)
+    String? productName, // Nome do produto
+    bool? isMuntu, // Se é Muntu
+    int? muntuQuantity, // Unidades por Muntu
   }) async {
     try {
       if (qtyUnits <= 0) {
@@ -1361,7 +1582,7 @@ class TablesProvider extends ChangeNotifier {
         }
 
         final productId = (order['product_id'] ?? '').toString();
-        final isMuntu = (order['is_muntu'] == 1);
+        final isMuntuOrder = isMuntu ?? (order['is_muntu'] == 1);
         final unitPricePerUnit = _asInt(order['unit_price']);
 
         final pricing = await _getLocalProductPricing(productId);
@@ -1389,7 +1610,7 @@ class TablesProvider extends ChangeNotifier {
             productId: productId,
             qtyUnits: remainingQty,
             fallbackUnitPrice: effectiveUnitPricePerUnit,
-            isMuntu: isMuntu,
+            isMuntu: isMuntuOrder,
           );
 
           await _db.update(
@@ -1411,16 +1632,37 @@ class TablesProvider extends ChangeNotifier {
             productId: productId,
             qtyUnits: qtyUnits,
             fallbackUnitPrice: effectiveUnitPricePerUnit,
-            isMuntu: isMuntu,
+            isMuntu: isMuntuOrder,
           );
+
+          // Garantir que temos o nome do produto
+          String effectiveProductName =
+              productName ?? order['product_name']?.toString() ?? '';
+          if (effectiveProductName.isEmpty ||
+              effectiveProductName == 'Produto') {
+            final products = await _db.query(
+              'products',
+              columns: ['name'],
+              where: 'id = ?',
+              whereArgs: [productId],
+            );
+            if (products.isNotEmpty && products.first['name'] != null) {
+              effectiveProductName = products.first['name'].toString();
+            } else {
+              effectiveProductName = 'Produto'; // Fallback final
+            }
+          }
 
           await _db.insert('table_orders', {
             'id': newOrderId,
             'session_id': sessionId,
             'table_customer_id': toCustomerId,
             'product_id': productId,
+            'product_name': effectiveProductName,
             'qty_units': qtyUnits,
-            'is_muntu': isMuntu ? 1 : 0,
+            'display_qty': displayQty ?? qtyUnits,
+            'is_muntu': isMuntuOrder ? 1 : 0,
+            'muntu_quantity': muntuQuantity ?? order['muntu_quantity'] ?? 3,
             'unit_price': effectiveUnitPricePerUnit,
             'unit_cost': _asInt(order['unit_cost']),
             'subtotal': transferredTotal,
@@ -1432,6 +1674,18 @@ class TablesProvider extends ChangeNotifier {
             'updated_at': now,
             'synced': 0,
           });
+
+          // Atualizar display_qty do pedido original
+          final originalDisplayQty = _asInt(order['display_qty']);
+          final newOriginalDisplayQty = originalDisplayQty - (displayQty ?? 0);
+          if (newOriginalDisplayQty > 0) {
+            await _db.update(
+              'table_orders',
+              {'display_qty': newOriginalDisplayQty},
+              where: 'id = ?',
+              whereArgs: [orderId],
+            );
+          }
         }
 
         // Recalcular totais locais
