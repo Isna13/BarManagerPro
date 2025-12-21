@@ -25,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -212,7 +212,9 @@ class DatabaseService {
         product_id TEXT NOT NULL,
         product_name TEXT,
         qty_units INTEGER DEFAULT 1,
+        display_qty INTEGER DEFAULT 1,
         is_muntu INTEGER DEFAULT 0,
+        muntu_quantity INTEGER DEFAULT 3,
         unit_price INTEGER DEFAULT 0,
         unit_cost INTEGER DEFAULT 0,
         subtotal INTEGER DEFAULT 0,
@@ -410,6 +412,32 @@ class DatabaseService {
     if (oldVersion < 5) {
       try {
         await db.execute('ALTER TABLE sales ADD COLUMN customer_name TEXT');
+      } catch (_) {
+        // Coluna já existe; ignorar.
+      }
+    }
+
+    // Migração da versão 5 para 6: adicionar display_qty e muntu_quantity em table_orders
+    if (oldVersion < 6) {
+      try {
+        await db.execute(
+            'ALTER TABLE table_orders ADD COLUMN display_qty INTEGER DEFAULT 1');
+      } catch (_) {
+        // Coluna já existe; ignorar.
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE table_orders ADD COLUMN muntu_quantity INTEGER DEFAULT 3');
+      } catch (_) {
+        // Coluna já existe; ignorar.
+      }
+    }
+
+    // Migração da versão 6 para 7: garantir display_qty existe
+    if (oldVersion < 7) {
+      try {
+        await db.execute(
+            'ALTER TABLE table_orders ADD COLUMN display_qty INTEGER DEFAULT 1');
       } catch (_) {
         // Coluna já existe; ignorar.
       }

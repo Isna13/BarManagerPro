@@ -513,6 +513,14 @@ class TablesProvider extends ChangeNotifier {
                 );
                 if (localOrders.isNotEmpty) {
                   final localOrder = localOrders.first;
+                  // CORREÇÃO: Preservar qty_units do banco local se não vier da API
+                  if (orderMap['qtyUnits'] == null &&
+                      orderMap['qty_units'] == null) {
+                    final localQtyUnits = localOrder['qty_units'];
+                    if (localQtyUnits != null) {
+                      orderMap['qty_units'] = localQtyUnits;
+                    }
+                  }
                   // Preservar display_qty do banco local
                   if (orderMap['display_qty'] == null) {
                     orderMap['display_qty'] =
@@ -709,6 +717,14 @@ class TablesProvider extends ChangeNotifier {
 
       Map<String, dynamic> order;
 
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('📋 ADD ORDER - Parâmetros recebidos:');
+      debugPrint('   quantity (qtyUnits): $quantity');
+      debugPrint('   displayQty: $displayQty');
+      debugPrint('   isMuntu: $isMuntu');
+      debugPrint('   storedMuntuQuantity: $storedMuntuQuantity');
+      debugPrint('═══════════════════════════════════════════════════════');
+
       if (_sync.isOnline) {
         final result = await _api.addOrderToTable(
           sessionId: sessionId,
@@ -719,6 +735,10 @@ class TablesProvider extends ChangeNotifier {
           orderedBy: orderedBy,
         );
         order = Map<String, dynamic>.from(result);
+        debugPrint('📋 API Response keys: ${order.keys.toList()}');
+        debugPrint('📋 API qtyUnits: ${order['qtyUnits']}');
+        debugPrint('📋 API qty_units: ${order['qty_units']}');
+
         // Garantir que product_name, muntu_quantity, qty_units e display_qty estão na ordem
         order['product_name'] = productName;
         order['muntu_quantity'] = storedMuntuQuantity;
@@ -726,7 +746,10 @@ class TablesProvider extends ChangeNotifier {
         // IMPORTANTE: Preservar qty_units passado como parâmetro caso API não retorne
         if (order['qtyUnits'] == null && order['qty_units'] == null) {
           order['qty_units'] = quantity;
+          debugPrint('📋 DEFININDO qty_units = $quantity (API não retornou)');
         }
+
+        debugPrint('📋 Order final qty_units: ${order['qty_units']}');
         await _saveOrderLocally(order);
 
         // Atualizar totais mesmo quando online

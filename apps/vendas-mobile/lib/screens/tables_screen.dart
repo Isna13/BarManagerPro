@@ -782,12 +782,16 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
               itemCount: orders.length,
               itemBuilder: (context, index) {
                 final order = orders[index];
-                final productName = order['product_name'] ?? 'Produto';
-                final isMuntu =
-                    order['is_muntu'] == 1 || order['is_muntu'] == true;
+                final productName =
+                    order['productName'] ?? order['product_name'] ?? 'Produto';
+                final isMuntu = order['isMuntu'] == 1 ||
+                    order['isMuntu'] == true ||
+                    order['is_muntu'] == 1 ||
+                    order['is_muntu'] == true;
                 // Exibir qty_units (quantidade total em unidades)
                 // Para Muntu: qty_units já é o total em unidades (ex: 9 = 3 Muntus × 3 unidades)
-                final qtyUnits = order['qty_units'] ?? 1;
+                // Suportar tanto camelCase (API) quanto snake_case (banco local)
+                final qtyUnits = order['qtyUnits'] ?? order['qty_units'] ?? 1;
                 final orderTotal = order['total'] ?? 0;
                 final status = order['status'] ?? 'pending';
                 final isOrderPaid = status == 'paid';
@@ -1844,12 +1848,16 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
   /// Transferir item para outro cliente
   Future<void> _showTransferItemDialog(Map<String, dynamic> order,
       String fromCustomerId, TablesProvider tables) async {
-    final productName = order['product_name'] ?? 'Produto';
+    final productName =
+        order['product_name'] ?? order['productName'] ?? 'Produto';
     final isMuntu = (order['is_muntu'] ?? order['isMuntu'] ?? 0) == 1;
-    // Quantidade total em unidades disponível
-    final int qtyUnitsAvailable = (order['qty_units'] as num? ?? 1).toInt();
+    // Quantidade total em unidades disponível (suporta camelCase e snake_case)
+    final int qtyUnitsAvailable =
+        (order['qtyUnits'] as num? ?? order['qty_units'] as num? ?? 1).toInt();
     // Unidades por Muntu (ex: 1 Muntu = 3 unidades)
-    final int muntuFactor = (order['muntu_quantity'] as num? ?? 3).toInt();
+    final int muntuFactor =
+        (order['muntuQuantity'] as num? ?? order['muntu_quantity'] as num? ?? 3)
+            .toInt();
 
     // DEBUG: Log para diagnóstico
     debugPrint('🔍 [TRANSFER] order keys: ${order.keys.toList()}');
@@ -2202,7 +2210,8 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
   /// Cancelar pedido com confirmação
   Future<void> _cancelOrder(
       Map<String, dynamic> order, TablesProvider tables) async {
-    final productName = order['product_name'] ?? 'Produto';
+    final productName =
+        order['productName'] ?? order['product_name'] ?? 'Produto';
 
     final confirm = await showDialog<bool>(
       context: context,
