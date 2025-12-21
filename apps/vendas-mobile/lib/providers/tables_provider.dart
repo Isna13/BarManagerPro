@@ -588,20 +588,27 @@ class TablesProvider extends ChangeNotifier {
           where: 'id = ?',
           whereArgs: [sessionId],
         );
-        _currentSession = sessions.isNotEmpty ? sessions.first : null;
+        _currentSession = sessions.isNotEmpty
+            ? Map<String, dynamic>.from(sessions.first)
+            : null;
 
         if (_currentSession != null) {
-          _currentCustomers = await _db.query(
+          // CORREÇÃO: Converter para mapas mutáveis para evitar problemas de estado
+          final rawCustomers = await _db.query(
             'table_customers',
             where: 'session_id = ?',
             whereArgs: [sessionId],
           );
+          _currentCustomers =
+              rawCustomers.map((c) => Map<String, dynamic>.from(c)).toList();
 
-          _currentOrders = await _db.query(
+          final rawOrders = await _db.query(
             'table_orders',
             where: 'session_id = ?',
             whereArgs: [sessionId],
           );
+          _currentOrders =
+              rawOrders.map((o) => Map<String, dynamic>.from(o)).toList();
 
           // Converter para Map mutável e enriquecer pedidos
           for (int i = 0; i < _currentOrders.length; i++) {
@@ -1432,10 +1439,20 @@ class TablesProvider extends ChangeNotifier {
       if (tableId != null) {
         final tableIndex = _tables.indexWhere((t) => t['id'] == tableId);
         if (tableIndex >= 0) {
+          _tables[tableIndex] = Map<String, dynamic>.from(_tables[tableIndex]);
           _tables[tableIndex]['status'] = 'available';
           _tables[tableIndex]['current_session'] = null;
           _tables[tableIndex]['currentSession'] = null;
         }
+
+        // ✅ CORREÇÃO BUG 4: Persistir status da mesa no banco local
+        await _db.update(
+          'tables',
+          {'status': 'available', 'synced': 0},
+          where: 'id = ?',
+          whereArgs: [tableId],
+        );
+        debugPrint('💾 Mesa $tableId atualizada para available no banco local');
       }
 
       _currentSession = null;
@@ -1754,12 +1771,79 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final now = DateTime.now().toIso8601String();
+      final fromTableId =
+          _currentSession?['table_id'] ?? _currentSession?['tableId'];
+
       if (_sync.isOnline) {
         await _api.transferTable(
           sessionId: sessionId,
           toTableId: toTableId,
           transferredBy: transferredBy,
         );
+      } else {
+        // ✅ CORREÇÃO BUG 3: Suporte offline para transferência de mesa
+        debugPrint(
+            '📦 [OFFLINE] Transferindo mesa de $fromTableId para $toTableId');
+
+        // Atualizar sessão local para nova mesa
+        await _db.update(
+          'table_sessions',
+          {
+            'table_id': toTableId,
+            'updated_at': now,
+            'synced': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [sessionId],
+        );
+
+        // Atualizar status da mesa de origem para disponível
+        if (fromTableId != null) {
+          await _db.update(
+            'tables',
+            {'status': 'available', 'synced': 0},
+            where: 'id = ?',
+            whereArgs: [fromTableId],
+          );
+        }
+
+        // Atualizar status da mesa destino para ocupada
+        await _db.update(
+          'tables',
+          {'status': 'occupied', 'synced': 0},
+          where: 'id = ?',
+          whereArgs: [toTableId],
+        );
+
+        // Enfileirar para sincronização
+        await _sync.markForSync(
+          entityType: 'table_transfer',
+          entityId: sessionId,
+          action: 'transfer',
+          data: {
+            'sessionId': sessionId,
+            'fromTableId': fromTableId,
+            'toTableId': toTableId,
+            'transferredBy': transferredBy,
+          },
+        );
+        debugPrint('✅ [OFFLINE] Transferência de mesa enfileirada para sync');
+      }
+
+      // Atualizar lista de mesas em memória
+      if (fromTableId != null) {
+        final fromIdx = _tables.indexWhere((t) => t['id'] == fromTableId);
+        if (fromIdx >= 0) {
+          _tables[fromIdx] = Map<String, dynamic>.from(_tables[fromIdx]);
+          _tables[fromIdx]['status'] = 'available';
+          _tables[fromIdx]['current_session'] = null;
+        }
+      }
+      final toIdx = _tables.indexWhere((t) => t['id'] == toTableId);
+      if (toIdx >= 0) {
+        _tables[toIdx] = Map<String, dynamic>.from(_tables[toIdx]);
+        _tables[toIdx]['status'] = 'occupied';
       }
 
       _currentSession = null;
@@ -1788,6 +1872,11 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final now = DateTime.now().toIso8601String();
+      final branchId = _currentSession?['branch_id'] ??
+          _currentSession?['branchId'] ??
+          'main-branch';
+
       if (_sync.isOnline) {
         await _api.transferCustomers(
           sessionId: sessionId,
@@ -1795,6 +1884,86 @@ class TablesProvider extends ChangeNotifier {
           toTableId: toTableId,
           transferredBy: transferredBy,
         );
+      } else {
+        // ✅ CORREÇÃO BUG 3: Suporte offline para transferência de clientes
+        debugPrint(
+            '📦 [OFFLINE] Transferindo ${customerIds.length} clientes para mesa $toTableId');
+
+        // Verificar se já existe sessão aberta na mesa destino
+        final existingSessions = await _db.query(
+          'table_sessions',
+          where: 'table_id = ? AND status = ?',
+          whereArgs: [toTableId, 'open'],
+        );
+
+        String targetSessionId;
+        if (existingSessions.isNotEmpty) {
+          targetSessionId = existingSessions.first['id'].toString();
+        } else {
+          // Criar nova sessão na mesa destino
+          targetSessionId = _uuid.v4();
+          final sessionNumber = 'S${DateTime.now().millisecondsSinceEpoch}';
+          await _db.insert('table_sessions', {
+            'id': targetSessionId,
+            'table_id': toTableId,
+            'branch_id': branchId,
+            'session_number': sessionNumber,
+            'status': 'open',
+            'opened_by': transferredBy,
+            'total_amount': 0,
+            'paid_amount': 0,
+            'opened_at': now,
+            'created_at': now,
+            'updated_at': now,
+            'synced': 0,
+          });
+
+          // Atualizar mesa destino para ocupada
+          await _db.update(
+            'tables',
+            {'status': 'occupied', 'synced': 0},
+            where: 'id = ?',
+            whereArgs: [toTableId],
+          );
+        }
+
+        // Mover clientes para nova sessão
+        for (final customerId in customerIds) {
+          await _db.update(
+            'table_customers',
+            {'session_id': targetSessionId, 'updated_at': now, 'synced': 0},
+            where: 'id = ?',
+            whereArgs: [customerId],
+          );
+
+          // Mover pedidos do cliente
+          await _db.update(
+            'table_orders',
+            {'session_id': targetSessionId, 'updated_at': now, 'synced': 0},
+            where: 'table_customer_id = ?',
+            whereArgs: [customerId],
+          );
+        }
+
+        // Recalcular totais das sessões
+        await _recalculateSessionAndCustomersTotals(sessionId, now: now);
+        await _recalculateSessionAndCustomersTotals(targetSessionId, now: now);
+
+        // Enfileirar para sincronização
+        await _sync.markForSync(
+          entityType: 'table_customer_transfer',
+          entityId: sessionId,
+          action: 'transfer',
+          data: {
+            'sessionId': sessionId,
+            'customerIds': customerIds,
+            'toTableId': toTableId,
+            'targetSessionId': targetSessionId,
+            'transferredBy': transferredBy,
+          },
+        );
+        debugPrint(
+            '✅ [OFFLINE] Transferência de clientes enfileirada para sync');
       }
 
       // Remover clientes transferidos da lista local
@@ -1830,12 +1999,133 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final now = DateTime.now().toIso8601String();
+      final branchId = _currentSession?['branch_id'] ??
+          _currentSession?['branchId'] ??
+          'main-branch';
+
       if (_sync.isOnline) {
         await _api.mergeTables(
           sessionIds: sessionIds,
           targetTableId: targetTableId,
           mergedBy: mergedBy,
         );
+      } else {
+        // ✅ CORREÇÃO BUG 3: Suporte offline para merge de mesas
+        debugPrint(
+            '📦 [OFFLINE] Unindo ${sessionIds.length} mesas na mesa $targetTableId');
+
+        if (sessionIds.isEmpty) {
+          throw Exception('Nenhuma sessão para unir');
+        }
+
+        // Verificar se já existe sessão na mesa destino ou criar uma
+        final existingSessions = await _db.query(
+          'table_sessions',
+          where: 'table_id = ? AND status = ?',
+          whereArgs: [targetTableId, 'open'],
+        );
+
+        String targetSessionId;
+        if (existingSessions.isNotEmpty) {
+          targetSessionId = existingSessions.first['id'].toString();
+        } else {
+          targetSessionId = _uuid.v4();
+          final sessionNumber = 'S${DateTime.now().millisecondsSinceEpoch}';
+          await _db.insert('table_sessions', {
+            'id': targetSessionId,
+            'table_id': targetTableId,
+            'branch_id': branchId,
+            'session_number': sessionNumber,
+            'status': 'open',
+            'opened_by': mergedBy,
+            'total_amount': 0,
+            'paid_amount': 0,
+            'opened_at': now,
+            'created_at': now,
+            'updated_at': now,
+            'synced': 0,
+          });
+        }
+
+        // Mover clientes e pedidos de todas as sessões para a sessão destino
+        for (final sourceSessionId in sessionIds) {
+          if (sourceSessionId == targetSessionId) continue;
+
+          // Obter mesa de origem para liberar
+          final sourceSession = await _db.query(
+            'table_sessions',
+            where: 'id = ?',
+            whereArgs: [sourceSessionId],
+          );
+          final sourceTableId =
+              sourceSession.isNotEmpty ? sourceSession.first['table_id'] : null;
+
+          // Mover clientes
+          await _db.update(
+            'table_customers',
+            {'session_id': targetSessionId, 'updated_at': now, 'synced': 0},
+            where: 'session_id = ?',
+            whereArgs: [sourceSessionId],
+          );
+
+          // Mover pedidos
+          await _db.update(
+            'table_orders',
+            {'session_id': targetSessionId, 'updated_at': now, 'synced': 0},
+            where: 'session_id = ?',
+            whereArgs: [sourceSessionId],
+          );
+
+          // Fechar sessão de origem
+          await _db.update(
+            'table_sessions',
+            {
+              'status': 'closed',
+              'closed_by': mergedBy,
+              'closed_at': now,
+              'updated_at': now,
+              'synced': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [sourceSessionId],
+          );
+
+          // Liberar mesa de origem
+          if (sourceTableId != null) {
+            await _db.update(
+              'tables',
+              {'status': 'available', 'synced': 0},
+              where: 'id = ?',
+              whereArgs: [sourceTableId],
+            );
+          }
+        }
+
+        // Atualizar mesa destino para ocupada
+        await _db.update(
+          'tables',
+          {'status': 'occupied', 'synced': 0},
+          where: 'id = ?',
+          whereArgs: [targetTableId],
+        );
+
+        // Recalcular totais da sessão destino
+        await _recalculateSessionAndCustomersTotals(targetSessionId, now: now);
+
+        // Enfileirar para sincronização
+        await _sync.markForSync(
+          entityType: 'table_merge',
+          entityId: sessionIds.first,
+          action: 'merge',
+          data: {
+            'sessionIds': sessionIds,
+            'targetTableId': targetTableId,
+            'targetSessionId': targetSessionId,
+            'mergedBy': mergedBy,
+          },
+        );
+        debugPrint('✅ [OFFLINE] Merge de mesas enfileirado para sync');
       }
 
       _currentSession = null;

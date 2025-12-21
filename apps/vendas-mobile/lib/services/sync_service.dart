@@ -613,6 +613,88 @@ class SyncService {
           }
         }
         break;
+
+      // ==================== NOVOS HANDLERS OFFLINE ====================
+      case 'table_transfer':
+        if (action == 'transfer') {
+          final sessionId =
+              (data['sessionId'] ?? data['session_id'] ?? '').toString();
+          final toTableId =
+              (data['toTableId'] ?? data['to_table_id'] ?? '').toString();
+          final transferredBy =
+              (data['transferredBy'] ?? data['transferred_by'] ?? 'mobile')
+                  .toString();
+
+          if (sessionId.isEmpty || toTableId.isEmpty) {
+            throw Exception('Payload inválido para table_transfer');
+          }
+
+          debugPrint(
+              '📋 Sincronizando transferência de mesa: $sessionId → $toTableId');
+          await _api.transferTable(
+            sessionId: sessionId,
+            toTableId: toTableId,
+            transferredBy: transferredBy,
+          );
+          debugPrint('✅ Transferência de mesa sincronizada');
+        }
+        break;
+
+      case 'table_customer_transfer':
+        if (action == 'transfer') {
+          final sessionId =
+              (data['sessionId'] ?? data['session_id'] ?? '').toString();
+          final customerIdsRaw = data['customerIds'] ?? data['customer_ids'];
+          final customerIds = (customerIdsRaw is List)
+              ? customerIdsRaw.map((e) => e.toString()).toList()
+              : <String>[];
+          final toTableId =
+              (data['toTableId'] ?? data['to_table_id'] ?? '').toString();
+          final transferredBy =
+              (data['transferredBy'] ?? data['transferred_by'] ?? 'mobile')
+                  .toString();
+
+          if (sessionId.isEmpty || customerIds.isEmpty || toTableId.isEmpty) {
+            throw Exception('Payload inválido para table_customer_transfer');
+          }
+
+          debugPrint(
+              '📋 Sincronizando transferência de ${customerIds.length} clientes');
+          await _api.transferCustomers(
+            sessionId: sessionId,
+            customerIds: customerIds,
+            toTableId: toTableId,
+            transferredBy: transferredBy,
+          );
+          debugPrint('✅ Transferência de clientes sincronizada');
+        }
+        break;
+
+      case 'table_merge':
+        if (action == 'merge') {
+          final sessionIdsRaw = data['sessionIds'] ?? data['session_ids'];
+          final sessionIds = (sessionIdsRaw is List)
+              ? sessionIdsRaw.map((e) => e.toString()).toList()
+              : <String>[];
+          final targetTableId =
+              (data['targetTableId'] ?? data['target_table_id'] ?? '')
+                  .toString();
+          final mergedBy =
+              (data['mergedBy'] ?? data['merged_by'] ?? 'mobile').toString();
+
+          if (sessionIds.isEmpty || targetTableId.isEmpty) {
+            throw Exception('Payload inválido para table_merge');
+          }
+
+          debugPrint('📋 Sincronizando merge de ${sessionIds.length} mesas');
+          await _api.mergeTables(
+            sessionIds: sessionIds,
+            targetTableId: targetTableId,
+            mergedBy: mergedBy,
+          );
+          debugPrint('✅ Merge de mesas sincronizado');
+        }
+        break;
     }
   }
 
