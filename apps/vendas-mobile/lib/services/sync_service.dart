@@ -933,7 +933,6 @@ class SyncService {
         productId != null) {
       final products = await _db.query(
         'products',
-        columns: ['name'],
         where: 'id = ?',
         whereArgs: [productId],
       );

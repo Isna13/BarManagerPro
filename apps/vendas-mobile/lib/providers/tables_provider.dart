@@ -543,7 +543,6 @@ class TablesProvider extends ChangeNotifier {
                     orderMap['product_id'] ?? orderMap['productId'];
                 final products = await _db.query(
                   'products',
-                  columns: ['name'],
                   where: 'id = ?',
                   whereArgs: [productId],
                 );
@@ -1270,7 +1269,6 @@ class TablesProvider extends ChangeNotifier {
       if (order['id'] != null) {
         final existingOrders = await _db.query(
           'table_orders',
-          columns: ['product_name'],
           where: 'id = ?',
           whereArgs: [order['id']],
         );
@@ -1291,7 +1289,6 @@ class TablesProvider extends ChangeNotifier {
           productId != null) {
         final products = await _db.query(
           'products',
-          columns: ['name'],
           where: 'id = ?',
           whereArgs: [productId],
         );
@@ -1642,7 +1639,6 @@ class TablesProvider extends ChangeNotifier {
               effectiveProductName == 'Produto') {
             final products = await _db.query(
               'products',
-              columns: ['name'],
               where: 'id = ?',
               whereArgs: [productId],
             );
