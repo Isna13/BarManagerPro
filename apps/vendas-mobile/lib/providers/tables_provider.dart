@@ -1973,6 +1973,15 @@ class TablesProvider extends ChangeNotifier {
         return customerIds.contains(customerId);
       });
 
+      // ✅ CORREÇÃO BUG SEPARAÇÃO: Atualizar lista de mesas em memória
+      final toTableIdx = _tables.indexWhere((t) => t['id'] == toTableId);
+      if (toTableIdx >= 0) {
+        _tables[toTableIdx] = Map<String, dynamic>.from(_tables[toTableIdx]);
+        _tables[toTableIdx]['status'] = 'occupied';
+        debugPrint(
+            '✅ Mesa destino $toTableId marcada como occupied em memória');
+      }
+
       // Se não sobrou nenhum cliente, fechar sessão local
       if (_currentCustomers.isEmpty) {
         _currentSession = null;
@@ -2281,6 +2290,24 @@ class TablesProvider extends ChangeNotifier {
               whereArgs: [sessionId, tableCustomerRowId],
             );
           }
+
+          // ✅ CORREÇÃO BUG SEPARAÇÃO: Atualizar status da mesa destino
+          await _db.update(
+            'tables',
+            {'status': 'occupied', 'synced': 0},
+            where: 'id = ?',
+            whereArgs: [targetTableId],
+          );
+
+          // Atualizar mesa destino em memória
+          final targetTableIdx =
+              _tables.indexWhere((t) => t['id'] == targetTableId);
+          if (targetTableIdx >= 0) {
+            _tables[targetTableIdx] =
+                Map<String, dynamic>.from(_tables[targetTableIdx]);
+            _tables[targetTableIdx]['status'] = 'occupied';
+          }
+          debugPrint('✅ [OFFLINE] Mesa $targetTableId marcada como occupied');
         }
 
         for (final sid in affectedSessionIds) {
@@ -2406,6 +2433,35 @@ class TablesProvider extends ChangeNotifier {
           };
           notifyListeners();
         }
+      } else {
+        // ✅ CORREÇÃO BUG VALE OFFLINE: Buscar crédito do banco local
+        debugPrint(
+            '📴 [OFFLINE] Buscando crédito do cliente $customerId do banco local');
+
+        // Buscar dados do cliente local
+        final customers = await _db.query(
+          'customers',
+          where: 'id = ?',
+          whereArgs: [customerId],
+        );
+
+        if (customers.isNotEmpty) {
+          final customer = customers.first;
+          final creditLimit = _asInt(customer['credit_limit']);
+          final currentDebt = _asInt(customer['current_debt']);
+
+          debugPrint(
+              '💳 [OFFLINE] Cliente $customerId - limit: $creditLimit, debt: $currentDebt');
+
+          _customerCreditInfo[customerId] = {
+            'creditLimit': creditLimit,
+            'currentDebt': currentDebt,
+          };
+          notifyListeners();
+        } else {
+          debugPrint(
+              '⚠️ [OFFLINE] Cliente $customerId não encontrado no banco local');
+        }
       }
     } catch (e) {
       debugPrint('Erro ao carregar crédito: $e');
@@ -2420,10 +2476,27 @@ class TablesProvider extends ChangeNotifier {
           .map((c) => (c['customer_id'] ?? c['customerId']) as String)
           .toList();
 
-      if (customerIds.isNotEmpty && _sync.isOnline) {
+      if (customerIds.isEmpty) return;
+
+      if (_sync.isOnline) {
         final debts = await _api.getCustomersPendingDebts(customerIds);
         _customerDebts =
             debts.map((e) => Map<String, dynamic>.from(e)).toList();
+        notifyListeners();
+      } else {
+        // ✅ CORREÇÃO VALE OFFLINE: Buscar dívidas do banco local
+        debugPrint('📴 [OFFLINE] Buscando dívidas dos clientes do banco local');
+
+        final placeholders = customerIds.map((_) => '?').join(',');
+        final debts = await _db.rawQuery(
+          "SELECT * FROM debts WHERE customer_id IN ($placeholders) AND status = 'pending'",
+          customerIds,
+        );
+
+        _customerDebts =
+            debts.map((e) => Map<String, dynamic>.from(e)).toList();
+        debugPrint(
+            '💳 [OFFLINE] Encontradas ${_customerDebts.length} dívidas pendentes');
         notifyListeners();
       }
     } catch (e) {
