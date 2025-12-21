@@ -719,10 +719,14 @@ class TablesProvider extends ChangeNotifier {
           orderedBy: orderedBy,
         );
         order = Map<String, dynamic>.from(result);
-        // Garantir que product_name, muntu_quantity e display_qty estão na ordem
+        // Garantir que product_name, muntu_quantity, qty_units e display_qty estão na ordem
         order['product_name'] = productName;
         order['muntu_quantity'] = storedMuntuQuantity;
         order['display_qty'] = displayQty ?? 1; // Quantidade do carrinho
+        // IMPORTANTE: Preservar qty_units passado como parâmetro caso API não retorne
+        if (order['qtyUnits'] == null && order['qty_units'] == null) {
+          order['qty_units'] = quantity;
+        }
         await _saveOrderLocally(order);
 
         // Atualizar totais mesmo quando online
