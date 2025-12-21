@@ -104,8 +104,21 @@ class _TablesScreenState extends State<TablesScreen> {
     final currentSession = table['current_session'] ?? table['currentSession'];
 
     final isOccupied = status == 'occupied' || currentSession != null;
-    final totalAmount =
-        currentSession?['total_amount'] ?? currentSession?['totalAmount'] ?? 0;
+
+    // Calcular total pendente baseado em pedidos não pagos
+    int pendingTotal = 0;
+    if (currentSession != null) {
+      final sessionId = currentSession['id'];
+      for (final order in tables.currentOrders) {
+        final orderSessionId = order['session_id'] ?? order['sessionId'];
+        final orderStatus = order['status'] ?? 'pending';
+        if (orderSessionId == sessionId &&
+            orderStatus != 'paid' &&
+            orderStatus != 'cancelled') {
+          pendingTotal += (order['total'] as num? ?? 0).toInt();
+        }
+      }
+    }
 
     Color statusColor;
     IconData statusIcon;
@@ -182,14 +195,14 @@ class _TablesScreenState extends State<TablesScreen> {
                 ),
               ),
 
-              // Total (se ocupada)
-              if (isOccupied && totalAmount > 0) ...[
+              // Total pendente (se ocupada)
+              if (isOccupied) ...[
                 const SizedBox(height: 2),
                 Text(
-                  CurrencyHelper.format(totalAmount),
-                  style: const TextStyle(
+                  CurrencyHelper.format(pendingTotal),
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                    color: pendingTotal > 0 ? Colors.green : Colors.grey,
                     fontSize: 12,
                   ),
                 ),
@@ -495,7 +508,7 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                       ],
                     ),
                   ),
-                  // Total
+                  // Total Pendente
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -504,13 +517,13 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                         style: TextStyle(fontSize: 12),
                       ),
                       Text(
-                        CurrencyHelper.format(session?['total_amount'] ??
-                            session?['totalAmount'] ??
-                            0),
-                        style: const TextStyle(
+                        CurrencyHelper.format(tables.sessionPendingTotal),
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                          color: tables.sessionPendingTotal > 0
+                              ? Colors.green
+                              : Colors.grey,
                         ),
                       ),
                     ],
@@ -683,9 +696,25 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     final paidAmount = customer['paid_amount'] ?? customer['paidAmount'] ?? 0;
     final paymentStatus =
         customer['payment_status'] ?? customer['paymentStatus'] ?? 'pending';
-    final isPaid = paymentStatus == 'paid';
 
     final orders = tables.getOrdersForCustomer(customerId);
+
+    // Calcular valor pendente baseado em pedidos não pagos (não no status do cliente)
+    final pendingOrders = tables.getPendingOrdersForCustomer(customerId);
+    int pendingTotal = 0;
+    for (final order in pendingOrders) {
+      pendingTotal += (order['total'] as num? ?? 0).toInt();
+    }
+
+    // Contar pedidos pagos (não cancelados)
+    final paidOrders = orders.where((o) {
+      final status = o['status'] ?? 'pending';
+      return status == 'paid';
+    }).toList();
+
+    // isPaid só é true se TEM pedidos pagos E NÃO tem pedidos pendentes
+    // (cliente sem pedidos NÃO é considerado "pago")
+    final isPaid = paidOrders.isNotEmpty && pendingTotal <= 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -731,13 +760,15 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
             ],
           ],
         ),
-        trailing: !isPaid
-            ? IconButton(
-                icon: const Icon(Icons.add_shopping_cart),
-                onPressed: () =>
-                    _showAddOrderDialog(customerId, customerName, tables),
-              )
-            : null,
+        trailing: IconButton(
+          icon: Icon(
+            Icons.add_shopping_cart,
+            color: isPaid ? Colors.grey : Colors.blue,
+          ),
+          onPressed: () =>
+              _showAddOrderDialog(customerId, customerName, tables),
+          tooltip: 'Adicionar pedido',
+        ),
         children: [
           if (orders.isEmpty)
             const Padding(
@@ -752,7 +783,11 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
               itemBuilder: (context, index) {
                 final order = orders[index];
                 final productName = order['product_name'] ?? 'Produto';
-                final qty = order['qty_units'] ?? 1;
+                final isMuntu =
+                    order['is_muntu'] == 1 || order['is_muntu'] == true;
+                // Exibir qty_units (quantidade total em unidades)
+                // Para Muntu: qty_units já é o total em unidades (ex: 9 = 3 Muntus × 3 unidades)
+                final qtyUnits = order['qty_units'] ?? 1;
                 final orderTotal = order['total'] ?? 0;
                 final status = order['status'] ?? 'pending';
                 final isOrderPaid = status == 'paid';
@@ -765,9 +800,11 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                         ? Colors.green.shade100
                         : status == 'cancelled'
                             ? Colors.red.shade100
-                            : Colors.grey.shade100,
+                            : isMuntu
+                                ? Colors.purple.shade100
+                                : Colors.grey.shade100,
                     child: Text(
-                      qty.toString(),
+                      qtyUnits.toString(),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -775,17 +812,23 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
                             ? Colors.green
                             : status == 'cancelled'
                                 ? Colors.red
-                                : Colors.grey[700],
+                                : isMuntu
+                                    ? Colors.purple.shade700
+                                    : Colors.grey[700],
                       ),
                     ),
                   ),
                   title: Text(
-                    productName,
+                    isMuntu ? '$productName (M)' : productName,
                     style: TextStyle(
                       decoration: isOrderPaid || status == 'cancelled'
                           ? TextDecoration.lineThrough
                           : null,
-                      color: status == 'cancelled' ? Colors.red : null,
+                      color: status == 'cancelled'
+                          ? Colors.red
+                          : isMuntu
+                              ? Colors.purple.shade700
+                              : null,
                     ),
                   ),
                   trailing: Row(
@@ -831,18 +874,17 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
               },
             ),
 
-          // Botão para pagar este cliente
-          if (!isPaid && total > 0)
+          // Botão para pagar este cliente (baseado em pedidos pendentes)
+          if (pendingTotal > 0)
             Padding(
               padding: const EdgeInsets.all(12),
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () => _showCustomerPaymentDialog(
-                      customerId, total - paidAmount, tables),
+                      customerId, pendingTotal, tables),
                   icon: const Icon(Icons.payment),
-                  label: Text(
-                      'Pagar ${CurrencyHelper.format(total - paidAmount)}'),
+                  label: Text('Pagar ${CurrencyHelper.format(pendingTotal)}'),
                 ),
               ),
             ),
@@ -954,6 +996,7 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       unitPrice: unitPrice,
       isMuntu: isMuntu,
       orderedBy: auth.userId ?? '',
+      displayQty: 1, // Adiciona 1 item por vez neste fluxo
     );
 
     if (!mounted) return;
@@ -984,91 +1027,710 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     }
   }
 
+  String? _selectedPaymentMethod;
+
   Future<void> _showCustomerPaymentDialog(
       String customerId, int amount, TablesProvider tables) async {
+    _selectedPaymentMethod = null;
+
+    // Buscar dados do cliente para verificar se é cadastrado
+    final customer = tables.currentCustomers.firstWhere(
+      (c) => c['id'] == customerId,
+      orElse: () => <String, dynamic>{},
+    );
+    final registeredCustomerId =
+        customer['customer_id'] as String? ?? customer['customerId'] as String?;
+    final customerName = customer['customer_name'] as String? ??
+        customer['customerName'] as String? ??
+        'Cliente';
+
+    // Carregar crédito se for cliente cadastrado
+    int availableCredit = 0;
+    if (registeredCustomerId != null) {
+      await tables.loadCustomerCredit(registeredCustomerId);
+      availableCredit = tables.getAvailableCredit(registeredCustomerId);
+    }
+
+    final canUseVale =
+        registeredCustomerId != null && availableCredit >= amount;
+
     final method = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Forma de Pagamento'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Total: ${CurrencyHelper.format(amount)}',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
+      barrierColor: Colors.black54,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            elevation: 16,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header com gradiente azul
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 20, horizontal: 24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.blue.shade600, Colors.blue.shade800],
+                      ),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.payment_rounded,
+                            color: Colors.white, size: 40),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Forma de Pagamento',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Total: ',
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 16),
+                              ),
+                              Text(
+                                CurrencyHelper.format(amount),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Corpo do modal
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        // Cliente info (se cadastrado)
+                        if (registeredCustomerId != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.blue.shade100),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: Colors.blue.shade200,
+                                  child: Icon(Icons.person,
+                                      color: Colors.blue.shade700, size: 18),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        customerName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue.shade900,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Crédito: ${CurrencyHelper.format(availableCredit)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.blue.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Título
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Selecione uma opção:',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Grid de opções (igual ao PDV)
+                        GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 1.0,
+                          children: [
+                            _buildPaymentOptionCard(
+                              ctx,
+                              'cash',
+                              'Dinheiro',
+                              Icons.payments_rounded,
+                              Colors.green,
+                              setDialogState,
+                            ),
+                            _buildPaymentOptionCard(
+                              ctx,
+                              'orange',
+                              'Orange',
+                              Icons.phone_android_rounded,
+                              Colors.orange,
+                              setDialogState,
+                            ),
+                            _buildPaymentOptionCard(
+                              ctx,
+                              'teletaku',
+                              'TeleTaku',
+                              Icons.smartphone_rounded,
+                              Colors.purple,
+                              setDialogState,
+                            ),
+                            _buildPaymentOptionCard(
+                              ctx,
+                              'vale',
+                              'Vale',
+                              Icons.receipt_long_rounded,
+                              Colors.amber.shade700,
+                              setDialogState,
+                              enabled: registeredCustomerId != null,
+                              requiresCustomer: true,
+                            ),
+                            _buildPaymentOptionCard(
+                              ctx,
+                              'misto',
+                              'Misto',
+                              Icons.credit_card_rounded,
+                              Colors.teal,
+                              setDialogState,
+                            ),
+                          ],
+                        ),
+
+                        // Aviso de crédito insuficiente
+                        if (_selectedPaymentMethod == 'vale' &&
+                            registeredCustomerId != null &&
+                            !canUseVale) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded,
+                                    color: Colors.red.shade600, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Crédito insuficiente! Disponível: ${CurrencyHelper.format(availableCredit)}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red.shade700),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Aviso se Vale requer cliente
+                        if (_selectedPaymentMethod == 'vale' &&
+                            registeredCustomerId == null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline_rounded,
+                                    color: Colors.amber.shade700, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Vale só disponível para clientes cadastrados',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.amber.shade800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Botões de ação
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              side: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            child: Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                  color: Colors.grey.shade600, fontSize: 15),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              gradient: (_selectedPaymentMethod != null &&
+                                      !(_selectedPaymentMethod == 'vale' &&
+                                          !canUseVale))
+                                  ? LinearGradient(colors: [
+                                      Colors.green.shade500,
+                                      Colors.green.shade700
+                                    ])
+                                  : LinearGradient(colors: [
+                                      Colors.grey.shade300,
+                                      Colors.grey.shade400
+                                    ]),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: (_selectedPaymentMethod != null &&
+                                        !(_selectedPaymentMethod == 'vale' &&
+                                            !canUseVale))
+                                    ? () => Navigator.pop(
+                                        ctx, _selectedPaymentMethod)
+                                    : null,
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      Icon(Icons.check_circle,
+                                          color: Colors.white, size: 20),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Confirmar',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _paymentButton(ctx, 'cash', 'Dinheiro', Icons.money),
-                _paymentButton(
-                    ctx, 'orange_money', 'Orange Money', Icons.phone_android),
-                _paymentButton(ctx, 'teletaku', 'TeleTaku', Icons.phone_iphone),
-                _paymentButton(
-                    ctx, 'vale', 'Vale (Crédito)', Icons.credit_score),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-        ],
+          );
+        },
       ),
     );
 
     if (method == null) return;
 
-    // Validação para Vale (crédito)
-    String? registeredCustomerId;
+    // Se for Vale, mostrar modal de confirmação
     if (method == 'vale') {
-      // Buscar dados do cliente para verificar se é cadastrado
-      final customer = tables.currentCustomers.firstWhere(
-        (c) => c['id'] == customerId,
-        orElse: () => {},
+      final confirmed = await _showValeConfirmation(
+        customerName: customerName,
+        amount: amount,
+        availableCredit: availableCredit,
       );
-      registeredCustomerId = customer['customer_id'] ?? customer['customerId'];
-
-      if (registeredCustomerId == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Vale só disponível para clientes cadastrados!'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      // Carregar informações de crédito
-      await tables.loadCustomerCredit(registeredCustomerId);
-      final availableCredit = tables.getAvailableCredit(registeredCustomerId);
-
-      if (amount > availableCredit) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Crédito insuficiente! Disponível: ${CurrencyHelper.format(availableCredit)}',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
+      if (confirmed != true) return;
     }
 
+    // Processar pagamento
+    await _processPayment(
+      customerId: customerId,
+      registeredCustomerId: registeredCustomerId,
+      method: method,
+      amount: amount,
+      tables: tables,
+    );
+  }
+
+  Widget _buildPaymentOptionCard(
+    BuildContext ctx,
+    String value,
+    String label,
+    IconData icon,
+    Color color,
+    StateSetter setDialogState, {
+    bool enabled = true,
+    bool requiresCustomer = false,
+  }) {
+    final isSelected = _selectedPaymentMethod == value;
+
+    return GestureDetector(
+      onTap: enabled
+          ? () {
+              setDialogState(() => _selectedPaymentMethod = value);
+            }
+          : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.15) : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade200,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: enabled ? color : Colors.grey.shade400,
+              size: 28,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: enabled ? Colors.grey.shade800 : Colors.grey.shade400,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (requiresCustomer && !enabled)
+              Text(
+                'Requer\ncliente',
+                style: TextStyle(fontSize: 8, color: Colors.grey.shade400),
+                textAlign: TextAlign.center,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool?> _showValeConfirmation({
+    required String customerName,
+    required int amount,
+    required int availableCredit,
+  }) async {
+    final remainingAfter = availableCredit - amount;
+
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [Colors.amber.shade500, Colors.amber.shade600]),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.receipt_long_rounded,
+                        color: Colors.white, size: 26),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'Confirmar Vale',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Cliente
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person, color: Colors.blue.shade700, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Cliente',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.blue.shade600)),
+                          Text(
+                            customerName,
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Valor do Vale
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  children: [
+                    Text('Valor do Vale',
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.green.shade700)),
+                    const SizedBox(height: 6),
+                    Text(
+                      CurrencyHelper.format(amount),
+                      style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Crédito atual e restante
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          Text('Crédito Atual',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey.shade600)),
+                          const SizedBox(height: 6),
+                          Text(
+                            CurrencyHelper.format(availableCredit),
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          Text('Restante Após',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.amber.shade700)),
+                          const SizedBox(height: 6),
+                          Text(
+                            CurrencyHelper.format(remainingAfter),
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade800),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Aviso
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_rounded,
+                        color: Colors.orange.shade700, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Esta operação criará uma dívida registrada. O cliente deverá quitar o valor.',
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.orange.shade800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Botões
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          Colors.amber.shade500,
+                          Colors.amber.shade600
+                        ]),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.pop(ctx, true),
+                          borderRadius: BorderRadius.circular(12),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.check_circle,
+                                    color: Colors.white, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Confirmar Vale',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _processPayment({
+    required String customerId,
+    String? registeredCustomerId,
+    required String method,
+    required int amount,
+    required TablesProvider tables,
+  }) async {
     final auth = context.read<AuthProvider>();
     final cashBox = context.read<CashBoxProvider>();
-    final customersProvider = context.read<CustomersProvider>();
     final session = tables.currentSession;
 
     if (session == null) return;
@@ -1085,33 +1747,66 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     if (!mounted) return;
 
     if (success) {
-      // ===== ATUALIZAR TOTAIS DO CAIXA =====
+      // Atualizar totais do caixa
       if (method == 'cash') {
         await cashBox.updateCashBoxTotals(cashAmount: amount);
-      } else if (method == 'orange_money' || method == 'teletaku') {
+      } else if (method == 'orange' || method == 'teletaku') {
         await cashBox.updateCashBoxTotals(mobileMoneyAmount: amount);
       } else if (method == 'vale') {
         await cashBox.updateCashBoxTotals(debtAmount: amount);
-        // ✅ NOTA: Dívida agora é criada automaticamente no TablesProvider.processPayment()
-        // Não precisa mais chamar updateCustomerDebt() aqui
       }
 
-      // ===== INCREMENTAR CONTADOR DE VENDAS =====
       cashBox.incrementSalesCount();
-      // ==========================================
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pagamento realizado!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Atribuir pontos de fidelidade (1 ponto a cada 1000 FCFA)
+      // NOTA: amount está em centavos (x100), então dividir por 100000
+      int pointsEarned = 0;
+      if (registeredCustomerId != null && amount >= 100000) {
+        pointsEarned = amount ~/ 100000;
+        final customersProvider = context.read<CustomersProvider>();
+        await customersProvider.addLoyaltyPoints(
+            registeredCustomerId, pointsEarned);
+        debugPrint(
+            '🎯 Pontos de fidelidade adicionados: $pointsEarned para cliente $registeredCustomerId (amount: $amount centavos)');
+      }
+
+      // Mensagem de sucesso com pontos (se cliente cadastrado)
+      if (registeredCustomerId != null && pointsEarned > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Pagamento realizado!',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                          '🎯 +$pointsEarned ponto${pointsEarned > 1 ? 's' : ''} de fidelidade',
+                          style: const TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Pagamento realizado!'),
+              backgroundColor: Colors.green),
+        );
+      }
     } else if (tables.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(tables.error!),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
       );
     }
   }
@@ -1150,7 +1845,18 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
   Future<void> _showTransferItemDialog(Map<String, dynamic> order,
       String fromCustomerId, TablesProvider tables) async {
     final productName = order['product_name'] ?? 'Produto';
-    final qty = order['qty_units'] ?? 1;
+    final isMuntu = (order['is_muntu'] ?? order['isMuntu'] ?? 0) == 1;
+    // Quantidade total em unidades disponível
+    final int qtyUnitsAvailable = (order['qty_units'] as num? ?? 1).toInt();
+    // Unidades por Muntu (ex: 1 Muntu = 3 unidades)
+    final int muntuFactor = (order['muntu_quantity'] as num? ?? 3).toInt();
+
+    // DEBUG: Log para diagnóstico
+    debugPrint('🔍 [TRANSFER] order keys: ${order.keys.toList()}');
+    debugPrint('🔍 [TRANSFER] qty_units: $qtyUnitsAvailable');
+    debugPrint(
+        '🔍 [TRANSFER] is_muntu: ${order['is_muntu']} -> isMuntu: $isMuntu');
+    debugPrint('🔍 [TRANSFER] muntu_quantity (fator): $muntuFactor');
 
     // Filtrar clientes exceto o atual
     final otherCustomers = tables.currentCustomers
@@ -1167,64 +1873,201 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       return;
     }
 
+    if (qtyUnitsAvailable <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Quantidade insuficiente para transferir'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     String? selectedCustomerId;
-    int transferQty = qty;
+    // Para Muntu, começar com 1 Muntu (= muntuFactor unidades)
+    // Para unidade, começar com 1 unidade
+    int transferQtyUnits = isMuntu ? muntuFactor : 1;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Transferir Item'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Produto: $productName'),
-              Text('Quantidade: $qty'),
-              const SizedBox(height: 16),
-              const Text('Transferir para:'),
-              const SizedBox(height: 8),
-              ...otherCustomers.map((c) => RadioListTile<String>(
-                    title: Text(
-                        c['customer_name'] ?? c['customerName'] ?? 'Cliente'),
-                    value: c['id'],
-                    groupValue: selectedCustomerId,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedCustomerId = v),
-                    dense: true,
-                  )),
-              if (qty > 1) ...[
+        builder: (ctx, setDialogState) {
+          // Calcular quantos Muntus completos correspondem a transferQtyUnits
+          final int muntusToTransfer =
+              isMuntu ? (transferQtyUnits ~/ muntuFactor) : 0;
+
+          return AlertDialog(
+            title: const Text('Transferir Item'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Produto: $productName'),
+                Text(
+                    'Disponível: $qtyUnitsAvailable unidade${qtyUnitsAvailable > 1 ? 's' : ''}'),
+                if (isMuntu)
+                  Text(
+                    '(${qtyUnitsAvailable ~/ muntuFactor} Muntu${(qtyUnitsAvailable ~/ muntuFactor) > 1 ? 's' : ''} × $muntuFactor)',
+                    style:
+                        TextStyle(color: Colors.purple.shade700, fontSize: 12),
+                  ),
                 const SizedBox(height: 16),
-                const Text('Quantidade a transferir:'),
-                Slider(
-                  value: transferQty.toDouble(),
-                  min: 1,
-                  max: qty.toDouble(),
-                  divisions: qty - 1 > 0 ? qty - 1 : 1,
-                  label: transferQty.toString(),
-                  onChanged: (v) =>
-                      setDialogState(() => transferQty = v.round()),
-                ),
-                Text('$transferQty de $qty'),
+
+                // Campo de quantidade a transferir
+                if (isMuntu) ...[
+                  // Para Muntu: transferir em múltiplos do fator
+                  Row(
+                    children: [
+                      const Text('Muntus: '),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: muntusToTransfer > 1
+                            ? () => setDialogState(
+                                () => transferQtyUnits -= muntuFactor)
+                            : null,
+                        icon: const Icon(Icons.remove_circle_outline),
+                        color: Colors.red,
+                        iconSize: 28,
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.purple),
+                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.purple.shade50,
+                        ),
+                        child: Text(
+                          '$muntusToTransfer',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.purple.shade700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed:
+                            transferQtyUnits + muntuFactor <= qtyUnitsAvailable
+                                ? () => setDialogState(
+                                    () => transferQtyUnits += muntuFactor)
+                                : null,
+                        icon: const Icon(Icons.add_circle_outline),
+                        color: Colors.green,
+                        iconSize: 28,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '= $transferQtyUnits unidades',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+                ] else ...[
+                  // Para unidade: transferir normalmente
+                  if (qtyUnitsAvailable > 1)
+                    Row(
+                      children: [
+                        const Text('Quantidade: '),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: transferQtyUnits > 1
+                              ? () => setDialogState(() => transferQtyUnits--)
+                              : null,
+                          icon: const Icon(Icons.remove_circle_outline),
+                          color: Colors.red,
+                          iconSize: 28,
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$transferQtyUnits',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: transferQtyUnits < qtyUnitsAvailable
+                              ? () => setDialogState(() => transferQtyUnits++)
+                              : null,
+                          icon: const Icon(Icons.add_circle_outline),
+                          color: Colors.green,
+                          iconSize: 28,
+                        ),
+                      ],
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: Colors.amber.shade700, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Só há 1 unidade disponível para transferir.',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.amber.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+
+                const SizedBox(height: 16),
+                const Text('Transferir para:',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 8),
+                ...otherCustomers.map((c) => RadioListTile<String>(
+                      title: Text(
+                          c['customer_name'] ?? c['customerName'] ?? 'Cliente'),
+                      value: c['id'],
+                      groupValue: selectedCustomerId,
+                      onChanged: (v) =>
+                          setDialogState(() => selectedCustomerId = v),
+                      dense: true,
+                    )),
               ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: selectedCustomerId != null && transferQtyUnits > 0
+                    ? () {
+                        Navigator.pop(ctx, {
+                          'toCustomerId': selectedCustomerId,
+                          'qtyUnits':
+                              transferQtyUnits, // Quantidade em unidades
+                          'displayQty':
+                              isMuntu ? muntusToTransfer : transferQtyUnits,
+                        });
+                      }
+                    : null,
+                style: isMuntu
+                    ? ElevatedButton.styleFrom(backgroundColor: Colors.purple)
+                    : null,
+                child: Text('Transferir $transferQtyUnits un.'),
+              ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: selectedCustomerId != null
-                  ? () => Navigator.pop(ctx, {
-                        'toCustomerId': selectedCustomerId,
-                        'qty': transferQty,
-                      })
-                  : null,
-              child: const Text('Transferir'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
 
@@ -1235,8 +2078,12 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       orderId: order['id'],
       fromCustomerId: fromCustomerId,
       toCustomerId: result['toCustomerId'],
-      qtyUnits: result['qty'],
+      qtyUnits: result['qtyUnits'], // Quantidade em unidades
       transferredBy: auth.userId ?? '',
+      displayQty: result['displayQty'], // Quantidade para exibição
+      productName: productName, // Nome do produto
+      isMuntu: isMuntu, // Se é Muntu
+      muntuQuantity: muntuFactor, // Unidades por Muntu
     );
 
     if (!mounted) return;
@@ -1481,9 +2328,15 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
   }
 
   void _showPaymentOptions(TablesProvider tables) {
+    // Filtrar clientes com pedidos pendentes (não pagos/cancelados)
     final pendingCustomers = tables.currentCustomers.where((c) {
-      final status = c['payment_status'] ?? c['paymentStatus'] ?? 'pending';
-      return status != 'paid';
+      final customerId = c['id'];
+      final pendingOrders = tables.getPendingOrdersForCustomer(customerId);
+      int pendingTotal = 0;
+      for (final order in pendingOrders) {
+        pendingTotal += (order['total'] as num? ?? 0).toInt();
+      }
+      return pendingTotal > 0;
     }).toList();
 
     if (pendingCustomers.isEmpty) {
@@ -1513,10 +2366,14 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
               ),
             ),
             ...pendingCustomers.map((customer) {
-              final total = customer['total'] ?? 0;
-              final paidAmount =
-                  customer['paid_amount'] ?? customer['paidAmount'] ?? 0;
-              final pending = total - paidAmount;
+              final customerId = customer['id'];
+              // Calcular valor pendente baseado em pedidos não pagos
+              final pendingOrders =
+                  tables.getPendingOrdersForCustomer(customerId);
+              int pending = 0;
+              for (final order in pendingOrders) {
+                pending += (order['total'] as num? ?? 0).toInt();
+              }
 
               return ListTile(
                 leading: const CircleAvatar(
@@ -2401,6 +3258,14 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
                           customer['fullName'] ??
                           'Sem nome';
                       final phone = customer['phone'] ?? '';
+                      // Calcular crédito disponível do cliente
+                      final creditLimit = customer['credit_limit'] ??
+                          customer['creditLimit'] ??
+                          0;
+                      final currentDebt = customer['current_debt'] ??
+                          customer['currentDebt'] ??
+                          0;
+                      final availableCredit = creditLimit - currentDebt;
 
                       return ListTile(
                         leading: CircleAvatar(
@@ -2414,7 +3279,34 @@ class _AddCustomerSheetState extends State<_AddCustomerSheet> {
                           ),
                         ),
                         title: Text(name),
-                        subtitle: phone.isNotEmpty ? Text(phone) : null,
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (phone.isNotEmpty)
+                              Text(phone,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600)),
+                            if (creditLimit > 0)
+                              Container(
+                                margin: const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'Crédito: ${CurrencyHelper.format(availableCredit)}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => widget.onSelectRegistered(customer),
                       );
@@ -2520,6 +3412,14 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
     });
   }
 
+  void _incrementCartItem(int index) {
+    setState(() {
+      _cart[index]['quantity']++;
+      _cart[index]['total'] =
+          _cart[index]['quantity'] * _cart[index]['unitPrice'];
+    });
+  }
+
   Future<void> _confirmOrders() async {
     if (_cart.isEmpty) return;
 
@@ -2534,7 +3434,8 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
 
     for (final item in _cart) {
       final isMuntu = item['isMuntu'] == true;
-      final qty = (item['quantity'] ?? 1) as int;
+      final qty =
+          (item['quantity'] ?? 1) as int; // Quantidade no carrinho (ex: 3)
       final qtyUnitsPerItem = (item['qtyUnitsPerItem'] ?? 1) as int;
       final qtyUnits = isMuntu ? (qty * qtyUnitsPerItem) : qty;
       final fallbackUnitPrice =
@@ -2549,6 +3450,7 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
         unitPrice: fallbackUnitPrice,
         isMuntu: isMuntu,
         orderedBy: auth.userId ?? '',
+        displayQty: qty, // Quantidade do carrinho para exibição
       );
       if (!success) {
         allSuccess = false;
@@ -2732,12 +3634,33 @@ class _AddOrderSheetState extends State<_AddOrderSheet> {
                             CurrencyHelper.format(item['total']),
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
+                          const SizedBox(width: 8),
+                          // Botão diminuir quantidade
                           IconButton(
-                            icon: const Icon(Icons.remove_circle,
-                                color: Colors.red, size: 20),
+                            icon: const Icon(Icons.remove_circle_outline,
+                                color: Colors.red, size: 24),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                             onPressed: () => _removeFromCart(index),
+                          ),
+                          // Quantidade atual
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              '${item['quantity']}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          // Botão aumentar quantidade
+                          IconButton(
+                            icon: const Icon(Icons.add_circle,
+                                color: Colors.green, size: 24),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _incrementCartItem(index),
                           ),
                         ],
                       ),
