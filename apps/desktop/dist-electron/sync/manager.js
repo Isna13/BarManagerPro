@@ -862,21 +862,22 @@ class SyncManager {
             console.log('📅 Última sincronização:', lastSyncDate || 'Nunca sincronizado');
             // 2. Pull de cada entidade importante
             // Algumas entidades precisam de sync completo (não incremental)
-            // CORREÇÃO: customers e debts precisam de fullSync para garantir que todas as dívidas
-            // e seus clientes associados sejam sincronizados, mesmo que sejam registros antigos
+            // CORREÇÃO COMPLETA: Após reset, lastSyncDate é null, forçando sync completo
+            // Entidades com fullSync: true sempre buscam todos os registros (independente de lastSyncDate)
             const entities = [
-                { name: 'branches', endpoint: '/branches' },
+                { name: 'branches', endpoint: '/branches', fullSync: true },
                 { name: 'users', endpoint: '/users' },
-                { name: 'categories', endpoint: '/categories' },
-                { name: 'products', endpoint: '/products' },
+                { name: 'categories', endpoint: '/categories', fullSync: true },
+                { name: 'products', endpoint: '/products', fullSync: true },
                 { name: 'customers', endpoint: '/customers', fullSync: true }, // Clientes sempre sync completo (necessário para debts)
-                { name: 'suppliers', endpoint: '/suppliers' },
-                { name: 'inventory', endpoint: '/inventory' },
+                { name: 'suppliers', endpoint: '/suppliers', fullSync: true }, // CORREÇÃO: Fornecedores precisam de sync completo
+                { name: 'inventory', endpoint: '/inventory', fullSync: true },
                 { name: 'debts', endpoint: '/debts', fullSync: true }, // Dívidas sempre sync completo
-                { name: 'purchases', endpoint: '/purchases' },
-                { name: 'sales', endpoint: '/sales' },
-                { name: 'tables', endpoint: '/tables' },
-                { name: 'table_sessions', endpoint: '/table-sessions' }, // Rota separada para evitar conflito com /tables/:id
+                { name: 'purchases', endpoint: '/purchases?limit=500', fullSync: true }, // CORREÇÃO: Compras precisam de sync completo
+                { name: 'cash_boxes', endpoint: '/cash-box?limit=500', fullSync: true }, // CORREÇÃO: Caixas precisam de sync completo
+                { name: 'sales', endpoint: '/sales?limit=500', fullSync: true },
+                { name: 'tables', endpoint: '/tables', fullSync: true },
+                { name: 'table_sessions', endpoint: '/table-sessions', fullSync: true }, // Rota separada para evitar conflito com /tables/:id
             ];
             console.log('🔍 DEBUG: Entidades para sincronizar:', entities.map(e => e.name).join(', '));
             for (const entity of entities) {
@@ -1296,49 +1297,59 @@ class SyncManager {
                 console.log(`   ⏸️ Pulados (alterações locais): ${skippedPending}`);
             },
             suppliers: (items) => {
+                console.log(`📦 SYNC SUPPLIERS: Processando ${items.length} fornecedores...`);
+                let created = 0, updated = 0, errors = 0;
                 for (const item of items) {
                     try {
                         const existing = this.dbManager.getSupplierById(item.id);
                         // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
                         if (this.hasLocalPendingChanges('suppliers', item.id, existing, item)) {
+                            console.log(`⏸️ Supplier ${item.name} tem alterações locais pendentes`);
                             continue;
                         }
+                        // Gerar código se não existir
+                        const code = item.code || `SUP-${Date.now()}`;
                         if (existing) {
                             this.dbManager.updateSupplier(item.id, {
+                                code: code,
                                 name: item.name,
                                 email: item.email,
                                 phone: item.phone,
                                 address: item.address,
-                                contact_person: item.contactPerson,
-                                tax_id: item.taxId,
-                                payment_terms: item.paymentTerms,
+                                contactPerson: item.contactPerson || item.contact_person,
+                                taxId: item.taxId || item.tax_id,
+                                paymentTerms: item.paymentTerms || item.payment_terms,
                                 notes: item.notes,
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
                             }, true); // skipSyncQueue = true para evitar loop
+                            updated++;
+                            console.log(`📝 Supplier atualizado: ${item.name}`);
                         }
                         else {
                             this.dbManager.createSupplier({
                                 id: item.id,
+                                code: code,
                                 name: item.name,
                                 email: item.email,
                                 phone: item.phone,
                                 address: item.address,
-                                contact_person: item.contactPerson,
-                                tax_id: item.taxId,
-                                payment_terms: item.paymentTerms,
+                                contactPerson: item.contactPerson || item.contact_person,
+                                taxId: item.taxId || item.tax_id,
+                                paymentTerms: item.paymentTerms || item.payment_terms,
                                 notes: item.notes,
-                                is_active: item.isActive !== false ? 1 : 0,
-                                synced: 1,
-                                last_sync: new Date().toISOString(),
                             }, true); // skipSyncQueue = true para evitar loop
+                            created++;
+                            console.log(`➕ Supplier criado: ${item.name}`);
                         }
                     }
                     catch (e) {
-                        console.error(`Erro ao mesclar supplier ${item.id}:`, e?.message);
+                        errors++;
+                        console.error(`❌ Erro ao mesclar supplier ${item.id} (${item.name}):`, e?.message);
                     }
                 }
+                console.log(`📊 SYNC SUPPLIERS RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
             },
             inventory: (items) => {
                 // Inventário - atualizar quantidades na tabela inventory_items
@@ -1538,12 +1549,25 @@ class SyncManager {
             },
             purchases: (items) => {
                 // Compras - sincronizar do servidor para o desktop
+                console.log(`📦 SYNC PURCHASES: Processando ${items.length} compras...`);
+                let created = 0, updated = 0, errors = 0;
                 for (const item of items) {
                     try {
                         const existing = this.dbManager.getPurchaseById ? this.dbManager.getPurchaseById(item.id) : null;
                         // Não sobrescrever se há alterações locais pendentes
                         if (this.hasLocalPendingChanges('purchases', item.id, existing, item)) {
+                            console.log(`⏸️ Compra ${item.id} tem alterações locais pendentes`);
                             continue;
+                        }
+                        // Verificar se o fornecedor existe
+                        const supplierId = item.supplierId || item.supplier_id;
+                        if (supplierId) {
+                            const supplierExists = this.dbManager.getSupplierById(supplierId);
+                            if (!supplierExists) {
+                                console.log(`⚠️ Compra ${item.id}: fornecedor ${supplierId} não existe localmente, pulando...`);
+                                errors++;
+                                continue;
+                            }
                         }
                         if (existing) {
                             // Atualizar compra existente - especialmente o status
@@ -1557,15 +1581,17 @@ class SyncManager {
                   synced = 1,
                   updated_at = datetime('now')
                 WHERE id = ?
-              `).run(item.supplierId || item.supplier_id, item.status || 'pending', item.total || 0, item.notes || null, item.receivedAt || item.received_at || null, item.id);
-                            console.log(`📦 Compra atualizada: ${item.id} (status: ${item.status})`);
+              `).run(supplierId, item.status || 'pending', item.total || 0, item.notes || null, item.receivedAt || item.received_at || null, item.id);
+                            updated++;
+                            console.log(`📝 Compra atualizada: ${item.id} (status: ${item.status})`);
                         }
                         else {
                             // Criar nova compra
                             this.dbManager.prepare(`
-                INSERT INTO purchases (id, purchase_number, branch_id, supplier_id, status, total, notes, created_by, synced, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-              `).run(item.id, item.purchaseNumber || item.purchase_number || `PUR-${Date.now()}`, item.branchId || item.branch_id || 'main-branch', item.supplierId || item.supplier_id, item.status || 'pending', item.total || 0, item.notes || null, item.createdBy || item.created_by || null);
+                INSERT INTO purchases (id, purchase_number, branch_id, supplier_id, status, subtotal, tax_total, discount_total, total, notes, received_by, received_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(item.id, item.purchaseNumber || item.purchase_number || `PUR-${Date.now()}`, item.branchId || item.branch_id || 'main-branch', supplierId, item.status || 'pending', item.subtotal || 0, item.taxTotal || item.tax_total || 0, item.discountTotal || item.discount_total || 0, item.total || item.totalCost || 0, item.notes || null, item.receivedBy || item.received_by || null, item.receivedAt || item.received_at || null);
+                            created++;
                             console.log(`➕ Compra criada: ${item.id}`);
                         }
                         // Sincronizar itens da compra se existirem
@@ -1590,9 +1616,11 @@ class SyncManager {
                         }
                     }
                     catch (e) {
-                        console.error(`Erro ao mesclar purchase ${item.id}:`, e?.message);
+                        errors++;
+                        console.error(`❌ Erro ao mesclar purchase ${item.id}:`, e?.message);
                     }
                 }
+                console.log(`📊 SYNC PURCHASES RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
             },
             tables: (items) => {
                 // Mesas - sincronizar do servidor para o desktop
@@ -1706,15 +1734,19 @@ class SyncManager {
             },
             cash_boxes: (items) => {
                 // Caixas - sincronizar histórico do servidor para o desktop
+                console.log(`💰 SYNC CASH_BOXES: Processando ${items.length} caixas...`);
+                let created = 0, updated = 0, errors = 0;
                 for (const item of items) {
                     try {
                         const existing = this.dbManager.getCashBoxById ? this.dbManager.getCashBoxById(item.id) : null;
                         // Não sobrescrever se há alterações locais pendentes
                         if (this.hasLocalPendingChanges('cash_box', item.id, existing, item)) {
+                            console.log(`⏸️ Caixa ${item.id} tem alterações locais pendentes`);
                             continue;
                         }
                         if (existing) {
                             // Atualizar caixa existente (especialmente status de fechamento)
+                            // NOTA: A tabela NÃO tem coluna 'total_pix'
                             this.dbManager.prepare(`
                 UPDATE cash_boxes SET
                   status = ?,
@@ -1722,7 +1754,6 @@ class SyncManager {
                   total_sales = ?,
                   total_cash = ?,
                   total_card = ?,
-                  total_pix = ?,
                   total_mobile_money = ?,
                   total_debt = ?,
                   difference = ?,
@@ -1730,22 +1761,28 @@ class SyncManager {
                   synced = 1,
                   updated_at = datetime('now')
                 WHERE id = ?
-              `).run(item.status || 'open', item.closingCash || item.closing_cash || null, item.totalSales || item.total_sales || 0, item.totalCash || item.total_cash || 0, item.totalCard || item.total_card || 0, item.totalPix || item.total_pix || 0, item.totalMobileMoney || item.total_mobile_money || 0, item.totalDebt || item.total_debt || 0, item.difference || 0, item.closedAt || item.closed_at || null, item.id);
+              `).run(item.status || 'open', item.closingCash || item.closing_cash || null, item.totalSales || item.total_sales || item.stats?.totalSales || 0, item.totalCash || item.total_cash || item.stats?.cashPayments || 0, item.totalCard || item.total_card || item.stats?.cardPayments || 0, item.totalMobileMoney || item.total_mobile_money || item.totalPix || item.stats?.mobileMoneyPayments || 0, item.totalDebt || item.total_debt || item.stats?.debtPayments || 0, item.difference || 0, item.closedAt || item.closed_at || null, item.id);
+                            updated++;
                             console.log(`📝 Caixa atualizado: ${item.id} (${item.status})`);
                         }
                         else {
                             // Criar novo caixa do servidor
+                            // NOTA: A tabela NÃO tem coluna 'total_pix', usa 'total_mobile_money' para pagamentos móveis
                             this.dbManager.prepare(`
-                INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, status, opening_cash, closing_cash, total_sales, total_cash, total_card, total_pix, total_mobile_money, total_debt, difference, notes, opened_at, closed_at, synced, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-              `).run(item.id, item.boxNumber || item.box_number || `CX-${Date.now()}`, item.branchId || item.branch_id || 'main-branch', item.openedBy || item.opened_by || null, item.status || 'closed', item.openingCash || item.opening_cash || 0, item.closingCash || item.closing_cash || null, item.totalSales || item.total_sales || 0, item.totalCash || item.total_cash || 0, item.totalCard || item.total_card || 0, item.totalPix || item.total_pix || 0, item.totalMobileMoney || item.total_mobile_money || 0, item.totalDebt || item.total_debt || 0, item.difference || 0, item.notes || null, item.openedAt || item.opened_at || new Date().toISOString(), item.closedAt || item.closed_at || null);
+                INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, status, opening_cash, closing_cash, total_sales, total_cash, total_card, total_mobile_money, total_debt, difference, notes, opened_at, closed_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(item.id, item.boxNumber || item.box_number || `CX-${Date.now()}`, item.branchId || item.branch_id || 'main-branch', item.openedBy || item.opened_by || 'unknown', // NOT NULL - usar default se não existir
+                            item.status || 'closed', item.openingCash || item.opening_cash || 0, item.closingCash || item.closing_cash || null, item.totalSales || item.total_sales || item.stats?.totalSales || 0, item.totalCash || item.total_cash || item.stats?.cashPayments || 0, item.totalCard || item.total_card || item.stats?.cardPayments || 0, item.totalMobileMoney || item.total_mobile_money || item.totalPix || item.stats?.mobileMoneyPayments || 0, item.totalDebt || item.total_debt || item.stats?.debtPayments || 0, item.difference || 0, item.notes || null, item.openedAt || item.opened_at || new Date().toISOString(), item.closedAt || item.closed_at || null);
+                            created++;
                             console.log(`➕ Caixa criado do servidor: ${item.id} (${item.status})`);
                         }
                     }
                     catch (e) {
-                        console.error(`Erro ao mesclar cash_box ${item.id}:`, e?.message);
+                        errors++;
+                        console.error(`❌ Erro ao mesclar cash_box ${item.id}:`, e?.message);
                     }
                 }
+                console.log(`📊 SYNC CASH_BOXES RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
             },
             settings: (items) => {
                 // Configurações - sincronizar do servidor para o desktop

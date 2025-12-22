@@ -1814,17 +1814,21 @@ export class SyncManager {
             } else {
               // Criar nova compra
               this.dbManager.prepare(`
-                INSERT INTO purchases (id, purchase_number, branch_id, supplier_id, status, total, notes, created_by, synced, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+                INSERT INTO purchases (id, purchase_number, branch_id, supplier_id, status, subtotal, tax_total, discount_total, total, notes, received_by, received_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
               `).run(
                 item.id,
                 item.purchaseNumber || item.purchase_number || `PUR-${Date.now()}`,
                 item.branchId || item.branch_id || 'main-branch',
                 supplierId,
                 item.status || 'pending',
-                item.total || 0,
+                item.subtotal || 0,
+                item.taxTotal || item.tax_total || 0,
+                item.discountTotal || item.discount_total || 0,
+                item.total || item.totalCost || 0,
                 item.notes || null,
-                item.createdBy || item.created_by || null
+                item.receivedBy || item.received_by || null,
+                item.receivedAt || item.received_at || null
               );
               created++;
               console.log(`➕ Compra criada: ${item.id}`);
@@ -2045,6 +2049,7 @@ export class SyncManager {
             
             if (existing) {
               // Atualizar caixa existente (especialmente status de fechamento)
+              // NOTA: A tabela NÃO tem coluna 'total_pix'
               this.dbManager.prepare(`
                 UPDATE cash_boxes SET
                   status = ?,
@@ -2052,7 +2057,6 @@ export class SyncManager {
                   total_sales = ?,
                   total_cash = ?,
                   total_card = ?,
-                  total_pix = ?,
                   total_mobile_money = ?,
                   total_debt = ?,
                   difference = ?,
@@ -2063,12 +2067,11 @@ export class SyncManager {
               `).run(
                 item.status || 'open',
                 item.closingCash || item.closing_cash || null,
-                item.totalSales || item.total_sales || 0,
-                item.totalCash || item.total_cash || 0,
-                item.totalCard || item.total_card || 0,
-                item.totalPix || item.total_pix || 0,
-                item.totalMobileMoney || item.total_mobile_money || 0,
-                item.totalDebt || item.total_debt || 0,
+                item.totalSales || item.total_sales || item.stats?.totalSales || 0,
+                item.totalCash || item.total_cash || item.stats?.cashPayments || 0,
+                item.totalCard || item.total_card || item.stats?.cardPayments || 0,
+                item.totalMobileMoney || item.total_mobile_money || item.totalPix || item.stats?.mobileMoneyPayments || 0,
+                item.totalDebt || item.total_debt || item.stats?.debtPayments || 0,
                 item.difference || 0,
                 item.closedAt || item.closed_at || null,
                 item.id
@@ -2077,23 +2080,23 @@ export class SyncManager {
               console.log(`📝 Caixa atualizado: ${item.id} (${item.status})`);
             } else {
               // Criar novo caixa do servidor
+              // NOTA: A tabela NÃO tem coluna 'total_pix', usa 'total_mobile_money' para pagamentos móveis
               this.dbManager.prepare(`
-                INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, status, opening_cash, closing_cash, total_sales, total_cash, total_card, total_pix, total_mobile_money, total_debt, difference, notes, opened_at, closed_at, synced, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+                INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, status, opening_cash, closing_cash, total_sales, total_cash, total_card, total_mobile_money, total_debt, difference, notes, opened_at, closed_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
               `).run(
                 item.id,
                 item.boxNumber || item.box_number || `CX-${Date.now()}`,
                 item.branchId || item.branch_id || 'main-branch',
-                item.openedBy || item.opened_by || null,
+                item.openedBy || item.opened_by || 'unknown', // NOT NULL - usar default se não existir
                 item.status || 'closed',
                 item.openingCash || item.opening_cash || 0,
                 item.closingCash || item.closing_cash || null,
-                item.totalSales || item.total_sales || 0,
-                item.totalCash || item.total_cash || 0,
-                item.totalCard || item.total_card || 0,
-                item.totalPix || item.total_pix || 0,
-                item.totalMobileMoney || item.total_mobile_money || 0,
-                item.totalDebt || item.total_debt || 0,
+                item.totalSales || item.total_sales || item.stats?.totalSales || 0,
+                item.totalCash || item.total_cash || item.stats?.cashPayments || 0,
+                item.totalCard || item.total_card || item.stats?.cardPayments || 0,
+                item.totalMobileMoney || item.total_mobile_money || item.totalPix || item.stats?.mobileMoneyPayments || 0,
+                item.totalDebt || item.total_debt || item.stats?.debtPayments || 0,
                 item.difference || 0,
                 item.notes || null,
                 item.openedAt || item.opened_at || new Date().toISOString(),
