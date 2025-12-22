@@ -164,7 +164,27 @@ const CashBox: React.FC = () => {
     }
   };
 
+  /**
+   * Calcula os totais do caixa.
+   * PRIORIDADE: Usar valores sincronizados do servidor (armazenados no caixa)
+   * FALLBACK: Calcular localmente a partir das vendas (quando offline ou dados não sincronizados)
+   */
   const calculateTotals = () => {
+    // PRIORIDADE 1: Usar valores sincronizados do servidor (armazenados no currentCashBox)
+    // Esses valores foram calculados pelo servidor a partir da tabela de payments
+    if (currentCashBox && (currentCashBox.total_sales > 0 || currentCashBox.total_cash > 0)) {
+      const totalSales = (currentCashBox.total_sales || 0) / 100;
+      const totalCash = (currentCashBox.total_cash || 0) / 100;
+      const totalCard = (currentCashBox.total_card || 0) / 100;
+      const totalMobile = (currentCashBox.total_mobile_money || 0) / 100;
+      const totalDebt = (currentCashBox.total_debt || 0) / 100;
+      
+      console.log('📊 Usando totais SINCRONIZADOS do servidor:', { totalSales, totalCash, totalCard, totalMobile, totalDebt });
+      return { totalCash, totalCard, totalMobile, totalDebt, totalSales };
+    }
+    
+    // FALLBACK: Calcular localmente a partir das vendas (modo offline)
+    console.log('📊 Calculando totais LOCALMENTE a partir das vendas (fallback)');
     let totalCash = 0;
     let totalCard = 0;
     let totalMobile = 0;
@@ -195,8 +215,23 @@ const CashBox: React.FC = () => {
   const calculateExpectedCash = () => {
     const { totalCash } = calculateTotals();
     const opening = currentCashBox ? currentCashBox.opening_cash / 100 : 0;
+    // O esperado em caixa é o valor inicial + pagamentos em dinheiro
     return opening + totalCash;
   };
+
+  // Força recálculo quando currentCashBox muda
+  useEffect(() => {
+    if (currentCashBox) {
+      // Trigger re-render quando os valores do caixa mudam
+      console.log('📦 Caixa atualizado:', {
+        id: currentCashBox.id,
+        totalSales: currentCashBox.total_sales,
+        totalCash: currentCashBox.total_cash,
+        totalMobile: currentCashBox.total_mobile_money,
+        totalDebt: currentCashBox.total_debt
+      });
+    }
+  }, [currentCashBox]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('pt-BR', {
