@@ -288,7 +288,29 @@ export class SyncManager {
         
         totalProgress += progressStep;
       } catch (error: any) {
-        if (error?.response?.status === 404) {
+        if (error?.response?.status === 401) {
+          console.log(`   ⚠️ ${entity.name}: token inválido ou expirado (401)`);
+          // Tentar reautenticar uma vez
+          if (this.lastCredentials) {
+            console.log(`   🔄 Tentando reautenticação...`);
+            try {
+              await this.tryReauthenticate(1);
+              // Tentar novamente após reautenticação
+              const retryResponse = await this.apiClient.get(entity.endpoint, { timeout: 30000 });
+              const retryItems = Array.isArray(retryResponse.data) ? retryResponse.data : retryResponse.data?.data || [];
+              console.log(`   ✅ ${entity.name}: ${retryItems.length} itens (após reauth)`);
+              stats[entity.name] = retryItems.length;
+              if (retryItems.length > 0) {
+                await this.mergeEntityData(entity.name, retryItems);
+              }
+            } catch (reauthError) {
+              console.error(`   ❌ Falha na reautenticação para ${entity.name}`);
+              stats[entity.name] = -1;
+            }
+          } else {
+            stats[entity.name] = -1;
+          }
+        } else if (error?.response?.status === 404) {
           console.log(`   ⚠️ ${entity.name}: endpoint não disponível`);
           stats[entity.name] = 0;
         } else if (error?.response?.status === 403) {
