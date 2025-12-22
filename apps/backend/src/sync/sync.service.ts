@@ -263,9 +263,9 @@ export class SyncService {
           updatedAt: true,
         },
       }),
-      // Categorias
+      // Categorias (não têm branchId, sincronizar todas)
       this.prisma.category.findMany({
-        where: { branchId, updatedAt: { gte: since } },
+        where: { updatedAt: { gte: since } },
       }),
       // Fornecedores
       this.prisma.supplier.findMany({

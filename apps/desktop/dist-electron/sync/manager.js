@@ -838,7 +838,7 @@ class SyncManager {
                 { name: 'purchases', endpoint: '/purchases' },
                 { name: 'sales', endpoint: '/sales' },
                 { name: 'tables', endpoint: '/tables' },
-                { name: 'table_sessions', endpoint: '/tables/sessions' },
+                { name: 'table_sessions', endpoint: '/table-sessions' }, // Rota separada para evitar conflito com /tables/:id
             ];
             console.log('🔍 DEBUG: Entidades para sincronizar:', entities.map(e => e.name).join(', '));
             for (const entity of entities) {
