@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import compression from 'compression';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import * as bodyParser from 'body-parser';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -16,6 +17,10 @@ async function bootstrap() {
   const port = configService.get('PORT') || 3000;
   const apiPrefix = configService.get('API_PREFIX') || 'api/v1';
   const nodeEnv = configService.get('NODE_ENV') || 'development';
+
+  // Aumentar limite de tamanho do body para backups grandes (100MB)
+  app.use(bodyParser.json({ limit: '100mb' }));
+  app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
   // Security - Helmet with production-ready settings
   app.use(helmet({
