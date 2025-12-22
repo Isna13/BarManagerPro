@@ -2460,6 +2460,77 @@ export class SyncManager {
           return { skip: true, success: false, reason: 'Atualização de caixa não suportada (apenas abertura/fechamento)' };
         }
         return { skip: true, success: false, reason: 'Operação de caixa não suportada' };
+      
+      case 'user':
+        // Usuário - sincronizar criação
+        if (operation === 'create') {
+          // Verificar se temos a senha original para enviar ao backend
+          if (!data.password) {
+            console.error('❌ Senha não disponível para sincronização de usuário');
+            return { 
+              success: false, 
+              reason: 'Senha não disponível para sincronização. Usuário criado apenas localmente.' 
+            };
+          }
+          
+          // Obter branchId default se não fornecido
+          let branchId = data.branchId;
+          if (!branchId) {
+            // Tentar obter a primeira branch disponível
+            branchId = this.dbManager.getDefaultBranchId();
+            if (branchId) {
+              console.log(`📍 Usando branchId default: ${branchId}`);
+            }
+          }
+          
+          if (!branchId) {
+            console.error('❌ branchId obrigatório para sincronização de usuário');
+            return { 
+              success: false, 
+              reason: 'branchId não disponível. Configure uma filial primeiro.' 
+            };
+          }
+          
+          // Formatar dados para o backend (CreateUserDto)
+          const createUserPayload = {
+            email: data.email,
+            password: data.password,
+            role: data.role,
+            branchId: branchId,
+            isActive: true,
+          };
+          
+          console.log('📤 Enviando usuário para backend:', { email: data.email, role: data.role, branchId });
+          
+          try {
+            await this.apiClient.post('/users', createUserPayload);
+            console.log('✅ Usuário sincronizado com backend:', data.email);
+            return { success: true };
+          } catch (error: any) {
+            // Se usuário já existe, considerar sucesso
+            if (error?.response?.status === 409) {
+              console.log('⚠️ Usuário já existe no backend:', data.email);
+              return { success: true };
+            }
+            throw error;
+          }
+        } else if (operation === 'update') {
+          // Para update, usar PATCH /users/:id
+          const updatePayload: any = {};
+          if (data.role) updatePayload.role = data.role;
+          if (data.branchId) updatePayload.branchId = data.branchId;
+          if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
+          
+          await this.apiClient.patch(`/users/${entity_id}`, updatePayload);
+          console.log('✅ Usuário atualizado no backend:', entity_id);
+          return { success: true };
+        } else if (operation === 'delete') {
+          // Desativar usuário
+          await this.apiClient.patch(`/users/${entity_id}`, { isActive: false });
+          console.log('✅ Usuário desativado no backend:', entity_id);
+          return { success: true };
+        }
+        return { skip: true, success: false, reason: 'Operação de usuário não suportada' };
         
       case 'debt_payment':
         // Pagamento de dívida - deve chamar POST /debts/:debtId/pay

@@ -3064,6 +3064,7 @@ export class DatabaseManager {
     email: string;
     fullName: string;
     passwordHash: string;
+    password?: string; // Senha original para sync com backend
     role: string;
     branchId?: string;
     phone?: string;
@@ -3091,7 +3092,21 @@ export class DatabaseManager {
       allowedTabsJson
     );
 
-    this.addToSyncQueue('create', 'user', id, data, 2);
+    // Dados para sync - incluir password original (não o hash) para o backend
+    // O backend faz seu próprio hash da senha
+    const syncData = {
+      id,
+      username: data.username,
+      email: data.email,
+      fullName: data.fullName,
+      role: data.role,
+      branchId: data.branchId || null,
+      phone: data.phone,
+      allowedTabs: data.allowedTabs,
+      password: data.password, // Senha original para o backend
+    };
+    
+    this.addToSyncQueue('create', 'user', id, syncData, 2);
 
     return { id, ...data };
   }
@@ -6699,6 +6714,19 @@ export class DatabaseManager {
       return this.db.prepare('SELECT * FROM branches WHERE id = ?').get(id);
     } catch (error) {
       console.error('Erro ao buscar branch por ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Obtém o ID da primeira filial disponível (útil como default)
+   */
+  getDefaultBranchId(): string | null {
+    try {
+      const branch = this.db.prepare('SELECT id FROM branches WHERE is_active = 1 ORDER BY is_main DESC, created_at ASC LIMIT 1').get() as { id: string } | undefined;
+      return branch?.id || null;
+    } catch (error) {
+      console.error('Erro ao buscar branch default:', error);
       return null;
     }
   }

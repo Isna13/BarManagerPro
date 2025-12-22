@@ -267,6 +267,9 @@ export default function UsersPage() {
         // Hash da senha para novo usuário (feito no main process)
         // @ts-ignore
         userData.passwordHash = await window.electronAPI?.users?.hashPassword?.(formData.password);
+        // Também enviar a senha original para sincronização com o backend
+        // (o backend faz seu próprio hash)
+        userData.password = formData.password;
       }
 
       if (editMode && selectedUser) {
