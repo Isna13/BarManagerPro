@@ -829,7 +829,7 @@ ipcMain.handle('backup:create', async (_, options) => {
   const backupPath = options?.backupDir || path.join(app.getPath('documents'), 'BarManager-Backups');
   const backupType = options?.backupType || 'manual';
   const createdBy = options?.createdBy || 'system';
-  return dbManager.createBackup(backupPath, backupType, createdBy);
+  return await dbManager.createBackup(backupPath, backupType, createdBy);
 });
 
 ipcMain.handle('backup:restore', async (_, filePath) => {

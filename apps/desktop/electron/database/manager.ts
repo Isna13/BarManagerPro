@@ -6448,24 +6448,33 @@ export class DatabaseManager {
   /**
    * Cria um backup completo do banco de dados
    */
-  createBackup(backupDir: string, backupType: string = 'manual', createdBy?: string): { 
+  async createBackup(backupDir: string, backupType: string = 'manual', createdBy?: string): Promise<{ 
     success: boolean; 
     filePath?: string; 
     fileName?: string;
     fileSize?: number;
     error?: string;
-  } {
+  }> {
     try {
+      // Garantir que o diretório de backup existe
       if (!fs.existsSync(backupDir)) {
         fs.mkdirSync(backupDir, { recursive: true });
+        console.log('📁 Diretório de backup criado:', backupDir);
       }
       
       const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
       const fileName = `barmanager-backup-${timestamp}.db`;
       const backupFile = path.join(backupDir, fileName);
       
-      // Usar backup síncrono do better-sqlite3
-      this.db.backup(backupFile);
+      console.log('📦 Criando backup em:', backupFile);
+      
+      // Usar backup do better-sqlite3 - retorna Promise
+      await this.db.backup(backupFile);
+      
+      // Verificar se o arquivo foi criado
+      if (!fs.existsSync(backupFile)) {
+        throw new Error(`Arquivo de backup não foi criado: ${backupFile}`);
+      }
       
       // Obter tamanho do arquivo
       const stats = fs.statSync(backupFile);
