@@ -799,13 +799,52 @@ ipcMain.handle('settings:getAll', async () => {
 });
 
 // Backup
-ipcMain.handle('backup:create', async () => {
-  const backupPath = path.join(app.getPath('documents'), 'BarManager-Backups');
-  return dbManager.createBackup(backupPath);
+ipcMain.handle('backup:create', async (_, options) => {
+  const backupPath = options?.backupDir || path.join(app.getPath('documents'), 'BarManager-Backups');
+  const backupType = options?.backupType || 'manual';
+  const createdBy = options?.createdBy || 'system';
+  return dbManager.createBackup(backupPath, backupType, createdBy);
 });
 
 ipcMain.handle('backup:restore', async (_, filePath) => {
   return dbManager.restoreBackup(filePath);
+});
+
+ipcMain.handle('backup:history', async (_, limit) => {
+  return dbManager.getBackupHistory(limit || 20);
+});
+
+ipcMain.handle('backup:delete', async (_, { id, deleteFile }) => {
+  return dbManager.deleteBackup(id, deleteFile !== false);
+});
+
+ipcMain.handle('backup:selectFile', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Selecionar Arquivo de Backup',
+    filters: [
+      { name: 'Arquivos de Backup', extensions: ['db', 'bkp', 'sqlite'] }
+    ],
+    properties: ['openFile']
+  });
+  
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true };
+  }
+  
+  return { success: true, filePath: result.filePaths[0] };
+});
+
+ipcMain.handle('backup:selectDirectory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Selecionar Pasta para Backups',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true };
+  }
+  
+  return { success: true, directory: result.filePaths[0] };
 });
 
 // URL padrão do Railway

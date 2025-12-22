@@ -460,6 +460,16 @@ export class SyncManager {
         // Atualizar último login
         this.dbManager.updateUserLastLogin(user.id);
         
+        // Parse allowed_tabs do banco de dados
+        let allowedTabs: string[] = [];
+        if (user.allowed_tabs) {
+          try {
+            allowedTabs = JSON.parse(user.allowed_tabs);
+          } catch (e) {
+            console.warn('⚠️ Erro ao parsear allowed_tabs:', e);
+          }
+        }
+        
         this.token = 'offline-token';
         const offlineUser = {
           user: {
@@ -469,6 +479,7 @@ export class SyncManager {
             role: user.role,
             branchId: user.branch_id,
             permissions: user.role === 'admin' || user.role === 'owner' ? ['*'] : [],
+            allowedTabs: allowedTabs,
           },
           accessToken: 'offline-token',
         };

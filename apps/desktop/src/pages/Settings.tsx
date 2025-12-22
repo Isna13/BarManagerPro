@@ -51,6 +51,13 @@ export default function SettingsPage() {
   const [lastFullSync, setLastFullSync] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
   const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
+  
+  // Estados para Backup
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
+  const [backupHistory, setBackupHistory] = useState<any[]>([]);
+  const [backupPath, setBackupPath] = useState<string>('');
+  
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     database: true,
     sync: true,
@@ -70,7 +77,173 @@ export default function SettingsPage() {
   // Carregar status detalhado ao montar
   useEffect(() => {
     loadDetailedSyncStatus();
+    loadBackupHistory();
+    loadBackupPath();
   }, []);
+
+  const loadBackupHistory = async () => {
+    try {
+      // @ts-ignore
+      const history = await window.electronAPI?.backup?.history?.(10);
+      if (Array.isArray(history)) {
+        setBackupHistory(history);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar histórico de backups:', error);
+    }
+  };
+
+  const loadBackupPath = async () => {
+    try {
+      // @ts-ignore
+      const settings = await window.electronAPI?.settings?.get?.('backupPath');
+      if (settings) {
+        setBackupPath(settings);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar caminho de backup:', error);
+    }
+  };
+
+  const handleCreateBackup = async () => {
+    try {
+      setBackupLoading(true);
+      setBackupStatus({ type: 'info', message: 'Criando backup...' });
+      
+      // @ts-ignore
+      const result = await window.electronAPI?.backup?.create?.({
+        backupDir: backupPath || undefined,
+        backupType: 'manual',
+      });
+      
+      if (result?.success) {
+        setBackupStatus({ 
+          type: 'success', 
+          message: `Backup criado com sucesso! Arquivo: ${result.fileName} (${formatFileSize(result.fileSize)})` 
+        });
+        await loadBackupHistory();
+      } else {
+        setBackupStatus({ 
+          type: 'error', 
+          message: result?.error || 'Erro ao criar backup' 
+        });
+      }
+    } catch (error: any) {
+      setBackupStatus({ 
+        type: 'error', 
+        message: error.message || 'Erro ao criar backup' 
+      });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    try {
+      // @ts-ignore
+      const fileResult = await window.electronAPI?.backup?.selectFile?.();
+      
+      if (!fileResult?.success || fileResult?.canceled) {
+        return;
+      }
+      
+      const confirmed = confirm(
+        '⚠️ ATENÇÃO!\n\n' +
+        'A restauração substituirá TODOS os dados atuais do sistema.\n\n' +
+        'Certifique-se de que:\n' +
+        '• Você tem um backup do estado atual\n' +
+        '• Nenhum outro usuário está usando o sistema\n\n' +
+        'O aplicativo será reiniciado após a restauração.\n\n' +
+        'Deseja continuar?'
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+      
+      setBackupLoading(true);
+      setBackupStatus({ type: 'info', message: 'Restaurando backup...' });
+      
+      // @ts-ignore
+      const result = await window.electronAPI?.backup?.restore?.(fileResult.filePath);
+      
+      if (result?.success) {
+        setBackupStatus({ 
+          type: 'success', 
+          message: 'Backup restaurado com sucesso! O aplicativo será reiniciado...' 
+        });
+        
+        // Aguardar e recarregar a página
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        setBackupStatus({ 
+          type: 'error', 
+          message: result?.error || 'Erro ao restaurar backup' 
+        });
+      }
+    } catch (error: any) {
+      setBackupStatus({ 
+        type: 'error', 
+        message: error.message || 'Erro ao restaurar backup' 
+      });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleSelectBackupDirectory = async () => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI?.backup?.selectDirectory?.();
+      
+      if (result?.success && result.directory) {
+        setBackupPath(result.directory);
+        // @ts-ignore
+        await window.electronAPI?.settings?.set?.('backupPath', result.directory);
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar pasta:', error);
+    }
+  };
+
+  const handleDeleteBackup = async (backupId: string, fileName: string) => {
+    const confirmed = confirm(`Deseja excluir o backup "${fileName}"?\n\nEsta ação não pode ser desfeita.`);
+    if (!confirmed) return;
+    
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI?.backup?.delete?.(backupId, true);
+      
+      if (result?.success) {
+        await loadBackupHistory();
+        setBackupStatus({ type: 'success', message: 'Backup excluído com sucesso!' });
+      } else {
+        setBackupStatus({ type: 'error', message: result?.error || 'Erro ao excluir backup' });
+      }
+    } catch (error: any) {
+      setBackupStatus({ type: 'error', message: error.message || 'Erro ao excluir backup' });
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatBackupDate = (dateString: string): string => {
+    return new Date(dateString).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   const loadDetailedSyncStatus = async () => {
     try {
@@ -1002,54 +1175,142 @@ export default function SettingsPage() {
           {/* 8. Backup e Restauração */}
           <ConfigCard title="Backup e Restauração" icon={HardDrive} sectionKey="backup">
             <div className="space-y-6">
+              {/* Status Message */}
+              {backupStatus.type && (
+                <div className={`p-4 rounded-lg border ${
+                  backupStatus.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
+                  backupStatus.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
+                  'bg-blue-50 border-blue-200 text-blue-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {backupStatus.type === 'success' && <CheckCircle className="w-5 h-5" />}
+                    {backupStatus.type === 'error' && <AlertCircle className="w-5 h-5" />}
+                    {backupStatus.type === 'info' && <RefreshCw className="w-5 h-5 animate-spin" />}
+                    <span className="text-sm font-medium">{backupStatus.message}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button className="p-4 bg-green-50 border-2 border-green-200 rounded-lg hover:bg-green-100 transition-colors text-left">
+                <button 
+                  onClick={handleCreateBackup}
+                  disabled={backupLoading}
+                  className="p-4 bg-green-50 border-2 border-green-200 rounded-lg hover:bg-green-100 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <div className="flex items-center gap-3 mb-2">
                     <HardDrive className="w-5 h-5 text-green-600" />
-                    <span className="font-semibold text-green-900">Gerar Backup Completo</span>
+                    <span className="font-semibold text-green-900">
+                      {backupLoading ? 'Criando...' : 'Gerar Backup Completo'}
+                    </span>
                   </div>
-                  <p className="text-sm text-green-700">Criar cópia de segurança agora</p>
+                  <p className="text-sm text-green-700">Criar cópia de segurança do banco de dados</p>
                 </button>
 
-                <button className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-left">
+                <button 
+                  onClick={handleRestoreBackup}
+                  disabled={backupLoading}
+                  className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <div className="flex items-center gap-3 mb-2">
-                    <FileText className="w-5 h-5 text-blue-600" />
-                    <span className="font-semibold text-blue-900">Restaurar Backup</span>
+                    <Upload className="w-5 h-5 text-blue-600" />
+                    <span className="font-semibold text-blue-900">
+                      {backupLoading ? 'Restaurando...' : 'Restaurar Backup'}
+                    </span>
                   </div>
-                  <p className="text-sm text-blue-700">Recuperar dados de backup</p>
+                  <p className="text-sm text-blue-700">Recuperar dados de um arquivo de backup</p>
                 </button>
               </div>
 
+              {/* Backup Path */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Pasta de Backup</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value="C:\BarManager\Backups"
+                    value={backupPath || 'Documentos/BarManager-Backups (padrão)'}
                     readOnly
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
                   />
-                  <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+                  <button 
+                    onClick={handleSelectBackupDirectory}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
                     Alterar
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
-                  <span className="text-sm text-gray-700">Backup automático diário às 02:00</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
-                  <span className="text-sm text-gray-700">Manter últimos 7 backups</span>
-                </label>
+              {/* Backup History */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-semibold text-gray-900">Histórico de Backups</h4>
+                  <button 
+                    onClick={loadBackupHistory}
+                    className="text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    <RefreshCw className="w-4 h-4 inline mr-1" />
+                    Atualizar
+                  </button>
+                </div>
+                
+                {backupHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500">Nenhum backup encontrado</p>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {backupHistory.map((backup) => (
+                      <div 
+                        key={backup.id}
+                        className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            {backup.status === 'completed' ? (
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <AlertCircle className="w-4 h-4 text-red-500" />
+                            )}
+                            <span className="text-sm font-medium text-gray-900">
+                              {backup.file_name}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              backup.backup_type === 'manual' 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-green-100 text-green-700'
+                            }`}>
+                              {backup.backup_type === 'manual' ? 'Manual' : 'Automático'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {formatBackupDate(backup.created_at)} • {formatFileSize(backup.file_size)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteBackup(backup.id, backup.file_name)}
+                          className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                          title="Excluir backup"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-900 mb-2">Histórico de Backups</h4>
-                <p className="text-sm text-gray-600">Último backup: Hoje às 02:00</p>
-                <p className="text-sm text-gray-600">Tamanho: 45.2 MB</p>
+              {/* Info Box */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-amber-900 mb-1">Importante</h4>
+                    <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
+                      <li>Faça backups regulares para evitar perda de dados</li>
+                      <li>Mantenha os arquivos de backup em local seguro</li>
+                      <li>A restauração substituirá todos os dados atuais</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           </ConfigCard>

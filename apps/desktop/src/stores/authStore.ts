@@ -8,6 +8,7 @@ interface User {
   role: string;
   branchId?: string;
   permissions: string[];
+  allowedTabs?: string[];
 }
 
 interface AuthState {

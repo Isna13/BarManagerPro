@@ -262,8 +262,14 @@ const api = {
   
   // Backup
   backup: {
-    create: () => ipcRenderer.invoke('backup:create'),
+    create: (options?: { backupDir?: string; backupType?: string; createdBy?: string }) => 
+      ipcRenderer.invoke('backup:create', options),
     restore: (filePath: string) => ipcRenderer.invoke('backup:restore', filePath),
+    history: (limit?: number) => ipcRenderer.invoke('backup:history', limit),
+    delete: (id: string, deleteFile?: boolean) => 
+      ipcRenderer.invoke('backup:delete', { id, deleteFile }),
+    selectFile: () => ipcRenderer.invoke('backup:selectFile'),
+    selectDirectory: () => ipcRenderer.invoke('backup:selectDirectory'),
   },
   
   // Reports

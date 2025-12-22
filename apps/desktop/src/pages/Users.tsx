@@ -1,8 +1,36 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Edit2, Trash2, Eye, User, Shield, Key, Building } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Eye, User, Shield, Key, Building, CheckSquare, Square } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SearchableSelect from '../components/common/SearchableSelect';
+
+// Definição das abas disponíveis no sistema
+const AVAILABLE_TABS = [
+  { id: 'dashboard', label: 'Dashboard', path: '/' },
+  { id: 'pos', label: 'PDV', path: '/pos' },
+  { id: 'tables', label: 'Mesas', path: '/tables' },
+  { id: 'sales', label: 'Vendas', path: '/sales' },
+  { id: 'products', label: 'Produtos', path: '/products' },
+  { id: 'suppliers', label: 'Fornecedores', path: '/suppliers' },
+  { id: 'purchases', label: 'Compras', path: '/purchases' },
+  { id: 'inventory', label: 'Estoque', path: '/inventory' },
+  { id: 'customers', label: 'Clientes', path: '/customers' },
+  { id: 'debts', label: 'Dívidas (Vales)', path: '/debts' },
+  { id: 'cashbox', label: 'Caixa', path: '/cashbox' },
+  { id: 'cashbox-history', label: 'Histórico de Caixas', path: '/cashbox-history' },
+  { id: 'reports', label: 'Relatórios', path: '/reports' },
+  { id: 'users', label: 'Usuários', path: '/users' },
+  { id: 'settings', label: 'Configurações', path: '/settings' },
+];
+
+// Permissões padrão por cargo
+const DEFAULT_PERMISSIONS_BY_ROLE: { [key: string]: string[] } = {
+  admin: [], // null/vazio = todas as abas
+  owner: [], // proprietário = todas as abas
+  manager: ['dashboard', 'pos', 'tables', 'sales', 'products', 'suppliers', 'purchases', 'inventory', 'customers', 'debts', 'cashbox', 'cashbox-history', 'reports'],
+  cashier: ['dashboard', 'pos', 'tables', 'sales', 'customers', 'debts', 'cashbox'],
+  waiter: ['dashboard', 'pos', 'tables'],
+};
 
 interface User {
   id: string;
@@ -16,6 +44,7 @@ interface User {
   is_active: boolean;
   last_login: string | null;
   created_at: string;
+  allowed_tabs?: string | null;
 }
 
 interface Branch {
@@ -55,6 +84,7 @@ export default function UsersPage() {
     phone: '',
     password: '',
     confirmPassword: '',
+    allowedTabs: [] as string[],
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -128,6 +158,19 @@ export default function UsersPage() {
     if (user) {
       setEditMode(true);
       setSelectedUser(user);
+      
+      // Parse allowed_tabs from JSON string or use default permissions for role
+      let allowedTabs: string[] = [];
+      if (user.allowed_tabs) {
+        try {
+          allowedTabs = JSON.parse(user.allowed_tabs);
+        } catch (e) {
+          allowedTabs = DEFAULT_PERMISSIONS_BY_ROLE[user.role] || [];
+        }
+      } else {
+        allowedTabs = DEFAULT_PERMISSIONS_BY_ROLE[user.role] || [];
+      }
+      
       setFormData({
         username: user.username,
         email: user.email,
@@ -137,6 +180,7 @@ export default function UsersPage() {
         phone: user.phone || '',
         password: '',
         confirmPassword: '',
+        allowedTabs,
       });
     } else {
       setEditMode(false);
@@ -150,6 +194,7 @@ export default function UsersPage() {
         phone: '',
         password: '',
         confirmPassword: '',
+        allowedTabs: DEFAULT_PERMISSIONS_BY_ROLE['cashier'] || [],
       });
     }
     setShowModal(true);
@@ -205,6 +250,9 @@ export default function UsersPage() {
     }
 
     try {
+      // Para admin e owner, não salvar allowedTabs (acesso total)
+      const shouldSaveAllowedTabs = !['admin', 'owner'].includes(formData.role);
+      
       const userData: any = {
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
@@ -212,6 +260,7 @@ export default function UsersPage() {
         role: formData.role,
         branchId: formData.branch_id || null,
         phone: formData.phone.trim() || null,
+        allowedTabs: shouldSaveAllowedTabs ? formData.allowedTabs : null,
       };
 
       if (!editMode && formData.password) {
@@ -350,6 +399,42 @@ export default function UsersPage() {
       minute: '2-digit',
     });
   };
+
+  // Funções para gerenciar permissões de abas
+  const handleTabToggle = (tabId: string) => {
+    setFormData(prev => {
+      const newTabs = prev.allowedTabs.includes(tabId)
+        ? prev.allowedTabs.filter(t => t !== tabId)
+        : [...prev.allowedTabs, tabId];
+      return { ...prev, allowedTabs: newTabs };
+    });
+  };
+
+  const handleSelectAllTabs = () => {
+    setFormData(prev => ({
+      ...prev,
+      allowedTabs: AVAILABLE_TABS.map(t => t.id),
+    }));
+  };
+
+  const handleClearAllTabs = () => {
+    setFormData(prev => ({
+      ...prev,
+      allowedTabs: [],
+    }));
+  };
+
+  const handleRoleChange = (role: string) => {
+    // Atualizar permissões padrão ao mudar o cargo
+    const defaultTabs = DEFAULT_PERMISSIONS_BY_ROLE[role] || [];
+    setFormData(prev => ({
+      ...prev,
+      role: role as User['role'],
+      allowedTabs: defaultTabs,
+    }));
+  };
+
+  const isAdminOrOwner = ['admin', 'owner'].includes(formData.role);
 
   return (
     <div className="p-6">
@@ -613,7 +698,7 @@ export default function UsersPage() {
                       label: role.label,
                     }))}
                     value={formData.role}
-                    onChange={(value) => setFormData({ ...formData, role: value as User['role'] })}
+                    onChange={(value) => handleRoleChange(value)}
                     placeholder="Selecione o cargo"
                     searchPlaceholder="Buscar cargo..."
                     emptyText="Nenhum cargo encontrado"
@@ -640,7 +725,73 @@ export default function UsersPage() {
                     emptyText="Nenhuma filial encontrada"
                   />
                 </div>
+              </div>
 
+              {/* Permissões de Abas */}
+              <div className="mt-6 border-t pt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    <Shield className="w-4 h-4 inline mr-2" />
+                    Permissões de Acesso às Abas
+                  </label>
+                  {!isAdminOrOwner && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSelectAllTabs}
+                        className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                      >
+                        <CheckSquare className="w-3 h-3 inline mr-1" />
+                        Selecionar Todas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearAllTabs}
+                        className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                      >
+                        <Square className="w-3 h-3 inline mr-1" />
+                        Limpar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {isAdminOrOwner ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-sm text-blue-800">
+                      <Shield className="w-4 h-4 inline mr-1" />
+                      Administradores e Proprietários têm acesso a todas as abas automaticamente.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-gray-50 rounded-lg border">
+                    {AVAILABLE_TABS.map(tab => (
+                      <label
+                        key={tab.id}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-100 ${
+                          formData.allowedTabs.includes(tab.id) ? 'bg-blue-50 border border-blue-200' : 'bg-white border border-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.allowedTabs.includes(tab.id)}
+                          onChange={() => handleTabToggle(tab.id)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{tab.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                
+                {!isAdminOrOwner && formData.allowedTabs.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    ⚠️ Selecione pelo menos uma aba para o usuário ter acesso.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 {/* Password (only for new users) */}
                 {!editMode && (
                   <>
@@ -756,6 +907,46 @@ export default function UsersPage() {
                   <label className="block text-sm font-medium text-gray-500 mb-1">Data de Criação</label>
                   <p className="text-gray-900">{formatDate(selectedUser.created_at)}</p>
                 </div>
+              </div>
+
+              {/* Permissões de Abas */}
+              <div className="mt-6 pt-4 border-t">
+                <label className="block text-sm font-medium text-gray-500 mb-2">
+                  <Shield className="w-4 h-4 inline mr-1" />
+                  Permissões de Acesso
+                </label>
+                {['admin', 'owner'].includes(selectedUser.role) ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-sm text-blue-800">Acesso total a todas as abas</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      let allowedTabs: string[] = [];
+                      try {
+                        allowedTabs = selectedUser.allowed_tabs ? JSON.parse(selectedUser.allowed_tabs) : [];
+                      } catch (e) {
+                        allowedTabs = DEFAULT_PERMISSIONS_BY_ROLE[selectedUser.role] || [];
+                      }
+                      
+                      if (allowedTabs.length === 0) {
+                        allowedTabs = DEFAULT_PERMISSIONS_BY_ROLE[selectedUser.role] || [];
+                      }
+                      
+                      return allowedTabs.map(tabId => {
+                        const tab = AVAILABLE_TABS.find(t => t.id === tabId);
+                        return tab ? (
+                          <span
+                            key={tabId}
+                            className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-full"
+                          >
+                            {tab.label}
+                          </span>
+                        ) : null;
+                      });
+                    })()}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 mt-6">

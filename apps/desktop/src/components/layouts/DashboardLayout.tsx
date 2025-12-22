@@ -1,11 +1,58 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, Navigate } from 'react-router-dom';
 import { Home, ShoppingCart, Package, Users, FileText, Settings, LogOut, Tag, Truck, ShoppingBag, Wallet, History, Receipt, Table, Shield } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import OnlineStatusIndicator from '../common/OnlineStatusIndicator';
 
+// Mapeamento de path para ID da aba
+const PATH_TO_TAB_ID: { [key: string]: string } = {
+  '/': 'dashboard',
+  '/pos': 'pos',
+  '/tables': 'tables',
+  '/sales': 'sales',
+  '/products': 'products',
+  '/suppliers': 'suppliers',
+  '/purchases': 'purchases',
+  '/inventory': 'inventory',
+  '/customers': 'customers',
+  '/debts': 'debts',
+  '/cashbox': 'cashbox',
+  '/cashbox-history': 'cashbox-history',
+  '/reports': 'reports',
+  '/users': 'users',
+  '/settings': 'settings',
+};
+
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore();
   const location = useLocation();
+
+  // Função para verificar se o usuário tem acesso a uma aba
+  const hasAccessToTab = (path: string): boolean => {
+    // Admin e Owner têm acesso total
+    if (user?.role === 'admin' || user?.role === 'owner') {
+      return true;
+    }
+    
+    // Se não há permissões definidas, usa padrão do cargo
+    if (!user?.allowedTabs || user.allowedTabs.length === 0) {
+      return true; // Fallback: permitir tudo se não configurado
+    }
+    
+    const tabId = PATH_TO_TAB_ID[path];
+    if (!tabId) return true; // Rota não mapeada, permitir
+    
+    return user.allowedTabs.includes(tabId);
+  };
+
+  // Verificar acesso à rota atual
+  const currentTabId = PATH_TO_TAB_ID[location.pathname];
+  if (currentTabId && !hasAccessToTab(location.pathname)) {
+    // Redirecionar para a primeira aba permitida
+    const firstAllowedPath = Object.keys(PATH_TO_TAB_ID).find(path => hasAccessToTab(path));
+    if (firstAllowedPath && firstAllowedPath !== location.pathname) {
+      return <Navigate to={firstAllowedPath} replace />;
+    }
+  }
 
   // Agrupamento de menus por seção
   const menuSections = [
@@ -40,6 +87,12 @@ export default function DashboardLayout() {
     }
   ];
 
+  // Filtrar itens baseado nas permissões
+  const filteredMenuSections = menuSections.map(section => ({
+    ...section,
+    items: section.items.filter(item => hasAccessToTab(item.path))
+  })).filter(section => section.items.length > 0);
+
   const isActive = (path: string) => location.pathname === path;
 
   return (
@@ -59,7 +112,7 @@ export default function DashboardLayout() {
 
         {/* Navegação com scroll */}
         <nav className="sidebar-nav">
-          {menuSections.map((section, sectionIndex) => (
+          {filteredMenuSections.map((section, sectionIndex) => (
             <div key={section.title} className="sidebar-section">
               <div className="sidebar-section-title">{section.title}</div>
               <div className="sidebar-section-items">
@@ -74,7 +127,7 @@ export default function DashboardLayout() {
                   </Link>
                 ))}
               </div>
-              {sectionIndex < menuSections.length - 1 && (
+              {sectionIndex < filteredMenuSections.length - 1 && (
                 <div className="sidebar-divider"></div>
               )}
             </div>
@@ -83,13 +136,15 @@ export default function DashboardLayout() {
 
         {/* Footer fixo com Configurações e Sair */}
         <div className="sidebar-footer">
-          <Link
-            to="/settings"
-            className={`sidebar-item ${isActive('/settings') ? 'sidebar-item-active' : ''}`}
-          >
-            <Settings className="sidebar-icon" size={20} />
-            <span className="sidebar-label">Configurações</span>
-          </Link>
+          {hasAccessToTab('/settings') && (
+            <Link
+              to="/settings"
+              className={`sidebar-item ${isActive('/settings') ? 'sidebar-item-active' : ''}`}
+            >
+              <Settings className="sidebar-icon" size={20} />
+              <span className="sidebar-label">Configurações</span>
+            </Link>
+          )}
           <button
             onClick={logout}
             className="sidebar-item sidebar-logout"
