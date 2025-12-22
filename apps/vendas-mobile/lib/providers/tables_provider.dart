@@ -661,15 +661,21 @@ class TablesProvider extends ChangeNotifier {
 
       Map<String, dynamic> customer;
 
+      debugPrint(
+          '🧑 addCustomer: isOnline=${_sync.isOnline}, sessionId=$sessionId, name=$customerName');
+
       if (_sync.isOnline) {
+        debugPrint('🧑 addCustomer: Enviando para API...');
         final result = await _api.addCustomerToTable(
           sessionId: sessionId,
           customerName: customerName,
           customerId: customerId,
           addedBy: addedBy,
         );
+        debugPrint('🧑 addCustomer: API retornou: $result');
         customer = Map<String, dynamic>.from(result);
         await _saveCustomerLocally(customer);
+        debugPrint('🧑 addCustomer: Cliente salvo localmente');
       } else {
         customer = {
           'id': id,

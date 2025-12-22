@@ -526,6 +526,12 @@ export class TablesService {
 
     const customer = await this.prisma.tableCustomer.create({ data });
 
+    // Atualizar updatedAt da sessão para que a sincronização incremental detecte a mudança
+    await this.prisma.tableSession.update({
+      where: { id: sessionId },
+      data: { updatedAt: new Date() },
+    });
+
     // Registrar ação
     await this.logAction(sessionId, 'ADD_CUSTOMER', addedBy, `Cliente "${customerName}" adicionado`);
 

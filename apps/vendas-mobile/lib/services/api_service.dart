@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
@@ -307,16 +308,21 @@ class ApiService {
     String? tableCustomerId,
   }) async {
     try {
-      final response = await _dio.post('/tables/customers/add', data: {
+      final payload = {
         'sessionId': sessionId,
         'customerName': customerName,
         'customerId': customerId,
         'addedBy': addedBy,
         if (tableCustomerId != null && tableCustomerId.isNotEmpty)
           'tableCustomerId': tableCustomerId,
-      });
+      };
+      debugPrint('🌐 API addCustomerToTable: POST /tables/customers/add');
+      debugPrint('🌐 API payload: $payload');
+      final response = await _dio.post('/tables/customers/add', data: payload);
+      debugPrint('🌐 API response: ${response.statusCode} - ${response.data}');
       return response.data;
     } on DioException catch (e) {
+      debugPrint('🌐 API ERROR: ${e.message}');
       throw _handleError(e);
     }
   }
@@ -331,7 +337,7 @@ class ApiService {
     String? orderId,
   }) async {
     try {
-      final response = await _dio.post('/tables/orders/add', data: {
+      final payload = {
         'sessionId': sessionId,
         'tableCustomerId': tableCustomerId,
         'productId': productId,
@@ -339,9 +345,14 @@ class ApiService {
         'isMuntu': isMuntu,
         'orderedBy': orderedBy,
         if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
-      });
+      };
+      debugPrint('🌐 API addOrderToTable: POST /tables/orders/add');
+      debugPrint('🌐 API payload: $payload');
+      final response = await _dio.post('/tables/orders/add', data: payload);
+      debugPrint('🌐 API response: ${response.statusCode} - ${response.data}');
       return response.data;
     } on DioException catch (e) {
+      debugPrint('🌐 API ERROR: ${e.message}');
       throw _handleError(e);
     }
   }
