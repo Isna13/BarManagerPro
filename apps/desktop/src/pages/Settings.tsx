@@ -317,11 +317,11 @@ export default function SettingsPage() {
       // @ts-ignore
       const result = await window.electronAPI?.serverBackup?.loadFromFile?.();
       
-      if (result?.success && result.data) {
-        setServerBackupData(result.data);
+      if (result?.success && result.backupData) {
+        setServerBackupData(result.backupData);
         setServerBackupStatus({ 
           type: 'info', 
-          message: `Backup carregado: ${result.data.metadata?.createdAt ? formatBackupDate(result.data.metadata.createdAt) : 'Data desconhecida'} - ${Object.keys(result.data.data || {}).length} entidades` 
+          message: `Backup carregado: ${result.backupData.metadata?.createdAt ? formatBackupDate(result.backupData.metadata.createdAt) : 'Data desconhecida'} - ${Object.keys(result.backupData.data || {}).length} entidades` 
         });
         setShowRestoreConfirmModal(true);
       } else if (result?.canceled) {
