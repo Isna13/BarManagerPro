@@ -1445,49 +1445,62 @@ export class SyncManager {
       },
       
       suppliers: (items) => {
+        console.log(`📦 SYNC SUPPLIERS: Processando ${items.length} fornecedores...`);
+        let created = 0, updated = 0, errors = 0;
+        
         for (const item of items) {
           try {
             const existing = this.dbManager.getSupplierById(item.id);
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
             if (this.hasLocalPendingChanges('suppliers', item.id, existing, item)) {
+              console.log(`⏸️ Supplier ${item.name} tem alterações locais pendentes`);
               continue;
             }
             
+            // Gerar código se não existir
+            const code = item.code || `SUP-${Date.now()}`;
+            
             if (existing) {
               this.dbManager.updateSupplier(item.id, {
+                code: code,
                 name: item.name,
                 email: item.email,
                 phone: item.phone,
                 address: item.address,
-                contact_person: item.contactPerson,
-                tax_id: item.taxId,
-                payment_terms: item.paymentTerms,
+                contactPerson: item.contactPerson || item.contact_person,
+                taxId: item.taxId || item.tax_id,
+                paymentTerms: item.paymentTerms || item.payment_terms,
                 notes: item.notes,
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
               }, true); // skipSyncQueue = true para evitar loop
+              updated++;
+              console.log(`📝 Supplier atualizado: ${item.name}`);
             } else {
               this.dbManager.createSupplier({
                 id: item.id,
+                code: code,
                 name: item.name,
                 email: item.email,
                 phone: item.phone,
                 address: item.address,
-                contact_person: item.contactPerson,
-                tax_id: item.taxId,
-                payment_terms: item.paymentTerms,
+                contactPerson: item.contactPerson || item.contact_person,
+                taxId: item.taxId || item.tax_id,
+                paymentTerms: item.paymentTerms || item.payment_terms,
                 notes: item.notes,
-                is_active: item.isActive !== false ? 1 : 0,
-                synced: 1,
-                last_sync: new Date().toISOString(),
               }, true); // skipSyncQueue = true para evitar loop
+              created++;
+              console.log(`➕ Supplier criado: ${item.name}`);
             }
           } catch (e: any) {
-            console.error(`Erro ao mesclar supplier ${item.id}:`, e?.message);
+            errors++;
+            console.error(`❌ Erro ao mesclar supplier ${item.id} (${item.name}):`, e?.message);
           }
         }
+        
+        console.log(`📊 SYNC SUPPLIERS RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
       },
       
       inventory: (items) => {
@@ -1752,13 +1765,28 @@ export class SyncManager {
       
       purchases: (items) => {
         // Compras - sincronizar do servidor para o desktop
+        console.log(`📦 SYNC PURCHASES: Processando ${items.length} compras...`);
+        let created = 0, updated = 0, errors = 0;
+        
         for (const item of items) {
           try {
             const existing = this.dbManager.getPurchaseById ? this.dbManager.getPurchaseById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
             if (this.hasLocalPendingChanges('purchases', item.id, existing, item)) {
+              console.log(`⏸️ Compra ${item.id} tem alterações locais pendentes`);
               continue;
+            }
+            
+            // Verificar se o fornecedor existe
+            const supplierId = item.supplierId || item.supplier_id;
+            if (supplierId) {
+              const supplierExists = this.dbManager.getSupplierById(supplierId);
+              if (!supplierExists) {
+                console.log(`⚠️ Compra ${item.id}: fornecedor ${supplierId} não existe localmente, pulando...`);
+                errors++;
+                continue;
+              }
             }
             
             if (existing) {
@@ -1774,14 +1802,15 @@ export class SyncManager {
                   updated_at = datetime('now')
                 WHERE id = ?
               `).run(
-                item.supplierId || item.supplier_id,
+                supplierId,
                 item.status || 'pending',
                 item.total || 0,
                 item.notes || null,
                 item.receivedAt || item.received_at || null,
                 item.id
               );
-              console.log(`📦 Compra atualizada: ${item.id} (status: ${item.status})`);
+              updated++;
+              console.log(`📝 Compra atualizada: ${item.id} (status: ${item.status})`);
             } else {
               // Criar nova compra
               this.dbManager.prepare(`
@@ -1791,12 +1820,13 @@ export class SyncManager {
                 item.id,
                 item.purchaseNumber || item.purchase_number || `PUR-${Date.now()}`,
                 item.branchId || item.branch_id || 'main-branch',
-                item.supplierId || item.supplier_id,
+                supplierId,
                 item.status || 'pending',
                 item.total || 0,
                 item.notes || null,
                 item.createdBy || item.created_by || null
               );
+              created++;
               console.log(`➕ Compra criada: ${item.id}`);
             }
             
@@ -1830,9 +1860,12 @@ export class SyncManager {
               }
             }
           } catch (e: any) {
-            console.error(`Erro ao mesclar purchase ${item.id}:`, e?.message);
+            errors++;
+            console.error(`❌ Erro ao mesclar purchase ${item.id}:`, e?.message);
           }
         }
+        
+        console.log(`📊 SYNC PURCHASES RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
       },
       
       tables: (items) => {
@@ -1997,12 +2030,16 @@ export class SyncManager {
       
       cash_boxes: (items) => {
         // Caixas - sincronizar histórico do servidor para o desktop
+        console.log(`💰 SYNC CASH_BOXES: Processando ${items.length} caixas...`);
+        let created = 0, updated = 0, errors = 0;
+        
         for (const item of items) {
           try {
             const existing = this.dbManager.getCashBoxById ? this.dbManager.getCashBoxById(item.id) : null;
             
             // Não sobrescrever se há alterações locais pendentes
             if (this.hasLocalPendingChanges('cash_box', item.id, existing, item)) {
+              console.log(`⏸️ Caixa ${item.id} tem alterações locais pendentes`);
               continue;
             }
             
@@ -2036,6 +2073,7 @@ export class SyncManager {
                 item.closedAt || item.closed_at || null,
                 item.id
               );
+              updated++;
               console.log(`📝 Caixa atualizado: ${item.id} (${item.status})`);
             } else {
               // Criar novo caixa do servidor
@@ -2061,12 +2099,16 @@ export class SyncManager {
                 item.openedAt || item.opened_at || new Date().toISOString(),
                 item.closedAt || item.closed_at || null
               );
+              created++;
               console.log(`➕ Caixa criado do servidor: ${item.id} (${item.status})`);
             }
           } catch (e: any) {
-            console.error(`Erro ao mesclar cash_box ${item.id}:`, e?.message);
+            errors++;
+            console.error(`❌ Erro ao mesclar cash_box ${item.id}:`, e?.message);
           }
         }
+        
+        console.log(`📊 SYNC CASH_BOXES RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
       },
       
       settings: (items) => {
