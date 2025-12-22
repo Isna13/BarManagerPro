@@ -81,6 +81,12 @@ export class CashBoxController {
     return this.cashBoxService.getHistory(branchId, limit ? parseInt(limit) : 30);
   }
 
+  // Endpoint para listar todos os caixas (para sync)
+  @Get()
+  findAll(@Query('limit') limit?: string) {
+    return this.cashBoxService.getHistoryAll(limit ? parseInt(limit) : 500);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.cashBoxService.findOne(id);
