@@ -1,5 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
-# V12 - Fix logout deleteMany, force rebuild
+# V13 - Nova rota /table-sessions separada
 FROM node:20-slim
 
 # Instalar dependências do sistema necessárias

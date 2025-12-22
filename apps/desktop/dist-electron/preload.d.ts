@@ -171,8 +171,16 @@ declare const api: {
         getAll: () => Promise<any>;
     };
     backup: {
-        create: () => Promise<any>;
+        create: (options?: {
+            backupDir?: string;
+            backupType?: string;
+            createdBy?: string;
+        }) => Promise<any>;
         restore: (filePath: string) => Promise<any>;
+        history: (limit?: number) => Promise<any>;
+        delete: (id: string, deleteFile?: boolean) => Promise<any>;
+        selectFile: () => Promise<any>;
+        selectDirectory: () => Promise<any>;
     };
     reports: {
         sales: (startDate: string, endDate: string, branchId?: string) => Promise<any>;

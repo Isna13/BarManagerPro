@@ -226,17 +226,21 @@ export declare class DatabaseManager {
         email: string;
         fullName: string;
         passwordHash: string;
+        password?: string;
         role: string;
         branchId?: string;
         phone?: string;
+        allowedTabs?: string[];
     }): {
         username: string;
         email: string;
         fullName: string;
         passwordHash: string;
+        password?: string;
         role: string;
         branchId?: string;
         phone?: string;
+        allowedTabs?: string[];
         id: string;
     };
     /**
@@ -270,6 +274,7 @@ export declare class DatabaseManager {
         branchId?: string;
         phone?: string;
         isActive?: boolean;
+        allowedTabs?: string[];
     }): any;
     /**
      * Reseta a senha de um usuário
@@ -686,9 +691,34 @@ export declare class DatabaseManager {
      * Obter resumo de todas as mesas (dashboard)
      */
     getTablesOverview(branchId: string): any;
-    createBackup(backupDir: string): string;
+    /**
+     * Cria um backup completo do banco de dados
+     */
+    createBackup(backupDir: string, backupType?: string, createdBy?: string): {
+        success: boolean;
+        filePath?: string;
+        fileName?: string;
+        fileSize?: number;
+        error?: string;
+    };
+    /**
+     * Restaura o banco de dados a partir de um backup
+     */
     restoreBackup(backupFile: string): {
         success: boolean;
+        error?: string;
+        requiresRestart?: boolean;
+    };
+    /**
+     * Lista histórico de backups
+     */
+    getBackupHistory(limit?: number): any[];
+    /**
+     * Deleta um backup do histórico e opcionalmente o arquivo
+     */
+    deleteBackup(id: string, deleteFile?: boolean): {
+        success: boolean;
+        error?: string;
     };
     private seedInitialData;
     /**
@@ -740,6 +770,10 @@ export declare class DatabaseManager {
      * Obtém uma filial pelo ID
      */
     getBranchById(id: string): any;
+    /**
+     * Obtém o ID da primeira filial disponível (útil como default)
+     */
+    getDefaultBranchId(): string | null;
     /**
      * Cria uma nova filial
      */

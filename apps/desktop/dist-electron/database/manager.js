@@ -853,6 +853,47 @@ class DatabaseManager {
         catch (error) {
             console.error('Erro na migration amount em debts:', error);
         }
+        // Migration 13: Adicionar coluna allowed_tabs para controle de acesso por abas
+        // IMPORTANTE: Permite que administradores definam quais abas cada usuário pode acessar
+        try {
+            const usersTableInfo = this.db.pragma('table_info(users)');
+            const hasAllowedTabs = usersTableInfo.some((col) => col.name === 'allowed_tabs');
+            if (!hasAllowedTabs) {
+                console.log('Executando migration: adicionando coluna allowed_tabs em users...');
+                // JSON array com as abas permitidas. NULL significa todas as abas (para admins)
+                this.db.exec('ALTER TABLE users ADD COLUMN allowed_tabs TEXT');
+                console.log('✅ Migration allowed_tabs em users concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration allowed_tabs:', error);
+        }
+        // Migration 14: Criar tabela backup_history para histórico de backups
+        try {
+            const tables = this.db.pragma('table_list');
+            const hasBackupHistory = tables.some((t) => t.name === 'backup_history');
+            if (!hasBackupHistory) {
+                console.log('Executando migration: criando tabela backup_history...');
+                this.db.exec(`
+          CREATE TABLE IF NOT EXISTS backup_history (
+            id TEXT PRIMARY KEY,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER DEFAULT 0,
+            backup_type TEXT DEFAULT 'manual', -- manual, automatic
+            status TEXT DEFAULT 'completed', -- completed, failed
+            error_message TEXT,
+            created_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE INDEX IF NOT EXISTS idx_backup_history_created ON backup_history(created_at);
+        `);
+                console.log('✅ Migration backup_history table concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration backup_history:', error);
+        }
     }
     // ============================================
     // CRUD Operations
@@ -2520,13 +2561,28 @@ class DatabaseManager {
      */
     createUser(data) {
         const id = this.generateUUID();
+        // Converter array de abas para JSON string
+        const allowedTabsJson = data.allowedTabs ? JSON.stringify(data.allowedTabs) : null;
         this.db.prepare(`
       INSERT INTO users (
-        id, username, email, full_name, password_hash, role, branch_id, phone
+        id, username, email, full_name, password_hash, role, branch_id, phone, allowed_tabs
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, data.username, data.email, data.fullName, data.passwordHash, data.role, data.branchId || null, data.phone || null);
-        this.addToSyncQueue('create', 'user', id, data, 2);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, data.username, data.email, data.fullName, data.passwordHash, data.role, data.branchId || null, data.phone || null, allowedTabsJson);
+        // Dados para sync - incluir password original (não o hash) para o backend
+        // O backend faz seu próprio hash da senha
+        const syncData = {
+            id,
+            username: data.username,
+            email: data.email,
+            fullName: data.fullName,
+            role: data.role,
+            branchId: data.branchId || null,
+            phone: data.phone,
+            allowedTabs: data.allowedTabs,
+            password: data.password, // Senha original para o backend
+        };
+        this.addToSyncQueue('create', 'user', id, syncData, 2);
         return { id, ...data };
     }
     /**
@@ -2619,6 +2675,10 @@ class DatabaseManager {
         if (data.isActive !== undefined) {
             updates.push('is_active = ?');
             params.push(data.isActive ? 1 : 0);
+        }
+        if (data.allowedTabs !== undefined) {
+            updates.push('allowed_tabs = ?');
+            params.push(data.allowedTabs ? JSON.stringify(data.allowedTabs) : null);
         }
         if (updates.length === 0) {
             return this.getUserById(id);
@@ -4958,25 +5018,165 @@ class DatabaseManager {
     // ============================================
     // Backup / Restore
     // ============================================
-    createBackup(backupDir) {
-        if (!fs.existsSync(backupDir)) {
-            fs.mkdirSync(backupDir, { recursive: true });
+    /**
+     * Cria um backup completo do banco de dados
+     */
+    createBackup(backupDir, backupType = 'manual', createdBy) {
+        try {
+            if (!fs.existsSync(backupDir)) {
+                fs.mkdirSync(backupDir, { recursive: true });
+            }
+            const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+            const fileName = `barmanager-backup-${timestamp}.db`;
+            const backupFile = path.join(backupDir, fileName);
+            // Usar backup síncrono do better-sqlite3
+            this.db.backup(backupFile);
+            // Obter tamanho do arquivo
+            const stats = fs.statSync(backupFile);
+            const fileSize = stats.size;
+            // Registrar no histórico
+            const historyId = this.generateUUID();
+            this.db.prepare(`
+        INSERT INTO backup_history (id, file_name, file_path, file_size, backup_type, status, created_by)
+        VALUES (?, ?, ?, ?, ?, 'completed', ?)
+      `).run(historyId, fileName, backupFile, fileSize, backupType, createdBy || 'system');
+            console.log('✅ Backup criado:', backupFile, '- Tamanho:', Math.round(fileSize / 1024), 'KB');
+            return {
+                success: true,
+                filePath: backupFile,
+                fileName,
+                fileSize
+            };
         }
-        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
-        const backupFile = path.join(backupDir, `barmanager-backup-${timestamp}.db`);
-        this.db.backup(backupFile).then(() => {
-            console.log('Backup created:', backupFile);
-        });
-        return backupFile;
+        catch (error) {
+            console.error('❌ Erro ao criar backup:', error);
+            // Registrar falha no histórico
+            try {
+                const historyId = this.generateUUID();
+                this.db.prepare(`
+          INSERT INTO backup_history (id, file_name, file_path, backup_type, status, error_message, created_by)
+          VALUES (?, ?, ?, ?, 'failed', ?, ?)
+        `).run(historyId, 'failed', backupDir, backupType, error.message, createdBy || 'system');
+            }
+            catch (e) {
+                // Ignorar erro ao registrar falha
+            }
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
+    /**
+     * Restaura o banco de dados a partir de um backup
+     */
     restoreBackup(backupFile) {
-        if (!fs.existsSync(backupFile)) {
-            throw new Error('Backup file not found');
+        try {
+            // Validar se o arquivo existe
+            if (!fs.existsSync(backupFile)) {
+                throw new Error('Arquivo de backup não encontrado');
+            }
+            // Validar se é um arquivo SQLite válido
+            const header = Buffer.alloc(16);
+            const fd = fs.openSync(backupFile, 'r');
+            fs.readSync(fd, header, 0, 16, 0);
+            fs.closeSync(fd);
+            // SQLite files start with "SQLite format 3\0"
+            const sqliteHeader = 'SQLite format 3';
+            if (!header.toString('ascii', 0, 15).startsWith(sqliteHeader)) {
+                throw new Error('Arquivo não é um backup válido do BarManager');
+            }
+            // Verificar integridade do backup abrindo-o temporariamente
+            let testDb = null;
+            try {
+                const Database = require('better-sqlite3');
+                testDb = new Database(backupFile, { readonly: true });
+                // Verificar se tem as tabelas essenciais
+                const tables = testDb.pragma('table_list');
+                const requiredTables = ['users', 'branches', 'products', 'sales'];
+                const tableNames = tables.map((t) => t.name);
+                for (const required of requiredTables) {
+                    if (!tableNames.includes(required)) {
+                        throw new Error(`Backup inválido: tabela '${required}' não encontrada`);
+                    }
+                }
+                testDb.close();
+            }
+            catch (error) {
+                if (testDb)
+                    testDb.close();
+                throw new Error(`Backup corrompido ou inválido: ${error.message}`);
+            }
+            // Criar backup do banco atual antes de restaurar
+            const currentBackupDir = path.dirname(this.dbPath);
+            const currentBackupFile = path.join(currentBackupDir, `pre-restore-backup-${Date.now()}.db`);
+            try {
+                this.db.backup(currentBackupFile);
+                console.log('📦 Backup de segurança criado:', currentBackupFile);
+            }
+            catch (e) {
+                console.warn('⚠️ Não foi possível criar backup de segurança antes da restauração');
+            }
+            // Fechar banco atual
+            this.db.close();
+            // Copiar arquivo de backup para o caminho do banco
+            fs.copyFileSync(backupFile, this.dbPath);
+            // Reabrir banco
+            const Database = require('better-sqlite3');
+            this.db = new Database(this.dbPath);
+            this.db.pragma('journal_mode = WAL');
+            console.log('✅ Banco de dados restaurado com sucesso!');
+            return {
+                success: true,
+                requiresRestart: true
+            };
         }
-        this.db.close();
-        fs.copyFileSync(backupFile, this.dbPath);
-        this.db = new Database(this.dbPath);
-        return { success: true };
+        catch (error) {
+            console.error('❌ Erro ao restaurar backup:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    /**
+     * Lista histórico de backups
+     */
+    getBackupHistory(limit = 20) {
+        try {
+            return this.db.prepare(`
+        SELECT * FROM backup_history 
+        ORDER BY created_at DESC 
+        LIMIT ?
+      `).all(limit);
+        }
+        catch (error) {
+            console.error('Erro ao buscar histórico de backups:', error);
+            return [];
+        }
+    }
+    /**
+     * Deleta um backup do histórico e opcionalmente o arquivo
+     */
+    deleteBackup(id, deleteFile = true) {
+        try {
+            const backup = this.db.prepare('SELECT * FROM backup_history WHERE id = ?').get(id);
+            if (!backup) {
+                throw new Error('Backup não encontrado no histórico');
+            }
+            // Deletar arquivo se solicitado
+            if (deleteFile && backup.file_path && fs.existsSync(backup.file_path)) {
+                fs.unlinkSync(backup.file_path);
+                console.log('🗑️ Arquivo de backup deletado:', backup.file_path);
+            }
+            // Remover do histórico
+            this.db.prepare('DELETE FROM backup_history WHERE id = ?').run(id);
+            return { success: true };
+        }
+        catch (error) {
+            console.error('Erro ao deletar backup:', error);
+            return { success: false, error: error.message };
+        }
     }
     // ============================================
     // Seed Data
@@ -5276,6 +5476,19 @@ class DatabaseManager {
         }
     }
     /**
+     * Obtém o ID da primeira filial disponível (útil como default)
+     */
+    getDefaultBranchId() {
+        try {
+            const branch = this.db.prepare('SELECT id FROM branches WHERE is_active = 1 ORDER BY is_main DESC, created_at ASC LIMIT 1').get();
+            return branch?.id || null;
+        }
+        catch (error) {
+            console.error('Erro ao buscar branch default:', error);
+            return null;
+        }
+    }
+    /**
      * Cria uma nova filial
      */
     createBranch(data) {
@@ -5375,6 +5588,10 @@ class DatabaseManager {
         try {
             const fields = [];
             const values = [];
+            if (data.username !== undefined) {
+                fields.push('username = ?');
+                values.push(data.username);
+            }
             if (data.email !== undefined) {
                 fields.push('email = ?');
                 values.push(data.email);
@@ -5394,6 +5611,14 @@ class DatabaseManager {
             if (data.phone !== undefined) {
                 fields.push('phone = ?');
                 values.push(data.phone);
+            }
+            if (data.allowed_tabs !== undefined) {
+                // Aceitar tanto array quanto string JSON
+                const allowedTabsJson = Array.isArray(data.allowed_tabs)
+                    ? JSON.stringify(data.allowed_tabs)
+                    : data.allowed_tabs;
+                fields.push('allowed_tabs = ?');
+                values.push(allowedTabsJson);
             }
             if (data.is_active !== undefined) {
                 fields.push('is_active = ?');

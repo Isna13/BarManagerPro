@@ -495,8 +495,9 @@ class TablesProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      debugPrint('📂 loadSession: sessionId=$sessionId, isOnline=${_sync.isOnline}');
-      
+      debugPrint(
+          '📂 loadSession: sessionId=$sessionId, isOnline=${_sync.isOnline}');
+
       if (_sync.isOnline) {
         final result = await _api.getTableSession(sessionId);
         _currentSession = Map<String, dynamic>.from(result);
@@ -507,7 +508,8 @@ class TablesProvider extends ChangeNotifier {
           _currentCustomers = List<Map<String, dynamic>>.from(
               _currentSession!['customers']
                   .map((c) => Map<String, dynamic>.from(c)));
-          debugPrint('📂 loadSession: ${_currentCustomers.length} clientes carregados da API');
+          debugPrint(
+              '📂 loadSession: ${_currentCustomers.length} clientes carregados da API');
         } else {
           debugPrint('📂 loadSession: API retornou sessão SEM customers');
           _currentCustomers = [];

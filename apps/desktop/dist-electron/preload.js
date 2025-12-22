@@ -217,8 +217,12 @@ const api = {
     },
     // Backup
     backup: {
-        create: () => electron_1.ipcRenderer.invoke('backup:create'),
+        create: (options) => electron_1.ipcRenderer.invoke('backup:create', options),
         restore: (filePath) => electron_1.ipcRenderer.invoke('backup:restore', filePath),
+        history: (limit) => electron_1.ipcRenderer.invoke('backup:history', limit),
+        delete: (id, deleteFile) => electron_1.ipcRenderer.invoke('backup:delete', { id, deleteFile }),
+        selectFile: () => electron_1.ipcRenderer.invoke('backup:selectFile'),
+        selectDirectory: () => electron_1.ipcRenderer.invoke('backup:selectDirectory'),
     },
     // Reports
     reports: {

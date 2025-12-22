@@ -703,12 +703,43 @@ electron_1.ipcMain.handle('settings:getAll', async () => {
     return store.store;
 });
 // Backup
-electron_1.ipcMain.handle('backup:create', async () => {
-    const backupPath = path.join(electron_1.app.getPath('documents'), 'BarManager-Backups');
-    return dbManager.createBackup(backupPath);
+electron_1.ipcMain.handle('backup:create', async (_, options) => {
+    const backupPath = options?.backupDir || path.join(electron_1.app.getPath('documents'), 'BarManager-Backups');
+    const backupType = options?.backupType || 'manual';
+    const createdBy = options?.createdBy || 'system';
+    return dbManager.createBackup(backupPath, backupType, createdBy);
 });
 electron_1.ipcMain.handle('backup:restore', async (_, filePath) => {
     return dbManager.restoreBackup(filePath);
+});
+electron_1.ipcMain.handle('backup:history', async (_, limit) => {
+    return dbManager.getBackupHistory(limit || 20);
+});
+electron_1.ipcMain.handle('backup:delete', async (_, { id, deleteFile }) => {
+    return dbManager.deleteBackup(id, deleteFile !== false);
+});
+electron_1.ipcMain.handle('backup:selectFile', async () => {
+    const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+        title: 'Selecionar Arquivo de Backup',
+        filters: [
+            { name: 'Arquivos de Backup', extensions: ['db', 'bkp', 'sqlite'] }
+        ],
+        properties: ['openFile']
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true };
+    }
+    return { success: true, filePath: result.filePaths[0] };
+});
+electron_1.ipcMain.handle('backup:selectDirectory', async () => {
+    const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+        title: 'Selecionar Pasta para Backups',
+        properties: ['openDirectory', 'createDirectory']
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true };
+    }
+    return { success: true, directory: result.filePaths[0] };
 });
 // URL padrão do Railway
 const DEFAULT_API_URL = 'https://barmanagerbackend-production.up.railway.app/api/v1';

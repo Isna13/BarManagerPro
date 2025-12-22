@@ -21,6 +21,7 @@ import { DebtsModule } from './debts/debts.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { TablesModule } from './tables/tables.module';
+import { TableSessionsModule } from './table-sessions/table-sessions.module';
 
 // Advanced features
 import { ForecastModule } from './forecast/forecast.module';
@@ -72,6 +73,7 @@ import { SettingsModule } from './settings/settings.module';
     SuppliersModule,
     PurchasesModule,
     TablesModule,
+    TableSessionsModule,
     
     // Advanced
     ForecastModule,

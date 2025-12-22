@@ -389,6 +389,16 @@ class SyncManager {
                 }
                 // Atualizar último login
                 this.dbManager.updateUserLastLogin(user.id);
+                // Parse allowed_tabs do banco de dados
+                let allowedTabs = [];
+                if (user.allowed_tabs) {
+                    try {
+                        allowedTabs = JSON.parse(user.allowed_tabs);
+                    }
+                    catch (e) {
+                        console.warn('⚠️ Erro ao parsear allowed_tabs:', e);
+                    }
+                }
                 this.token = 'offline-token';
                 const offlineUser = {
                     user: {
@@ -398,6 +408,7 @@ class SyncManager {
                         role: user.role,
                         branchId: user.branch_id,
                         permissions: user.role === 'admin' || user.role === 'owner' ? ['*'] : [],
+                        allowedTabs: allowedTabs,
                     },
                     accessToken: 'offline-token',
                 };
@@ -1044,16 +1055,29 @@ class SyncManager {
                         }
                         if (existing) {
                             // Não sobrescrever senha local se usuário já existe
+                            // Processar allowedTabs - pode vir como string JSON ou array
+                            let allowedTabs = item.allowedTabs;
+                            if (typeof allowedTabs === 'string') {
+                                try {
+                                    allowedTabs = JSON.parse(allowedTabs);
+                                }
+                                catch (e) {
+                                    // Já é string, manter
+                                }
+                            }
                             this.dbManager.updateUserFromServer(existing.id, {
+                                username: item.username,
                                 email: item.email,
                                 full_name: item.fullName,
-                                role: item.role,
+                                role: item.role || item.roleName,
                                 branch_id: item.branchId,
                                 phone: item.phone,
+                                allowed_tabs: allowedTabs,
                                 is_active: item.isActive !== false ? 1 : 0,
                                 synced: 1,
                                 last_sync: new Date().toISOString(),
                             });
+                            console.log(`✅ Usuário atualizado: ${item.email}`);
                         }
                         // Não criar usuários do servidor localmente sem senha
                     }
@@ -2064,6 +2088,93 @@ class SyncManager {
                     return { skip: true, success: false, reason: 'Atualização de caixa não suportada (apenas abertura/fechamento)' };
                 }
                 return { skip: true, success: false, reason: 'Operação de caixa não suportada' };
+            case 'user':
+                // Usuário - sincronizar criação
+                if (operation === 'create') {
+                    // Verificar se temos a senha original para enviar ao backend
+                    if (!data.password) {
+                        console.error('❌ Senha não disponível para sincronização de usuário');
+                        return {
+                            success: false,
+                            reason: 'Senha não disponível para sincronização. Usuário criado apenas localmente.'
+                        };
+                    }
+                    // Obter branchId default se não fornecido
+                    let branchId = data.branchId;
+                    if (!branchId) {
+                        // Tentar obter a primeira branch disponível
+                        branchId = this.dbManager.getDefaultBranchId();
+                        if (branchId) {
+                            console.log(`📍 Usando branchId default: ${branchId}`);
+                        }
+                    }
+                    // Formatar dados para o backend (CreateUserDto completo)
+                    const createUserPayload = {
+                        id: data.id || entity_id, // Usar ID do Electron para manter consistência
+                        username: data.username,
+                        email: data.email,
+                        fullName: data.fullName,
+                        password: data.password,
+                        role: data.role || 'cashier',
+                        branchId: branchId,
+                        phone: data.phone,
+                        allowedTabs: data.allowedTabs,
+                        isActive: data.isActive !== undefined ? data.isActive : true,
+                    };
+                    console.log('📤 Enviando usuário para backend:', {
+                        id: createUserPayload.id,
+                        username: createUserPayload.username,
+                        email: data.email,
+                        role: data.role,
+                        branchId,
+                        allowedTabs: data.allowedTabs,
+                    });
+                    try {
+                        await this.apiClient.post('/users', createUserPayload);
+                        console.log('✅ Usuário sincronizado com backend:', data.email);
+                        return { success: true };
+                    }
+                    catch (error) {
+                        // Se usuário já existe, considerar sucesso
+                        if (error?.response?.status === 409) {
+                            console.log('⚠️ Usuário já existe no backend:', data.email);
+                            return { success: true };
+                        }
+                        throw error;
+                    }
+                }
+                else if (operation === 'update') {
+                    // Para update, usar PUT /users/:id com todos os campos
+                    const updatePayload = {};
+                    if (data.username)
+                        updatePayload.username = data.username;
+                    if (data.email)
+                        updatePayload.email = data.email;
+                    if (data.fullName)
+                        updatePayload.fullName = data.fullName;
+                    if (data.role)
+                        updatePayload.role = data.role;
+                    if (data.branchId)
+                        updatePayload.branchId = data.branchId;
+                    if (data.phone !== undefined)
+                        updatePayload.phone = data.phone;
+                    if (data.allowedTabs !== undefined)
+                        updatePayload.allowedTabs = data.allowedTabs;
+                    if (data.isActive !== undefined)
+                        updatePayload.isActive = data.isActive;
+                    if (data.password)
+                        updatePayload.password = data.password;
+                    await this.apiClient.put(`/users/${entity_id}`, updatePayload);
+                    console.log('✅ Usuário atualizado no backend:', entity_id);
+                    return { success: true };
+                }
+                else if (operation === 'delete') {
+                    // Desativar usuário
+                    await this.apiClient.put(`/users/${entity_id}`, { isActive: false });
+                    console.log('✅ Usuário desativado no backend:', entity_id);
+                    return { success: true };
+                }
+                return { skip: true, success: false, reason: 'Operação de usuário não suportada' };
             case 'debt_payment':
                 // Pagamento de dívida - deve chamar POST /debts/:debtId/pay
                 if (operation === 'create' && data.debtId) {
