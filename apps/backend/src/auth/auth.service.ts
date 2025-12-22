@@ -161,17 +161,13 @@ export class AuthService {
   }
 
   async logout(token: string) {
-    try {
-      // Tentar deletar a sessão, mas não falhar se não existir
-      await this.prisma.session.delete({
-        where: { token },
-      });
-    } catch (error: any) {
-      // Ignorar erro se a sessão não existir (P2025 = Record not found)
-      if (error?.code !== 'P2025') {
-        console.error('Erro ao fazer logout:', error);
-      }
-    }
+    // V2: Usar deleteMany ao invés de delete para evitar erro P2025
+    // deleteMany retorna { count: 0 } se não encontrar, sem lançar exceção
+    const result = await this.prisma.session.deleteMany({
+      where: { token },
+    });
+    
+    console.log(`[Auth] Logout: ${result.count} sessão(ões) removida(s) para token`);
     return { message: 'Logout realizado com sucesso' };
   }
 

@@ -1,5 +1,5 @@
 # Dockerfile para Railway - BarManager Backend
-# V11 - Schema estável, sem force-reset
+# V12 - Fix logout deleteMany, force rebuild
 FROM node:20-slim
 
 # Instalar dependências do sistema necessárias
