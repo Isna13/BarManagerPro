@@ -107,22 +107,27 @@ export class AdminService {
         stats['tables'] = tables.count;
         this.logger.log(`   Deletados: ${tables.count} tables`);
 
-        // 15. Clientes
+        // 15. Transações de fidelidade (loyalty) - ANTES de customers
+        const loyaltyTransactions = await tx.loyaltyTransaction.deleteMany({});
+        stats['loyalty_transactions'] = loyaltyTransactions.count;
+        this.logger.log(`   Deletados: ${loyaltyTransactions.count} loyalty_transactions`);
+
+        // 16. Clientes
         const customers = await tx.customer.deleteMany({});
         stats['customers'] = customers.count;
         this.logger.log(`   Deletados: ${customers.count} customers`);
 
-        // 16. Produtos
+        // 17. Produtos
         const products = await tx.product.deleteMany({});
         stats['products'] = products.count;
         this.logger.log(`   Deletados: ${products.count} products`);
 
-        // 17. Categorias
+        // 18. Categorias
         const categories = await tx.category.deleteMany({});
         stats['categories'] = categories.count;
         this.logger.log(`   Deletados: ${categories.count} categories`);
 
-        // 18. Fornecedores
+        // 19. Fornecedores
         const suppliers = await tx.supplier.deleteMany({});
         stats['suppliers'] = suppliers.count;
         this.logger.log(`   Deletados: ${suppliers.count} suppliers`);
@@ -172,6 +177,7 @@ export class AdminService {
     counts['categories'] = await this.prisma.category.count();
     counts['suppliers'] = await this.prisma.supplier.count();
     counts['customers'] = await this.prisma.customer.count();
+    counts['loyalty_transactions'] = await this.prisma.loyaltyTransaction.count();
     counts['debts'] = await this.prisma.debt.count();
     counts['debt_payments'] = await this.prisma.debtPayment.count();
     counts['inventory'] = await this.prisma.inventory.count();
