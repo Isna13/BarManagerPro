@@ -95,7 +95,9 @@ export class BackupService {
         tableCustomers,
         tableOrders,
         inventory,
+        inventoryItems,
         inventoryMovements,
+        stockMovements,
         purchases,
         purchaseItems,
         sales,
@@ -117,7 +119,9 @@ export class BackupService {
         this.prisma.tableCustomer.findMany(),
         this.prisma.tableOrder.findMany(),
         this.prisma.inventory.findMany(),
+        this.prisma.inventoryItem.findMany(),
         this.prisma.inventoryMovement.findMany(),
+        this.prisma.stockMovement.findMany(),
         this.prisma.purchase.findMany({ include: { items: true } }),
         this.prisma.purchaseItem.findMany(),
         this.prisma.sale.findMany({ include: { items: true, payments: true } }),
@@ -142,7 +146,9 @@ export class BackupService {
         tableCustomers: tableCustomers.length,
         tableOrders: tableOrders.length,
         inventory: inventory.length,
+        inventoryItems: inventoryItems.length,
         inventoryMovements: inventoryMovements.length,
+        stockMovements: stockMovements.length,
         purchases: purchases.length,
         purchaseItems: purchaseItems.length,
         sales: sales.length,
@@ -178,7 +184,9 @@ export class BackupService {
         tableCustomers,
         tableOrders,
         inventory,
+        inventoryItems,
         inventoryMovements,
+        stockMovements,
         purchases,
         purchaseItems,
         sales,
@@ -268,7 +276,7 @@ export class BackupService {
         // ====== FASE 1: LIMPAR DADOS EXISTENTES ======
         this.logger.log('🗑️ Fase 1: Limpando dados existentes...');
 
-        // Ordem de deleção (respeitando FKs)
+        // Ordem de deleção (respeitando FKs - do mais dependente ao menos dependente)
         await tx.payment.deleteMany({});
         await tx.saleItem.deleteMany({});
         await tx.sale.deleteMany({});
@@ -278,8 +286,19 @@ export class BackupService {
         await tx.purchaseItem.deleteMany({});
         await tx.purchase.deleteMany({});
         await tx.cashBox.deleteMany({});
+        
+        // StockMovement referencia Product, Sale e Purchase
+        await tx.stockMovement.deleteMany({});
+        
+        // InventoryMovement referencia InventoryItem
         await tx.inventoryMovement.deleteMany({});
+        
+        // InventoryItem referencia Product
+        await tx.inventoryItem.deleteMany({});
+        
+        // Inventory referencia Product
         await tx.inventory.deleteMany({});
+        
         await tx.tableOrder.deleteMany({});
         await tx.tableCustomer.deleteMany({});
         await tx.tableSession.deleteMany({});
@@ -370,10 +389,26 @@ export class BackupService {
           stats['inventory'] = backupData.inventory.length;
         }
 
+        // 10.1 Inventory Items (sem movements aninhados)
+        if (backupData.inventoryItems?.length > 0) {
+          const itemsClean = backupData.inventoryItems.map(item => {
+            const { movements, ...rest } = item;
+            return rest;
+          });
+          await tx.inventoryItem.createMany({ data: itemsClean, skipDuplicates: true });
+          stats['inventoryItems'] = itemsClean.length;
+        }
+
         // 11. Inventory Movements
         if (backupData.inventoryMovements?.length > 0) {
           await tx.inventoryMovement.createMany({ data: backupData.inventoryMovements, skipDuplicates: true });
           stats['inventoryMovements'] = backupData.inventoryMovements.length;
+        }
+
+        // 11.1 Stock Movements
+        if (backupData.stockMovements?.length > 0) {
+          await tx.stockMovement.createMany({ data: backupData.stockMovements, skipDuplicates: true });
+          stats['stockMovements'] = backupData.stockMovements.length;
         }
 
         // 12. Purchases (sem items aninhados)
