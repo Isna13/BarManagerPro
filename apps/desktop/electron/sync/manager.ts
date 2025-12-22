@@ -225,6 +225,7 @@ export class SyncManager {
 
   /**
    * Verifica se o banco local está vazio ou precisa de sincronização inicial
+   * Também verifica se existe caixa aberto sincronizado
    */
   isLocalDatabaseEmpty(): boolean {
     try {
@@ -232,13 +233,29 @@ export class SyncManager {
       const customers = this.dbManager.getCustomers() as any[];
       const sales = this.dbManager.getSales({}) as any[];
       
+      // Verificar se existe caixa aberto
+      let currentCashBox = null;
+      try {
+        currentCashBox = this.dbManager.getCurrentCashBox?.() || null;
+      } catch (e) {
+        // Ignorar erro se método não existir
+      }
+      
       const isEmpty = products.length === 0 && customers.length === 0 && sales.length === 0;
+      const needsCashBoxSync = !currentCashBox && products.length > 0;
+      
       console.log(`📊 Verificação do banco local: ${isEmpty ? 'VAZIO' : 'COM DADOS'}`);
       console.log(`   - Produtos: ${products.length}`);
       console.log(`   - Clientes: ${customers.length}`);
       console.log(`   - Vendas: ${sales.length}`);
+      console.log(`   - Caixa atual: ${currentCashBox ? 'SIM' : 'NÃO'}`);
       
-      return isEmpty;
+      // Retorna true se banco vazio OU se precisa sincronizar caixa
+      if (needsCashBoxSync) {
+        console.log(`⚠️ Banco tem dados mas não tem caixa - forçando sync inicial`);
+      }
+      
+      return isEmpty || needsCashBoxSync;
     } catch (error) {
       console.error('Erro ao verificar banco local:', error);
       return true; // Assume vazio em caso de erro

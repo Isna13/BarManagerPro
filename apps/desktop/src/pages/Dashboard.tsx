@@ -54,43 +54,75 @@ export default function Dashboard() {
 
   const loadDashboardData = async (cashBox: any) => {
     try {
-      // Buscar vendas APENAS da caixa atual
+      // @ts-ignore
+      const inventory = await window.electronAPI?.inventory?.list?.() || [];
+      const lowStock = inventory.filter((item: any) => item.qty_units <= 10);
+      
+      // PRIORIDADE: Usar valores sincronizados do caixa (consistente com aba Caixa)
+      // Esses valores vêm do servidor e são calculados corretamente a partir da tabela payments
+      if (cashBox && (cashBox.total_sales > 0 || cashBox.total_cash > 0)) {
+        console.log('📊 Dashboard: Usando valores sincronizados do caixa');
+        console.log('   total_sales:', cashBox.total_sales, '→', (cashBox.total_sales / 100).toFixed(2), 'FCFA');
+        
+        // Buscar quantidade de vendas para exibição
+        // @ts-ignore
+        const allSales = await window.electronAPI?.sales?.list?.({}) || [];
+        const cashBoxOpenedAt = new Date(cashBox.opened_at);
+        const cashBoxClosedAt = cashBox.closed_at ? new Date(cashBox.closed_at) : null;
+        
+        const currentSales = allSales.filter((sale: any) => {
+          const saleDate = new Date(sale.created_at);
+          if (saleDate < cashBoxOpenedAt) return false;
+          if (cashBoxClosedAt && saleDate > cashBoxClosedAt) return false;
+          return true;
+        });
+        
+        // Contar clientes únicos
+        const uniqueCustomerIds = new Set(
+          currentSales
+            .filter((sale: any) => sale.customer_id)
+            .map((sale: any) => sale.customer_id)
+        );
+        
+        setStats({
+          todaySales: currentSales.length,
+          todayRevenue: cashBox.total_sales, // Valor sincronizado do servidor (em centavos)
+          lowStockCount: lowStock.length,
+          activeCustomers: uniqueCustomerIds.size,
+        });
+        return;
+      }
+      
+      // FALLBACK: Calcular localmente (modo offline ou caixa sem valores sincronizados)
+      console.log('📊 Dashboard: Calculando valores localmente (fallback)');
+      
       // @ts-ignore
       const allSales = await window.electronAPI?.sales?.list?.({}) || [];
       
-      // Filtrar vendas pela caixa atual (após a abertura e antes do fechamento se houver)
+      // Filtrar vendas pela caixa atual
       const cashBoxOpenedAt = new Date(cashBox.opened_at);
       const cashBoxClosedAt = cashBox.closed_at ? new Date(cashBox.closed_at) : null;
       
       const currentSales = allSales.filter((sale: any) => {
         const saleDate = new Date(sale.created_at);
-        // Venda deve ser após abertura da caixa
         if (saleDate < cashBoxOpenedAt) return false;
-        // Se caixa está fechada, venda deve ser antes do fechamento
         if (cashBoxClosedAt && saleDate > cashBoxClosedAt) return false;
         return true;
       });
 
-      // @ts-ignore
-      const inventory = await window.electronAPI?.inventory?.list?.() || [];
-      
-      // Calcular receita apenas das vendas da caixa atual
       const todayRevenue = currentSales.reduce((sum: number, sale: any) => sum + (sale.total || 0), 0);
-      const lowStock = inventory.filter((item: any) => item.qty_units <= 10);
 
-      // Contar clientes únicos que fizeram compras na caixa atual
       const uniqueCustomerIds = new Set(
         currentSales
-          .filter((sale: any) => sale.customer_id) // Apenas vendas com cliente
+          .filter((sale: any) => sale.customer_id)
           .map((sale: any) => sale.customer_id)
       );
-      const activeCustomers = uniqueCustomerIds.size;
 
       setStats({
         todaySales: currentSales.length,
-        todayRevenue: todayRevenue, // Já está em centavos
+        todayRevenue: todayRevenue,
         lowStockCount: lowStock.length,
-        activeCustomers: activeCustomers,
+        activeCustomers: uniqueCustomerIds.size,
       });
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);
