@@ -573,8 +573,8 @@ class TablesProvider extends ChangeNotifier {
           }
         }
 
-        // Salvar localmente
-        await _saveSessionLocally(_currentSession!);
+        // Salvar localmente (saveNested=false porque salvamos os dados enriquecidos abaixo)
+        await _saveSessionLocally(_currentSession!, saveNested: false);
         for (final customer in _currentCustomers) {
           await _saveCustomerLocally(customer);
         }
@@ -1251,9 +1251,12 @@ class TablesProvider extends ChangeNotifier {
     await _db.insert('tables', mappedData);
   }
 
-  Future<void> _saveSessionLocally(Map<String, dynamic> session) async {
+  Future<void> _saveSessionLocally(Map<String, dynamic> session, {bool saveNested = true}) async {
+    final sessionId = session['id']?.toString();
+    if (sessionId == null || sessionId.isEmpty) return;
+
     final mappedData = <String, dynamic>{
-      'id': session['id'],
+      'id': sessionId,
       'table_id': session['tableId'] ?? session['table_id'],
       'branch_id': session['branchId'] ?? session['branch_id'],
       'session_number': session['sessionNumber'] ?? session['session_number'],
@@ -1271,6 +1274,37 @@ class TablesProvider extends ChangeNotifier {
     };
 
     await _db.insert('table_sessions', mappedData);
+
+    // CRÍTICO: Salvar também os customers e orders aninhados (sync bidirecional)
+    // saveNested = false quando o chamador já salva separadamente (ex: loadSession)
+    if (!saveNested) return;
+
+    final customers = session['customers'] as List<dynamic>? ?? [];
+    for (final customer in customers) {
+      if (customer is! Map<String, dynamic>) continue;
+      
+      // Adicionar session_id ao customer para garantir a relação
+      final customerWithSession = Map<String, dynamic>.from(customer);
+      customerWithSession['session_id'] = sessionId;
+      customerWithSession['sessionId'] = sessionId;
+      
+      await _saveCustomerLocally(customerWithSession);
+
+      // Salvar orders do customer
+      final orders = customer['orders'] as List<dynamic>? ?? [];
+      for (final order in orders) {
+        if (order is! Map<String, dynamic>) continue;
+        
+        // Adicionar session_id e table_customer_id ao order
+        final orderWithRefs = Map<String, dynamic>.from(order);
+        orderWithRefs['session_id'] = sessionId;
+        orderWithRefs['sessionId'] = sessionId;
+        orderWithRefs['table_customer_id'] = customer['id'];
+        orderWithRefs['tableCustomerId'] = customer['id'];
+        
+        await _saveOrderLocally(orderWithRefs);
+      }
+    }
   }
 
   Future<void> _saveCustomerLocally(Map<String, dynamic> customer) async {
