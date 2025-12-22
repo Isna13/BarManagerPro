@@ -464,18 +464,22 @@ export default function SettingsPage() {
       const result = await window.electronAPI?.admin?.resetLocalData?.(userId, 'CONFIRMAR_RESET_LOCAL');
 
       if (result?.success) {
-        setResetStatus({
-          type: 'success',
-          message: `Dados locais zerados com sucesso! Backup: ${result.backupPath || 'N/A'}`
-        });
+        const successMsg = `✅ Dados locais zerados com sucesso!\nBackup salvo em: ${result.backupPath || 'N/A'}`;
+        setResetStatus({ type: 'success', message: successMsg });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
-        loadLocalDataCounts(); // Atualizar contagens
+        loadLocalDataCounts();
+        // Alert visual para garantir que o usuário veja
+        setTimeout(() => alert(successMsg), 100);
       } else {
-        setResetStatus({ type: 'error', message: result?.error || 'Erro ao zerar dados' });
+        const errorMsg = result?.error || 'Erro ao zerar dados';
+        setResetStatus({ type: 'error', message: errorMsg });
+        alert(`❌ Erro: ${errorMsg}`);
       }
     } catch (error: any) {
-      setResetStatus({ type: 'error', message: error.message || 'Erro ao zerar dados locais' });
+      const errorMsg = error.message || 'Erro ao zerar dados locais';
+      setResetStatus({ type: 'error', message: errorMsg });
+      alert(`❌ Erro: ${errorMsg}`);
     } finally {
       setResetLoading(false);
     }
@@ -495,18 +499,21 @@ export default function SettingsPage() {
       const result = await window.electronAPI?.admin?.resetServerData?.('CONFIRMAR_RESET_DADOS');
 
       if (result?.success) {
-        setResetStatus({
-          type: 'success',
-          message: `Dados do servidor zerados com sucesso!`
-        });
+        const successMsg = '✅ Dados do servidor Railway zerados com sucesso!';
+        setResetStatus({ type: 'success', message: successMsg });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
-        loadServerDataCounts(); // Atualizar contagens
+        loadServerDataCounts();
+        setTimeout(() => alert(successMsg), 100);
       } else {
-        setResetStatus({ type: 'error', message: result?.error || 'Erro ao zerar dados do servidor' });
+        const errorMsg = result?.error || 'Erro ao zerar dados do servidor';
+        setResetStatus({ type: 'error', message: errorMsg });
+        alert(`❌ Erro: ${errorMsg}`);
       }
     } catch (error: any) {
-      setResetStatus({ type: 'error', message: error.message || 'Erro ao zerar dados do servidor' });
+      const errorMsg = error.message || 'Erro ao zerar dados do servidor';
+      setResetStatus({ type: 'error', message: errorMsg });
+      alert(`❌ Erro: ${errorMsg}`);
     } finally {
       setResetLoading(false);
     }
@@ -526,17 +533,20 @@ export default function SettingsPage() {
       const result = await window.electronAPI?.admin?.resetMobileData?.('all', 'CONFIRMAR_RESET_MOBILE');
 
       if (result?.success) {
-        setResetStatus({
-          type: 'success',
-          message: result.message || 'Comando de reset enviado ao mobile!'
-        });
+        const successMsg = `✅ ${result.message || 'Comando de reset enviado ao mobile!'}`;
+        setResetStatus({ type: 'success', message: successMsg });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
+        setTimeout(() => alert(successMsg), 100);
       } else {
-        setResetStatus({ type: 'error', message: result?.message || 'Erro ao enviar comando' });
+        const errorMsg = result?.message || 'Erro ao enviar comando';
+        setResetStatus({ type: 'error', message: errorMsg });
+        alert(`❌ Erro: ${errorMsg}`);
       }
     } catch (error: any) {
-      setResetStatus({ type: 'error', message: error.message || 'Erro ao resetar mobile' });
+      const errorMsg = error.message || 'Erro ao resetar mobile';
+      setResetStatus({ type: 'error', message: errorMsg });
+      alert(`❌ Erro: ${errorMsg}`);
     } finally {
       setResetLoading(false);
     }
