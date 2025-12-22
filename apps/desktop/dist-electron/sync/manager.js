@@ -70,6 +70,18 @@ class SyncManager {
     setMainWindow(window) {
         this.mainWindow = window;
     }
+    /**
+     * Retorna o token de autenticação atual
+     */
+    getToken() {
+        return this.token;
+    }
+    /**
+     * Verifica se o token é válido (não é null e não é offline-token)
+     */
+    hasValidToken() {
+        return this.token !== null && this.token !== 'offline-token';
+    }
     emit(event, data) {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             console.log(`📡 Emitting event: ${event}`, data);
@@ -213,10 +225,10 @@ class SyncManager {
             { name: 'inventory_movements', endpoint: '/inventory/movements?limit=500' },
             { name: 'debts', endpoint: '/debts' },
             { name: 'tables', endpoint: '/tables' },
-            { name: 'table_sessions', endpoint: '/tables/sessions?status=open' }, // Sessões de mesas abertas
-            { name: 'sales', endpoint: '/sales?limit=500' }, // Limitar para performance
-            { name: 'cash_boxes', endpoint: '/cash-box/history?limit=100' },
-            { name: 'purchases', endpoint: '/purchases' },
+            { name: 'table_sessions', endpoint: '/tables/sessions?status=open' },
+            { name: 'sales', endpoint: '/sales?limit=500' },
+            { name: 'cash_boxes', endpoint: '/cash-box?limit=500' }, // Usar endpoint raiz
+            { name: 'purchases', endpoint: '/purchases?limit=500' }, // Adicionar limite
             { name: 'settings', endpoint: '/settings' },
         ];
         let totalProgress = 0;

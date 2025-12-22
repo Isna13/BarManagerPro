@@ -196,6 +196,21 @@ declare const api: {
     printer: {
         print: (type: string, data: any) => Promise<any>;
     };
+    admin: {
+        getLocalDataCounts: () => Promise<any>;
+        resetLocalData: (adminUserId: string, confirmationCode: string) => Promise<any>;
+        getServerDataCounts: () => Promise<any>;
+        resetServerData: (confirmationCode: string) => Promise<any>;
+        resetMobileData: (deviceId: string, confirmationCode: string) => Promise<any>;
+    };
+    serverBackup: {
+        createBackup: () => Promise<any>;
+        saveToFile: (backupData: any) => Promise<any>;
+        loadFromFile: () => Promise<any>;
+        restoreBackup: (backupData: any, confirmationCode: string) => Promise<any>;
+        getStatus: () => Promise<any>;
+        listServerBackups: () => Promise<any>;
+    };
 };
 export type ElectronAPI = typeof api;
 export {};

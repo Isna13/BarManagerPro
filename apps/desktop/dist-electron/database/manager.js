@@ -6218,6 +6218,209 @@ class DatabaseManager {
             pendingItems: this.getPendingSyncCount(''),
         };
     }
+    // ============================================
+    // RESET DE DADOS ADMINISTRATIVO
+    // ============================================
+    /**
+     * Zera todos os dados do banco local, EXCETO usuários, branches e configurações essenciais
+     * @param adminUserId - ID do usuário admin que está executando a operação
+     * @returns Resultado da operação com estatísticas
+     */
+    resetLocalData(adminUserId) {
+        console.log('🗑️ INICIANDO RESET DE DADOS LOCAIS...');
+        console.log(`   Executado por: ${adminUserId}`);
+        console.log(`   Data/Hora: ${new Date().toISOString()}`);
+        try {
+            // 1. Criar backup antes de resetar
+            const backupDir = path.dirname(this.dbPath);
+            const backupFile = path.join(backupDir, `pre-reset-backup-${Date.now()}.db`);
+            try {
+                this.db.backup(backupFile);
+                console.log(`📦 Backup de segurança criado: ${backupFile}`);
+            }
+            catch (backupError) {
+                console.warn('⚠️ Não foi possível criar backup de segurança');
+            }
+            const stats = {};
+            // 2. Desabilitar foreign keys temporariamente para evitar erros de constraint
+            this.db.pragma('foreign_keys = OFF');
+            console.log('🔓 Foreign keys desabilitadas temporariamente');
+            try {
+                // 3. Executar dentro de uma transação
+                const transaction = this.db.transaction(() => {
+                    // Tabelas de sincronização e logs
+                    stats['sync_queue'] = this.db.prepare('DELETE FROM sync_queue').run().changes;
+                    stats['sync_audit_log'] = this.db.prepare('DELETE FROM sync_audit_log').run().changes;
+                    try {
+                        stats['sync_conflicts'] = this.db.prepare('DELETE FROM sync_conflicts').run().changes;
+                    }
+                    catch (e) {
+                        stats['sync_conflicts'] = 0;
+                    }
+                    // Pagamentos
+                    stats['payments'] = this.db.prepare('DELETE FROM payments').run().changes;
+                    try {
+                        stats['debt_payments'] = this.db.prepare('DELETE FROM debt_payments').run().changes;
+                    }
+                    catch (e) {
+                        stats['debt_payments'] = 0;
+                    }
+                    // Itens de vendas e compras
+                    stats['sale_items'] = this.db.prepare('DELETE FROM sale_items').run().changes;
+                    try {
+                        stats['purchase_items'] = this.db.prepare('DELETE FROM purchase_items').run().changes;
+                    }
+                    catch (e) {
+                        stats['purchase_items'] = 0;
+                    }
+                    // Vendas, compras e caixas
+                    stats['sales'] = this.db.prepare('DELETE FROM sales').run().changes;
+                    try {
+                        stats['purchases'] = this.db.prepare('DELETE FROM purchases').run().changes;
+                    }
+                    catch (e) {
+                        stats['purchases'] = 0;
+                    }
+                    try {
+                        stats['cash_boxes'] = this.db.prepare('DELETE FROM cash_boxes').run().changes;
+                    }
+                    catch (e) {
+                        stats['cash_boxes'] = 0;
+                    }
+                    // Dívidas
+                    try {
+                        stats['debts'] = this.db.prepare('DELETE FROM debts').run().changes;
+                    }
+                    catch (e) {
+                        stats['debts'] = 0;
+                    }
+                    // Movimentações de estoque
+                    try {
+                        stats['stock_movements'] = this.db.prepare('DELETE FROM stock_movements').run().changes;
+                    }
+                    catch (e) {
+                        stats['stock_movements'] = 0;
+                    }
+                    // Inventário
+                    try {
+                        stats['inventory_items'] = this.db.prepare('DELETE FROM inventory_items').run().changes;
+                    }
+                    catch (e) {
+                        stats['inventory_items'] = 0;
+                    }
+                    // Mesas e sessões (deletar em ordem: orders -> customers -> sessions -> tables)
+                    try {
+                        stats['table_orders'] = this.db.prepare('DELETE FROM table_orders').run().changes;
+                    }
+                    catch (e) {
+                        stats['table_orders'] = 0;
+                    }
+                    try {
+                        stats['table_customers'] = this.db.prepare('DELETE FROM table_customers').run().changes;
+                    }
+                    catch (e) {
+                        stats['table_customers'] = 0;
+                    }
+                    try {
+                        stats['table_sessions'] = this.db.prepare('DELETE FROM table_sessions').run().changes;
+                    }
+                    catch (e) {
+                        stats['table_sessions'] = 0;
+                    }
+                    try {
+                        stats['tables'] = this.db.prepare('DELETE FROM tables').run().changes;
+                    }
+                    catch (e) {
+                        stats['tables'] = 0;
+                    }
+                    // Produtos e categorias
+                    stats['products'] = this.db.prepare('DELETE FROM products').run().changes;
+                    stats['categories'] = this.db.prepare('DELETE FROM categories').run().changes;
+                    // Fornecedores
+                    try {
+                        stats['suppliers'] = this.db.prepare('DELETE FROM suppliers').run().changes;
+                    }
+                    catch (e) {
+                        stats['suppliers'] = 0;
+                    }
+                    // Clientes
+                    stats['customers'] = this.db.prepare('DELETE FROM customers').run().changes;
+                    // Registrar a operação de reset no log
+                    // Colunas da tabela: id, device_id, action, entity, entity_id, direction, status, details, error_message, created_at
+                    const auditId = this.generateUUID();
+                    this.db.prepare(`
+            INSERT INTO sync_audit_log (id, device_id, action, entity, entity_id, direction, status, details, created_at)
+            VALUES (?, ?, 'RESET_LOCAL_DATA', 'system', ?, 'local', 'completed', ?, datetime('now'))
+          `).run(auditId, this.getDeviceId(), adminUserId, JSON.stringify(stats));
+                });
+                // Executar transação
+                transaction();
+            }
+            finally {
+                // 4. Reabilitar foreign keys
+                this.db.pragma('foreign_keys = ON');
+                console.log('🔒 Foreign keys reabilitadas');
+            }
+            console.log('✅ RESET DE DADOS LOCAIS CONCLUÍDO!');
+            console.log('📊 Estatísticas de deleção:');
+            for (const [table, count] of Object.entries(stats)) {
+                if (count > 0) {
+                    console.log(`   ${table}: ${count} registros deletados`);
+                }
+            }
+            return {
+                success: true,
+                stats,
+                backupPath: backupFile
+            };
+        }
+        catch (error) {
+            console.error('❌ ERRO NO RESET DE DADOS LOCAIS:', error);
+            // Garantir que foreign keys são reabilitadas mesmo em caso de erro
+            try {
+                this.db.pragma('foreign_keys = ON');
+            }
+            catch (e) { }
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    /**
+     * Obtém contagem de registros por tabela para preview do reset
+     */
+    getDataCountsForReset() {
+        const counts = {};
+        const tables = [
+            'sales', 'sale_items', 'payments',
+            'purchases', 'purchase_items',
+            'products', 'categories', 'suppliers',
+            'customers', 'debts', 'debt_payments',
+            'inventory_items', 'stock_movements',
+            'tables', 'table_sessions', 'table_customers', 'table_orders',
+            'cash_boxes',
+            'sync_queue', 'sync_audit_log', 'sync_conflicts'
+        ];
+        for (const table of tables) {
+            try {
+                const result = this.db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get();
+                counts[table] = result?.count || 0;
+            }
+            catch (e) {
+                counts[table] = 0;
+            }
+        }
+        // Adicionar contagem de preservados
+        try {
+            counts['_preserved_users'] = this.db.prepare('SELECT COUNT(*) as count FROM users').get()?.count || 0;
+            counts['_preserved_branches'] = this.db.prepare('SELECT COUNT(*) as count FROM branches').get()?.count || 0;
+        }
+        catch (e) {
+            // Ignorar
+        }
+        return counts;
+    }
     close() {
         if (this.db) {
             this.db.close();

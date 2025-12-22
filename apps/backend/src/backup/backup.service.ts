@@ -445,23 +445,7 @@ export class BackupService {
           stats['cashBoxes'] = backupData.cashBoxes.length;
         }
 
-        // 15. Debts (sem payments aninhados)
-        if (backupData.debts?.length > 0) {
-          const debtsClean = backupData.debts.map(d => {
-            const { payments, ...debt } = d;
-            return debt;
-          });
-          await tx.debt.createMany({ data: debtsClean, skipDuplicates: true });
-          stats['debts'] = debtsClean.length;
-        }
-
-        // 16. Debt Payments
-        if (backupData.debtPayments?.length > 0) {
-          await tx.debtPayment.createMany({ data: backupData.debtPayments, skipDuplicates: true });
-          stats['debtPayments'] = backupData.debtPayments.length;
-        }
-
-        // 17. Sales (sem items/payments aninhados)
+        // 15. Sales (sem items/payments aninhados) - ANTES de Debts (debts.saleId -> sales.id)
         if (backupData.sales?.length > 0) {
           const salesClean = backupData.sales.map(s => {
             const { items, payments, ...sale } = s;
@@ -471,16 +455,32 @@ export class BackupService {
           stats['sales'] = salesClean.length;
         }
 
-        // 18. Sale Items
+        // 16. Sale Items
         if (backupData.saleItems?.length > 0) {
           await tx.saleItem.createMany({ data: backupData.saleItems, skipDuplicates: true });
           stats['saleItems'] = backupData.saleItems.length;
         }
 
-        // 19. Payments
+        // 17. Payments
         if (backupData.payments?.length > 0) {
           await tx.payment.createMany({ data: backupData.payments, skipDuplicates: true });
           stats['payments'] = backupData.payments.length;
+        }
+
+        // 18. Debts (sem payments aninhados) - DEPOIS de Sales (debts.saleId -> sales.id)
+        if (backupData.debts?.length > 0) {
+          const debtsClean = backupData.debts.map(d => {
+            const { payments, ...debt } = d;
+            return debt;
+          });
+          await tx.debt.createMany({ data: debtsClean, skipDuplicates: true });
+          stats['debts'] = debtsClean.length;
+        }
+
+        // 19. Debt Payments
+        if (backupData.debtPayments?.length > 0) {
+          await tx.debtPayment.createMany({ data: backupData.debtPayments, skipDuplicates: true });
+          stats['debtPayments'] = backupData.debtPayments.length;
         }
 
         // 20. Loyalty Transactions

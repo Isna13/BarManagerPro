@@ -18,6 +18,14 @@ export declare class SyncManager {
     private _lastSuccessfulRequest;
     constructor(dbManager: DatabaseManager, apiUrl: string);
     setMainWindow(window: BrowserWindow): void;
+    /**
+     * Retorna o token de autenticação atual
+     */
+    getToken(): string | null;
+    /**
+     * Verifica se o token é válido (não é null e não é offline-token)
+     */
+    hasValidToken(): boolean;
     private emit;
     /**
      * Executa requisição com retry e backoff exponencial

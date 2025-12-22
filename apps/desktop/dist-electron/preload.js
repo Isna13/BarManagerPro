@@ -241,6 +241,23 @@ const api = {
     printer: {
         print: (type, data) => electron_1.ipcRenderer.invoke('printer:print', { type, data }),
     },
+    // Admin - Reset de Dados
+    admin: {
+        getLocalDataCounts: () => electron_1.ipcRenderer.invoke('admin:getLocalDataCounts'),
+        resetLocalData: (adminUserId, confirmationCode) => electron_1.ipcRenderer.invoke('admin:resetLocalData', { adminUserId, confirmationCode }),
+        getServerDataCounts: () => electron_1.ipcRenderer.invoke('admin:getServerDataCounts'),
+        resetServerData: (confirmationCode) => electron_1.ipcRenderer.invoke('admin:resetServerData', { confirmationCode }),
+        resetMobileData: (deviceId, confirmationCode) => electron_1.ipcRenderer.invoke('admin:resetMobileData', { deviceId, confirmationCode }),
+    },
+    // Backup do Servidor
+    serverBackup: {
+        createBackup: () => electron_1.ipcRenderer.invoke('backup:createServerBackup'),
+        saveToFile: (backupData) => electron_1.ipcRenderer.invoke('backup:saveToFile', { backupData }),
+        loadFromFile: () => electron_1.ipcRenderer.invoke('backup:loadFromFile'),
+        restoreBackup: (backupData, confirmationCode) => electron_1.ipcRenderer.invoke('backup:restoreServerBackup', { backupData, confirmationCode }),
+        getStatus: () => electron_1.ipcRenderer.invoke('backup:getStatus'),
+        listServerBackups: () => electron_1.ipcRenderer.invoke('backup:listServerBackups'),
+    },
 };
 electron_1.contextBridge.exposeInMainWorld('electronAPI', api);
 //# sourceMappingURL=preload.js.map

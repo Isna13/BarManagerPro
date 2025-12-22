@@ -994,4 +994,291 @@ electron_1.ipcMain.handle('printer:print', async (_, { type, data }) => {
     console.log('Print:', type, data);
     return { success: true };
 });
+// ============================================
+// ADMIN - Reset de Dados
+// ============================================
+// Obter contagem de dados para preview
+electron_1.ipcMain.handle('admin:getLocalDataCounts', async () => {
+    return dbManager.getDataCountsForReset();
+});
+// Zerar dados locais (Electron)
+electron_1.ipcMain.handle('admin:resetLocalData', async (_, { adminUserId, confirmationCode }) => {
+    // Verificar código de confirmação
+    if (confirmationCode !== 'CONFIRMAR_RESET_LOCAL') {
+        return { success: false, error: 'Código de confirmação inválido' };
+    }
+    console.log(`🔐 Reset local solicitado por: ${adminUserId}`);
+    return dbManager.resetLocalData(adminUserId);
+});
+// Obter contagem de dados do servidor
+electron_1.ipcMain.handle('admin:getServerDataCounts', async () => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    // Usar token do syncManager ao invés do store
+    const token = syncManager?.getToken();
+    if (!token || token === 'offline-token') {
+        console.error('❌ Token não encontrado para obter contagem');
+        return { error: 'Usuário não autenticado. Faça login novamente.' };
+    }
+    try {
+        const response = await axios_1.default.get(`${apiUrl}/admin/data-counts`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 15000,
+        });
+        return response.data;
+    }
+    catch (error) {
+        console.error('Erro ao obter contagem do servidor:', error?.message);
+        if (error?.response?.status === 401) {
+            return { error: 'Sessão expirada. Faça logout e login novamente.' };
+        }
+        if (error?.response?.status === 403) {
+            return { error: 'Sem permissão. Apenas administradores podem ver estes dados.' };
+        }
+        return { error: error?.response?.data?.message || error?.message };
+    }
+});
+// Zerar dados do servidor (Railway)
+electron_1.ipcMain.handle('admin:resetServerData', async (_, { confirmationCode }) => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    // Usar token do syncManager ao invés do store
+    const token = syncManager?.getToken();
+    if (!token || token === 'offline-token') {
+        console.error('❌ Token não encontrado para reset servidor');
+        return { success: false, error: 'Usuário não autenticado. Faça login novamente.' };
+    }
+    console.log(`🗄️ Reset servidor solicitado`);
+    console.log(`🔑 Token presente: Sim`);
+    try {
+        const response = await axios_1.default.post(`${apiUrl}/admin/reset-server-data`, { confirmationCode }, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 60000,
+        });
+        return response.data;
+    }
+    catch (error) {
+        console.error('Erro ao resetar servidor:', error?.message);
+        console.error('Status:', error?.response?.status);
+        let errorMsg = 'Erro desconhecido';
+        if (error?.response?.status === 401) {
+            errorMsg = 'Sessão expirada. Faça logout e login novamente.';
+        }
+        else if (error?.response?.status === 403) {
+            errorMsg = 'Sem permissão. Apenas administradores podem executar esta ação.';
+        }
+        else if (error?.response?.data?.message) {
+            errorMsg = error.response.data.message;
+        }
+        else if (error?.message) {
+            errorMsg = error.message;
+        }
+        return { success: false, error: errorMsg };
+    }
+});
+// Zerar dados do mobile (envia comando via API)
+electron_1.ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }) => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    // Usar token do syncManager ao invés do store
+    const token = syncManager?.getToken();
+    // Verificar se tem token válido
+    if (!token || token === 'offline-token') {
+        console.error('❌ Token não encontrado para reset mobile');
+        return {
+            success: false,
+            message: 'Usuário não autenticado. Faça login novamente.'
+        };
+    }
+    console.log(`📱 Reset mobile solicitado - deviceId: ${deviceId}`);
+    console.log(`🔑 Token válido presente`);
+    try {
+        const response = await axios_1.default.post(`${apiUrl}/admin/reset-mobile-data`, { deviceId, confirmationCode }, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 30000,
+        });
+        return response.data;
+    }
+    catch (error) {
+        console.error('Erro ao resetar mobile:', error?.message);
+        console.error('Status:', error?.response?.status);
+        console.error('Data:', error?.response?.data);
+        // Mensagem mais específica baseada no erro
+        let message = 'Erro desconhecido';
+        if (error?.response?.status === 401) {
+            message = 'Sessão expirada. Faça logout e login novamente.';
+        }
+        else if (error?.response?.status === 403) {
+            message = 'Sem permissão. Apenas administradores podem executar esta ação.';
+        }
+        else if (error?.response?.data?.message) {
+            message = error.response.data.message;
+        }
+        else if (error?.message) {
+            message = error.message;
+        }
+        return { success: false, message };
+    }
+});
+// ========== BACKUP DO SERVIDOR ==========
+// Criar backup do servidor
+electron_1.ipcMain.handle('backup:createServerBackup', async () => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    const token = syncManager?.getToken();
+    if (!token || token === 'offline-token') {
+        return { success: false, error: 'Usuário não autenticado' };
+    }
+    console.log('📦 Criando backup do servidor...');
+    try {
+        const response = await axios_1.default.post(`${apiUrl}/backup/download`, {}, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 120000, // 2 minutos para backups grandes
+        });
+        return { success: true, data: response.data };
+    }
+    catch (error) {
+        console.error('Erro ao criar backup:', error?.message);
+        return {
+            success: false,
+            error: error?.response?.data?.message || error?.message
+        };
+    }
+});
+// Salvar backup em arquivo
+electron_1.ipcMain.handle('backup:saveToFile', async (_, { backupData }) => {
+    const { dialog } = require('electron');
+    try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const defaultFilename = `backup-servidor-${timestamp}.json`;
+        const result = await dialog.showSaveDialog({
+            title: 'Salvar Backup do Servidor',
+            defaultPath: defaultFilename,
+            filters: [
+                { name: 'JSON Files', extensions: ['json'] },
+                { name: 'All Files', extensions: ['*'] },
+            ],
+        });
+        if (result.canceled || !result.filePath) {
+            return { success: false, canceled: true };
+        }
+        const fs = require('fs');
+        fs.writeFileSync(result.filePath, JSON.stringify(backupData, null, 2));
+        const stats = fs.statSync(result.filePath);
+        console.log(`✅ Backup salvo: ${result.filePath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        return {
+            success: true,
+            filePath: result.filePath,
+            size: stats.size,
+        };
+    }
+    catch (error) {
+        console.error('Erro ao salvar backup:', error?.message);
+        return { success: false, error: error?.message };
+    }
+});
+// Carregar backup de arquivo
+electron_1.ipcMain.handle('backup:loadFromFile', async () => {
+    const { dialog } = require('electron');
+    const fs = require('fs');
+    try {
+        const result = await dialog.showOpenDialog({
+            title: 'Selecionar Arquivo de Backup',
+            filters: [
+                { name: 'JSON Files', extensions: ['json'] },
+                { name: 'All Files', extensions: ['*'] },
+            ],
+            properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+            return { success: false, canceled: true };
+        }
+        const filePath = result.filePaths[0];
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const backupData = JSON.parse(content);
+        // Validar estrutura básica
+        if (!backupData.metadata || !backupData.metadata.version) {
+            return { success: false, error: 'Arquivo de backup inválido: falta metadata' };
+        }
+        console.log(`📂 Backup carregado: ${filePath}`);
+        console.log(`   Versão: ${backupData.metadata.version}`);
+        console.log(`   Data: ${backupData.metadata.timestamp}`);
+        console.log(`   Registros: ${backupData.metadata.totalRecords}`);
+        return {
+            success: true,
+            filePath,
+            backupData,
+            metadata: backupData.metadata,
+        };
+    }
+    catch (error) {
+        console.error('Erro ao carregar backup:', error?.message);
+        return { success: false, error: error?.message };
+    }
+});
+// Restaurar backup no servidor
+electron_1.ipcMain.handle('backup:restoreServerBackup', async (_, { backupData, confirmationCode }) => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    const token = syncManager?.getToken();
+    if (!token || token === 'offline-token') {
+        return { success: false, error: 'Usuário não autenticado' };
+    }
+    if (confirmationCode !== 'CONFIRMAR_RESTAURACAO') {
+        return { success: false, error: 'Código de confirmação inválido' };
+    }
+    console.log('🔄 Restaurando backup no servidor...');
+    try {
+        const response = await axios_1.default.post(`${apiUrl}/backup/restore`, { backupData, confirmationCode }, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            timeout: 180000, // 3 minutos para restaurações grandes
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+        console.log('✅ Restauração concluída:', response.data);
+        return response.data;
+    }
+    catch (error) {
+        console.error('Erro ao restaurar backup:', error?.message);
+        return {
+            success: false,
+            error: error?.response?.data?.message || error?.message,
+            details: error?.response?.data,
+        };
+    }
+});
+// Obter status do backup
+electron_1.ipcMain.handle('backup:getStatus', async () => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    const token = syncManager?.getToken();
+    if (!token || token === 'offline-token') {
+        return { success: false, error: 'Usuário não autenticado' };
+    }
+    try {
+        const response = await axios_1.default.get(`${apiUrl}/backup/status`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 15000,
+        });
+        return { success: true, ...response.data };
+    }
+    catch (error) {
+        return { success: false, error: error?.message };
+    }
+});
+// Listar backups no servidor
+electron_1.ipcMain.handle('backup:listServerBackups', async () => {
+    const apiUrl = store.get('apiUrl', DEFAULT_API_URL);
+    const token = syncManager?.getToken();
+    if (!token || token === 'offline-token') {
+        return { success: false, error: 'Usuário não autenticado' };
+    }
+    try {
+        const response = await axios_1.default.get(`${apiUrl}/backup/list`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 15000,
+        });
+        return { success: true, backups: response.data };
+    }
+    catch (error) {
+        return { success: false, error: error?.message };
+    }
+});
 //# sourceMappingURL=main.js.map

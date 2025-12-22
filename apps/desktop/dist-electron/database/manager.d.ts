@@ -935,6 +935,21 @@ export declare class DatabaseManager {
      * Obtém estatísticas de sync por dispositivo
      */
     getDeviceSyncStats(deviceId?: string): any;
+    /**
+     * Zera todos os dados do banco local, EXCETO usuários, branches e configurações essenciais
+     * @param adminUserId - ID do usuário admin que está executando a operação
+     * @returns Resultado da operação com estatísticas
+     */
+    resetLocalData(adminUserId: string): {
+        success: boolean;
+        error?: string;
+        stats?: Record<string, number>;
+        backupPath?: string;
+    };
+    /**
+     * Obtém contagem de registros por tabela para preview do reset
+     */
+    getDataCountsForReset(): Record<string, number>;
     close(): void;
 }
 export {};
