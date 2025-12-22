@@ -6519,11 +6519,11 @@ export class DatabaseManager {
   /**
    * Restaura o banco de dados a partir de um backup
    */
-  restoreBackup(backupFile: string): { 
+  async restoreBackup(backupFile: string): Promise<{ 
     success: boolean; 
     error?: string;
     requiresRestart?: boolean;
-  } {
+  }> {
     try {
       // Validar se o arquivo existe
       if (!fs.existsSync(backupFile)) {
@@ -6570,7 +6570,8 @@ export class DatabaseManager {
       const currentBackupFile = path.join(currentBackupDir, `pre-restore-backup-${Date.now()}.db`);
       
       try {
-        this.db.backup(currentBackupFile);
+        // db.backup é assíncrono
+        await this.db.backup(currentBackupFile);
         console.log('📦 Backup de segurança criado:', currentBackupFile);
       } catch (e) {
         console.warn('⚠️ Não foi possível criar backup de segurança antes da restauração');
@@ -6582,10 +6583,40 @@ export class DatabaseManager {
       // Copiar arquivo de backup para o caminho do banco
       fs.copyFileSync(backupFile, this.dbPath);
       
+      // Remover arquivos WAL e SHM se existirem (podem causar conflitos)
+      const walFile = this.dbPath + '-wal';
+      const shmFile = this.dbPath + '-shm';
+      if (fs.existsSync(walFile)) {
+        fs.unlinkSync(walFile);
+        console.log('🗑️ Arquivo WAL removido');
+      }
+      if (fs.existsSync(shmFile)) {
+        fs.unlinkSync(shmFile);
+        console.log('🗑️ Arquivo SHM removido');
+      }
+      
       // Reabrir banco
       const Database = require('better-sqlite3');
       this.db = new Database(this.dbPath);
       this.db.pragma('journal_mode = WAL');
+      
+      // Verificar integridade do banco restaurado
+      const integrityCheck = this.db.pragma('integrity_check');
+      if (integrityCheck[0]?.integrity_check !== 'ok') {
+        throw new Error('Banco restaurado falhou na verificação de integridade');
+      }
+      
+      // Registrar a restauração no histórico
+      try {
+        const historyId = this.generateUUID();
+        const fileName = path.basename(backupFile);
+        this.db.prepare(`
+          INSERT INTO backup_history (id, file_name, file_path, backup_type, status, created_by)
+          VALUES (?, ?, ?, 'restore', 'completed', 'system')
+        `).run(historyId, fileName, backupFile);
+      } catch (e) {
+        console.warn('⚠️ Não foi possível registrar restauração no histórico');
+      }
       
       console.log('✅ Banco de dados restaurado com sucesso!');
       
@@ -6595,6 +6626,18 @@ export class DatabaseManager {
       };
     } catch (error: any) {
       console.error('❌ Erro ao restaurar backup:', error);
+      
+      // Tentar reabrir o banco original se a restauração falhar
+      try {
+        if (!this.db || !this.db.open) {
+          const Database = require('better-sqlite3');
+          this.db = new Database(this.dbPath);
+          this.db.pragma('journal_mode = WAL');
+        }
+      } catch (reopenError) {
+        console.error('❌ Falha crítica: não foi possível reabrir o banco de dados');
+      }
+      
       return { 
         success: false, 
         error: error.message 

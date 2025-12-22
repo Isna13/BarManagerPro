@@ -833,7 +833,7 @@ ipcMain.handle('backup:create', async (_, options) => {
 });
 
 ipcMain.handle('backup:restore', async (_, filePath) => {
-  return dbManager.restoreBackup(filePath);
+  return await dbManager.restoreBackup(filePath);
 });
 
 ipcMain.handle('backup:history', async (_, limit) => {
