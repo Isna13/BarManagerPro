@@ -1,5 +1,6 @@
 # Dockerfile para Railway - BarManager Backend
-# V14 - Force rebuild: fix TypeScript errors, regenerate Prisma
+# V15 - Force rebuild: fix rate-limit X-Forwarded-For and backup FK order
+# Cache bust: 2025-12-22T19:00:00Z
 FROM node:20-slim
 
 # Instalar dependências do sistema necessárias
