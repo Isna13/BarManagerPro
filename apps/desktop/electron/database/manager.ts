@@ -148,10 +148,15 @@ export class DatabaseManager {
         role TEXT NOT NULL DEFAULT 'cashier',
         branch_id TEXT,
         phone TEXT,
+        allowed_tabs TEXT,
         is_active BOOLEAN DEFAULT 1,
         last_login DATETIME,
         synced BOOLEAN DEFAULT 0,
+        sync_status TEXT DEFAULT 'PENDING',
+        server_id TEXT,
         last_sync DATETIME,
+        last_sync_attempt DATETIME,
+        sync_error TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (branch_id) REFERENCES branches(id)
@@ -1008,6 +1013,53 @@ export class DatabaseManager {
       }
     } catch (error) {
       console.error('Erro na migration sync_queue updated_at:', error);
+    }
+
+    // Migration 17: Adicionar campos de controle de sincronização à tabela users
+    try {
+      const usersInfo: any[] = this.db.pragma('table_info(users)') as any[];
+      const hasSyncStatus = usersInfo.some((col: any) => col.name === 'sync_status');
+      const hasServerId = usersInfo.some((col: any) => col.name === 'server_id');
+      const hasLastSyncAttempt = usersInfo.some((col: any) => col.name === 'last_sync_attempt');
+      const hasSyncError = usersInfo.some((col: any) => col.name === 'sync_error');
+      const hasAllowedTabs = usersInfo.some((col: any) => col.name === 'allowed_tabs');
+      
+      if (!hasSyncStatus) {
+        console.log('Executando migration: adicionando coluna sync_status em users...');
+        this.db.exec("ALTER TABLE users ADD COLUMN sync_status TEXT DEFAULT 'PENDING'");
+        // Marcar usuários já sincronizados
+        this.db.exec("UPDATE users SET sync_status = 'SYNCED' WHERE synced = 1");
+        this.db.exec("UPDATE users SET sync_status = 'PENDING' WHERE synced = 0 OR synced IS NULL");
+        console.log('✅ Migration users.sync_status concluída!');
+      }
+      
+      if (!hasServerId) {
+        console.log('Executando migration: adicionando coluna server_id em users...');
+        this.db.exec('ALTER TABLE users ADD COLUMN server_id TEXT');
+        // Para usuários já sincronizados, o server_id é o próprio id (pois usamos o mesmo ID)
+        this.db.exec("UPDATE users SET server_id = id WHERE synced = 1");
+        console.log('✅ Migration users.server_id concluída!');
+      }
+      
+      if (!hasLastSyncAttempt) {
+        console.log('Executando migration: adicionando coluna last_sync_attempt em users...');
+        this.db.exec('ALTER TABLE users ADD COLUMN last_sync_attempt DATETIME');
+        console.log('✅ Migration users.last_sync_attempt concluída!');
+      }
+      
+      if (!hasSyncError) {
+        console.log('Executando migration: adicionando coluna sync_error em users...');
+        this.db.exec('ALTER TABLE users ADD COLUMN sync_error TEXT');
+        console.log('✅ Migration users.sync_error concluída!');
+      }
+      
+      if (!hasAllowedTabs) {
+        console.log('Executando migration: adicionando coluna allowed_tabs em users...');
+        this.db.exec('ALTER TABLE users ADD COLUMN allowed_tabs TEXT');
+        console.log('✅ Migration users.allowed_tabs concluída!');
+      }
+    } catch (error) {
+      console.error('Erro na migration users sync fields:', error);
     }
   }
 
@@ -3119,9 +3171,10 @@ export class DatabaseManager {
     
     this.db.prepare(`
       INSERT INTO users (
-        id, username, email, full_name, password_hash, role, branch_id, phone, allowed_tabs
+        id, username, email, full_name, password_hash, role, branch_id, phone, allowed_tabs,
+        synced, sync_status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'PENDING')
     `).run(
       id,
       data.username,
@@ -3136,6 +3189,7 @@ export class DatabaseManager {
 
     // Dados para sync - incluir password original (não o hash) para o backend
     // O backend faz seu próprio hash da senha
+    // IMPORTANTE: Se a senha não estiver disponível, a sincronização falhará
     const syncData = {
       id,
       username: data.username,
@@ -3146,9 +3200,17 @@ export class DatabaseManager {
       phone: data.phone,
       allowedTabs: data.allowedTabs,
       password: data.password, // Senha original para o backend
+      isActive: true,
     };
     
-    this.addToSyncQueue('create', 'user', id, syncData, 2);
+    if (data.password) {
+      this.addToSyncQueue('create', 'user', id, syncData, 2);
+      console.log(`📤 Usuário ${data.email} adicionado à fila de sincronização com senha`);
+    } else {
+      // Sem senha - adicionar à fila mas marcar que falta senha
+      this.addToSyncQueue('create', 'user', id, syncData, 2);
+      console.log(`⚠️ Usuário ${data.email} adicionado à fila SEM senha - sincronização pode falhar`);
+    }
 
     return { id, ...data };
   }
@@ -3233,6 +3295,7 @@ export class DatabaseManager {
    * Atualiza um usuário
    */
   updateUser(id: string, data: {
+    username?: string;
     fullName?: string;
     email?: string;
     role?: string;
@@ -3240,9 +3303,15 @@ export class DatabaseManager {
     phone?: string;
     isActive?: boolean;
     allowedTabs?: string[];
+    password?: string; // Senha original para sincronização
   }) {
     const updates: string[] = [];
     const params: any[] = [];
+
+    if (data.username !== undefined) {
+      updates.push('username = ?');
+      params.push(data.username);
+    }
 
     if (data.fullName !== undefined) {
       updates.push('full_name = ?');
@@ -3301,15 +3370,24 @@ export class DatabaseManager {
 
   /**
    * Reseta a senha de um usuário
+   * @param id - ID do usuário
+   * @param newPasswordHash - Hash da nova senha para armazenamento local
+   * @param originalPassword - Senha original em texto para sincronização com o backend (opcional)
    */
-  resetUserPassword(id: string, newPasswordHash: string) {
+  resetUserPassword(id: string, newPasswordHash: string, originalPassword?: string) {
     this.db.prepare(`
       UPDATE users 
       SET password_hash = ?, updated_at = datetime('now'), synced = 0
       WHERE id = ?
     `).run(newPasswordHash, id);
 
-    this.addToSyncQueue('update', 'user_password', id, { passwordReset: true }, 2);
+    // Enviar para sync com a senha original (não o hash)
+    this.addToSyncQueue('update', 'user_password', id, { 
+      newPassword: originalPassword || null,
+      passwordReset: true 
+    }, 2);
+
+    console.log(`🔑 Senha do usuário ${id} resetada localmente${originalPassword ? ' e enfileirada para sync' : ''}`);
 
     return { success: true };
   }
@@ -3338,6 +3416,156 @@ export class DatabaseManager {
     this.addToSyncQueue('delete', 'user', id, {}, 2);
 
     return { success: true };
+  }
+
+  // ============================================
+  // User Sync Management (Gerenciamento de Sincronização de Usuários)
+  // ============================================
+
+  /**
+   * Retorna todos os usuários que ainda não foram sincronizados com o servidor
+   */
+  getUnsyncedUsers(): any[] {
+    return this.db.prepare(`
+      SELECT * FROM users 
+      WHERE synced = 0 OR sync_status = 'PENDING' OR sync_status = 'ERROR' OR sync_status IS NULL
+      ORDER BY created_at ASC
+    `).all();
+  }
+
+  /**
+   * Retorna estatísticas de sincronização de usuários
+   */
+  getUserSyncStats(): { total: number; synced: number; pending: number; error: number } {
+    const stats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN sync_status = 'SYNCED' OR synced = 1 THEN 1 ELSE 0 END) as synced,
+        SUM(CASE WHEN sync_status = 'PENDING' OR (synced = 0 AND sync_status IS NULL) THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN sync_status = 'ERROR' THEN 1 ELSE 0 END) as error
+      FROM users
+    `).get() as any;
+    
+    return {
+      total: stats.total || 0,
+      synced: stats.synced || 0,
+      pending: stats.pending || 0,
+      error: stats.error || 0
+    };
+  }
+
+  /**
+   * Marca usuário como sincronizado com sucesso
+   */
+  markUserSynced(id: string, serverId?: string) {
+    this.db.prepare(`
+      UPDATE users 
+      SET synced = 1, 
+          sync_status = 'SYNCED', 
+          server_id = ?,
+          last_sync = datetime('now'),
+          sync_error = NULL
+      WHERE id = ?
+    `).run(serverId || id, id);
+  }
+
+  /**
+   * Marca usuário com erro de sincronização
+   */
+  markUserSyncError(id: string, errorMessage: string) {
+    this.db.prepare(`
+      UPDATE users 
+      SET sync_status = 'ERROR', 
+          last_sync_attempt = datetime('now'),
+          sync_error = ?
+      WHERE id = ?
+    `).run(errorMessage, id);
+  }
+
+  /**
+   * Adiciona usuário pendente à fila de sincronização
+   * Usado para re-sincronizar usuários que falharam
+   */
+  queueUserForSync(userId: string, password?: string) {
+    const user = this.getUserById(userId);
+    if (!user) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    // Preparar dados para sync
+    const syncData = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      fullName: user.full_name,
+      role: user.role,
+      branchId: user.branch_id,
+      phone: user.phone,
+      allowedTabs: user.allowed_tabs ? JSON.parse(user.allowed_tabs) : null,
+      isActive: user.is_active === 1,
+      password: password, // Senha se disponível
+    };
+
+    // Verificar se já está na fila
+    const existingInQueue = this.db.prepare(`
+      SELECT id FROM sync_queue 
+      WHERE entity = 'user' AND entity_id = ? AND status = 'pending'
+    `).get(userId);
+
+    if (!existingInQueue) {
+      this.addToSyncQueue('create', 'user', userId, syncData, 2);
+      console.log(`📤 Usuário ${user.email} adicionado à fila de sincronização`);
+    } else {
+      console.log(`⏳ Usuário ${user.email} já está na fila de sincronização`);
+    }
+
+    return { queued: true, userId };
+  }
+
+  /**
+   * Sincroniza todos os usuários pendentes para a fila
+   * NOTA: Sem senha disponível, os usuários não poderão ser criados no backend
+   * Este método é útil para reprocessar usuários que falharam
+   */
+  queueAllPendingUsersForSync(): { queued: number; skipped: number; users: string[] } {
+    const unsyncedUsers = this.getUnsyncedUsers();
+    let queued = 0;
+    let skipped = 0;
+    const queuedUsers: string[] = [];
+
+    for (const user of unsyncedUsers) {
+      // Verificar se já está na fila
+      const existingInQueue = this.db.prepare(`
+        SELECT id FROM sync_queue 
+        WHERE entity = 'user' AND entity_id = ? AND status = 'pending'
+      `).get(user.id);
+
+      if (existingInQueue) {
+        skipped++;
+        continue;
+      }
+
+      // Preparar dados (sem senha - será marcado como erro se necessário)
+      const syncData = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.full_name,
+        role: user.role,
+        branchId: user.branch_id,
+        phone: user.phone,
+        allowedTabs: user.allowed_tabs ? JSON.parse(user.allowed_tabs) : null,
+        isActive: user.is_active === 1,
+        // password não disponível - backend vai rejeitar criação
+      };
+
+      this.addToSyncQueue('create', 'user', user.id, syncData, 2);
+      queuedUsers.push(user.email);
+      queued++;
+    }
+
+    console.log(`📊 Usuários: ${queued} adicionados à fila, ${skipped} já na fila`);
+    return { queued, skipped, users: queuedUsers };
   }
 
   // ============================================
@@ -6879,6 +7107,11 @@ export class DatabaseManager {
       if (data.is_active !== undefined) { fields.push('is_active = ?'); values.push(data.is_active); }
       if (data.synced !== undefined) { fields.push('synced = ?'); values.push(data.synced); }
       if (data.last_sync !== undefined) { fields.push('last_sync = ?'); values.push(data.last_sync); }
+      
+      // Atualizar campos de controle de sincronização
+      fields.push('sync_status = ?'); values.push('SYNCED');
+      fields.push('server_id = ?'); values.push(data.server_id || id);
+      fields.push('sync_error = ?'); values.push(null);
 
       if (fields.length > 0) {
         fields.push('updated_at = datetime(\'now\')');

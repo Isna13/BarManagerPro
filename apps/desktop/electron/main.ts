@@ -337,8 +337,8 @@ ipcMain.handle('users:getByEmail', async (_, email) => {
   return dbManager.getUserByEmail(email);
 });
 
-ipcMain.handle('users:resetPassword', async (_, { id, newPasswordHash }) => {
-  return dbManager.resetUserPassword(id, newPasswordHash);
+ipcMain.handle('users:resetPassword', async (_, { id, newPasswordHash, originalPassword }) => {
+  return dbManager.resetUserPassword(id, newPasswordHash, originalPassword);
 });
 
 ipcMain.handle('users:delete', async (_, id) => {
@@ -349,6 +349,32 @@ ipcMain.handle('users:hashPassword', async (_, password) => {
   const bcrypt = require('bcryptjs');
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
+});
+
+// User Sync Management (Gerenciamento de Sincronização de Usuários)
+ipcMain.handle('users:getSyncStats', async () => {
+  return dbManager.getUserSyncStats();
+});
+
+ipcMain.handle('users:getUnsyncedUsers', async () => {
+  return dbManager.getUnsyncedUsers();
+});
+
+ipcMain.handle('users:queueForSync', async (_, { userId, password }) => {
+  return dbManager.queueUserForSync(userId, password);
+});
+
+ipcMain.handle('users:queueAllPendingForSync', async () => {
+  return dbManager.queueAllPendingUsersForSync();
+});
+
+ipcMain.handle('users:syncNow', async (_, { userId, password }) => {
+  // Adiciona à fila e força sync imediato
+  const result = dbManager.queueUserForSync(userId, password);
+  if (syncManager) {
+    await syncManager.syncNow();
+  }
+  return result;
 });
 
 // Debts (Dívidas/Vales)

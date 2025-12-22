@@ -354,8 +354,13 @@ export default function UsersPage() {
       // @ts-ignore
       const passwordHash = await window.electronAPI?.users?.hashPassword?.(passwordData.newPassword);
 
+      // Enviar hash para armazenamento local E senha original para sincronização com o backend
       // @ts-ignore
-      await window.electronAPI?.users?.resetPassword?.(selectedUser!.id, passwordHash);
+      await window.electronAPI?.users?.resetPassword?.(
+        selectedUser!.id, 
+        passwordHash, 
+        passwordData.newPassword // Senha original para sincronizar com Railway
+      );
       toast?.success('Senha redefinida com sucesso!');
       setShowPasswordModal(false);
       setSelectedUser(null);

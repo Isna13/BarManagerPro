@@ -95,8 +95,8 @@ const api = {
     getById: (id: string) => ipcRenderer.invoke('users:getById', id),
     getByUsername: (username: string) => ipcRenderer.invoke('users:getByUsername', username),
     getByEmail: (email: string) => ipcRenderer.invoke('users:getByEmail', email),
-    resetPassword: (id: string, newPasswordHash: string) => 
-      ipcRenderer.invoke('users:resetPassword', { id, newPasswordHash }),
+    resetPassword: (id: string, newPasswordHash: string, originalPassword?: string) => 
+      ipcRenderer.invoke('users:resetPassword', { id, newPasswordHash, originalPassword }),
     delete: (id: string) => ipcRenderer.invoke('users:delete', id),
     hashPassword: (password: string) => ipcRenderer.invoke('users:hashPassword', password),
   },

@@ -1186,10 +1186,16 @@ export class SyncManager {
       users: (items) => {
         for (const item of items) {
           try {
-            const existing = this.dbManager.getUserByEmail(item.email);
+            // Tentar encontrar por email (mais confiável)
+            const existingByEmail = this.dbManager.getUserByEmail(item.email);
+            // Também tentar por ID (pode ser o mesmo)
+            const existingById = this.dbManager.getUserById(item.id);
+            
+            const existing = existingByEmail || existingById;
             
             // CORREÇÃO: Não sobrescrever se há alterações locais pendentes
             if (existing && this.hasLocalPendingChanges('users', (existing as any).id, existing, item)) {
+              console.log(`⏳ Usuário ${item.email} tem alterações locais pendentes - pulando`);
               continue;
             }
             
@@ -1205,6 +1211,7 @@ export class SyncManager {
                 }
               }
               
+              // Atualizar com o server_id do servidor
               this.dbManager.updateUserFromServer((existing as any).id, {
                 username: item.username,
                 email: item.email,
@@ -1216,10 +1223,14 @@ export class SyncManager {
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
+                server_id: item.id, // Vincular ao ID do servidor
               });
-              console.log(`✅ Usuário atualizado: ${item.email}`);
+              console.log(`✅ Usuário vinculado/atualizado: ${item.email} (server_id: ${item.id})`);
+            } else {
+              // Usuário existe no servidor mas não localmente
+              // NOTA: Não criar localmente sem senha - apenas registrar
+              console.log(`ℹ️ Usuário ${item.email} existe no servidor mas não localmente (sem senha para criar)`);
             }
-            // Não criar usuários do servidor localmente sem senha
           } catch (e: any) {
             console.error(`Erro ao mesclar user ${item.email}:`, e?.message);
           }
@@ -2476,10 +2487,19 @@ export class SyncManager {
       
       case 'user':
         // Usuário - sincronizar criação
+        // Garantir que entity_id existe
+        const userId = entity_id || data.id;
+        if (!userId) {
+          console.error('❌ ID do usuário não disponível para sincronização');
+          return { success: false, reason: 'ID do usuário não disponível' };
+        }
+        
         if (operation === 'create') {
           // Verificar se temos a senha original para enviar ao backend
           if (!data.password) {
             console.error('❌ Senha não disponível para sincronização de usuário');
+            // Marcar erro no registro do usuário
+            this.dbManager.markUserSyncError(userId, 'Senha não disponível para sincronização');
             return { 
               success: false, 
               reason: 'Senha não disponível para sincronização. Usuário criado apenas localmente.' 
@@ -2498,7 +2518,7 @@ export class SyncManager {
           
           // Formatar dados para o backend (CreateUserDto completo)
           const createUserPayload = {
-            id: data.id || entity_id, // Usar ID do Electron para manter consistência
+            id: userId, // Usar ID do Electron para manter consistência
             username: data.username,
             email: data.email,
             fullName: data.fullName,
@@ -2520,15 +2540,23 @@ export class SyncManager {
           });
           
           try {
-            await this.apiClient.post('/users', createUserPayload);
+            const response = await this.apiClient.post('/users', createUserPayload);
+            const serverId = response.data?.id || userId;
             console.log('✅ Usuário sincronizado com backend:', data.email);
+            // Marcar como sincronizado com sucesso
+            this.dbManager.markUserSynced(userId, serverId);
             return { success: true };
           } catch (error: any) {
-            // Se usuário já existe, considerar sucesso
+            // Se usuário já existe, considerar sucesso e vincular
             if (error?.response?.status === 409) {
               console.log('⚠️ Usuário já existe no backend:', data.email);
+              // Marcar como sincronizado (já existe no servidor)
+              this.dbManager.markUserSynced(userId, userId);
               return { success: true };
             }
+            // Marcar erro
+            const errorMsg = error?.response?.data?.message || error.message || 'Erro desconhecido';
+            this.dbManager.markUserSyncError(userId, errorMsg);
             throw error;
           }
         } else if (operation === 'update') {
@@ -2544,16 +2572,70 @@ export class SyncManager {
           if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
           if (data.password) updatePayload.password = data.password;
           
-          await this.apiClient.put(`/users/${entity_id}`, updatePayload);
-          console.log('✅ Usuário atualizado no backend:', entity_id);
-          return { success: true };
+          try {
+            await this.apiClient.put(`/users/${userId}`, updatePayload);
+            console.log('✅ Usuário atualizado no backend:', userId);
+            this.dbManager.markUserSynced(userId);
+            return { success: true };
+          } catch (error: any) {
+            const errorMsg = error?.response?.data?.message || error.message || 'Erro desconhecido';
+            this.dbManager.markUserSyncError(userId, errorMsg);
+            throw error;
+          }
         } else if (operation === 'delete') {
           // Desativar usuário
-          await this.apiClient.put(`/users/${entity_id}`, { isActive: false });
-          console.log('✅ Usuário desativado no backend:', entity_id);
-          return { success: true };
+          try {
+            await this.apiClient.put(`/users/${userId}`, { isActive: false });
+            console.log('✅ Usuário desativado no backend:', userId);
+            this.dbManager.markUserSynced(userId);
+            return { success: true };
+          } catch (error: any) {
+            const errorMsg = error?.response?.data?.message || error.message || 'Erro desconhecido';
+            this.dbManager.markUserSyncError(userId, errorMsg);
+            throw error;
+          }
         }
         return { skip: true, success: false, reason: 'Operação de usuário não suportada' };
+        
+      case 'user_password':
+        // Reset de senha de usuário - enviar para o backend
+        const pwUserId = entity_id || data.id;
+        if (!pwUserId) {
+          console.error('❌ ID do usuário não disponível para reset de senha');
+          return { success: false, reason: 'ID do usuário não disponível' };
+        }
+        
+        if (operation === 'update' && data.newPassword) {
+          try {
+            await this.apiClient.post(`/users/${pwUserId}/reset-password`, {
+              newPassword: data.newPassword
+            });
+            console.log('✅ Senha do usuário resetada no backend:', pwUserId);
+            this.dbManager.markUserSynced(pwUserId);
+            return { success: true };
+          } catch (error: any) {
+            // Se endpoint não existir, tentar PUT /users/:id com password
+            if (error?.response?.status === 404) {
+              try {
+                await this.apiClient.put(`/users/${pwUserId}`, { 
+                  password: data.newPassword 
+                });
+                console.log('✅ Senha do usuário atualizada no backend via PUT:', pwUserId);
+                this.dbManager.markUserSynced(pwUserId);
+                return { success: true };
+              } catch (putError: any) {
+                const errorMsg = putError?.response?.data?.message || putError.message || 'Erro desconhecido';
+                this.dbManager.markUserSyncError(pwUserId, errorMsg);
+                throw putError;
+              }
+            }
+            const errorMsg = error?.response?.data?.message || error.message || 'Erro desconhecido';
+            this.dbManager.markUserSyncError(pwUserId, errorMsg);
+            throw error;
+          }
+        }
+        console.warn('⚠️ Reset de senha sem newPassword, pulando sincronização');
+        return { skip: true, success: false, reason: 'Senha não disponível para sincronização' };
         
       case 'debt_payment':
         // Pagamento de dívida - deve chamar POST /debts/:debtId/pay
