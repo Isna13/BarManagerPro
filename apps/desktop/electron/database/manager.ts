@@ -7652,10 +7652,11 @@ export class DatabaseManager {
           stats['customers'] = this.db.prepare('DELETE FROM customers').run().changes;
 
           // Registrar a operação de reset no log
+          // Colunas da tabela: id, device_id, action, entity, entity_id, direction, status, details, error_message, created_at
           const auditId = this.generateUUID();
           this.db.prepare(`
-            INSERT INTO sync_audit_log (id, device_id, operation, entity_type, entity_id, status, details, created_at)
-            VALUES (?, ?, 'RESET_LOCAL_DATA', 'system', ?, 'completed', ?, datetime('now'))
+            INSERT INTO sync_audit_log (id, device_id, action, entity, entity_id, direction, status, details, created_at)
+            VALUES (?, ?, 'RESET_LOCAL_DATA', 'system', ?, 'local', 'completed', ?, datetime('now'))
           `).run(auditId, this.getDeviceId(), adminUserId, JSON.stringify(stats));
         });
 
