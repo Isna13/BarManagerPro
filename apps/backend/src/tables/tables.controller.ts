@@ -21,6 +21,7 @@ export class TablesController {
 
   // ==================== SESSÕES ====================
   // IMPORTANTE: Rotas específicas devem vir ANTES de rotas com :id
+  // V2: Adicionado log para debug do deploy
 
   @Get('sessions')
   findAllSessions(
@@ -28,6 +29,7 @@ export class TablesController {
     @Query('status') status?: string,
     @Query('updatedAfter') updatedAfter?: string
   ) {
+    console.log('[Tables] GET /sessions - branchId:', branchId, 'status:', status, 'updatedAfter:', updatedAfter);
     return this.tablesService.findAllSessions(branchId, status, updatedAfter);
   }
 
