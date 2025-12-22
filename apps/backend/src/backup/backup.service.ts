@@ -442,11 +442,11 @@ export class BackupService {
           stats['loyaltyTransactions'] = backupData.loyaltyTransactions.length;
         }
 
-        // 21. Settings
+        // 21. Settings (usa 'key' como chave primária, não 'id')
         if (backupData.settings?.length > 0) {
           for (const setting of backupData.settings) {
             await tx.setting.upsert({
-              where: { id: setting.id },
+              where: { key: setting.key },
               create: setting,
               update: { value: setting.value },
             });
