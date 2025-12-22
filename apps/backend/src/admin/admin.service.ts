@@ -35,102 +35,150 @@ export class AdminService {
     try {
       // Executar dentro de uma transação Prisma
       await this.prisma.$transaction(async (tx) => {
-        // Ordem de deleção respeitando foreign keys (de dependentes para principais)
+        // ============================================================
+        // ORDEM DE DELEÇÃO (respeitando FKs - filhos antes de pais)
+        // 
+        // Cadeia principal de vendas/dívidas/pagamentos:
+        // DebtPayment -> Payment, Debt
+        // Payment -> Sale, Debt
+        // Debt -> Sale, Customer
+        // SaleItem -> Sale
+        // Sale -> Customer, Table
+        //
+        // Outras dependências:
+        // StockMovement -> Product, Sale, Purchase
+        // InventoryMovement -> InventoryItem
+        // InventoryItem -> Product
+        // TableOrder -> Product, TableCustomer, TableSession
+        // TablePayment -> TableSession, TableCustomer, Payment
+        // TableAction -> TableSession
+        // TableCustomer -> TableSession, Customer
+        // TableSession -> Table
+        // ProductPriceHistory -> Product
+        // Feedback -> Customer, Sale
+        // LoyaltyTransaction -> Customer
+        // ============================================================
 
-        // 1. Pagamentos de vendas
-        const payments = await tx.payment.deleteMany({});
-        stats['payments'] = payments.count;
-        this.logger.log(`   Deletados: ${payments.count} payments`);
+        // Nível 0: Tabelas de ação/pagamento de mesa
+        const tablePayments = await tx.tablePayment.deleteMany({});
+        stats['table_payments'] = tablePayments.count;
+        this.logger.log(`   Deletados: ${tablePayments.count} table_payments`);
 
-        // 2. Itens de vendas
-        const saleItems = await tx.saleItem.deleteMany({});
-        stats['sale_items'] = saleItems.count;
-        this.logger.log(`   Deletados: ${saleItems.count} sale_items`);
+        const tableActions = await tx.tableAction.deleteMany({});
+        stats['table_actions'] = tableActions.count;
+        this.logger.log(`   Deletados: ${tableActions.count} table_actions`);
 
-        // 3. Vendas
-        const sales = await tx.sale.deleteMany({});
-        stats['sales'] = sales.count;
-        this.logger.log(`   Deletados: ${sales.count} sales`);
-
-        // 4. Pagamentos de dívidas
+        // Nível 1: DebtPayment (depende de Debt e Payment)
         const debtPayments = await tx.debtPayment.deleteMany({});
         stats['debt_payments'] = debtPayments.count;
         this.logger.log(`   Deletados: ${debtPayments.count} debt_payments`);
 
-        // 5. Dívidas
+        // Nível 2: Payment (depende de Sale e Debt)
+        const payments = await tx.payment.deleteMany({});
+        stats['payments'] = payments.count;
+        this.logger.log(`   Deletados: ${payments.count} payments`);
+
+        // Nível 3: Debt (depende de Sale e Customer)
         const debts = await tx.debt.deleteMany({});
         stats['debts'] = debts.count;
         this.logger.log(`   Deletados: ${debts.count} debts`);
 
-        // 6. Itens de compras
-        const purchaseItems = await tx.purchaseItem.deleteMany({});
-        stats['purchase_items'] = purchaseItems.count;
-        this.logger.log(`   Deletados: ${purchaseItems.count} purchase_items`);
+        // Nível 4: SaleItem (depende de Sale)
+        const saleItems = await tx.saleItem.deleteMany({});
+        stats['sale_items'] = saleItems.count;
+        this.logger.log(`   Deletados: ${saleItems.count} sale_items`);
 
-        // 7. Compras
-        const purchases = await tx.purchase.deleteMany({});
-        stats['purchases'] = purchases.count;
-        this.logger.log(`   Deletados: ${purchases.count} purchases`);
+        // Nível 5: Sale (depende de Customer e Table)
+        const sales = await tx.sale.deleteMany({});
+        stats['sales'] = sales.count;
+        this.logger.log(`   Deletados: ${sales.count} sales`);
 
-        // 8. Caixas
-        const cashBoxes = await tx.cashBox.deleteMany({});
-        stats['cash_boxes'] = cashBoxes.count;
-        this.logger.log(`   Deletados: ${cashBoxes.count} cash_boxes`);
-
-        // 9. Movimentações de inventário
-        const inventoryMovements = await tx.inventoryMovement.deleteMany({});
-        stats['inventory_movements'] = inventoryMovements.count;
-        this.logger.log(`   Deletados: ${inventoryMovements.count} inventory_movements`);
-
-        // 10. Inventário
-        const inventory = await tx.inventory.deleteMany({});
-        stats['inventory'] = inventory.count;
-        this.logger.log(`   Deletados: ${inventory.count} inventory`);
-
-        // 11. Pedidos de mesa
-        const tableOrders = await tx.tableOrder.deleteMany({});
-        stats['table_orders'] = tableOrders.count;
-        this.logger.log(`   Deletados: ${tableOrders.count} table_orders`);
-
-        // 12. Clientes de sessão de mesa
-        const tableCustomers = await tx.tableCustomer.deleteMany({});
-        stats['table_customers'] = tableCustomers.count;
-        this.logger.log(`   Deletados: ${tableCustomers.count} table_customers`);
-
-        // 13. Sessões de mesa
-        const tableSessions = await tx.tableSession.deleteMany({});
-        stats['table_sessions'] = tableSessions.count;
-        this.logger.log(`   Deletados: ${tableSessions.count} table_sessions`);
-
-        // 14. Mesas
-        const tables = await tx.table.deleteMany({});
-        stats['tables'] = tables.count;
-        this.logger.log(`   Deletados: ${tables.count} tables`);
-
-        // 15. Transações de fidelidade (loyalty) - ANTES de customers
+        // Nível 6: LoyaltyTransaction (depende de Customer)
         const loyaltyTransactions = await tx.loyaltyTransaction.deleteMany({});
         stats['loyalty_transactions'] = loyaltyTransactions.count;
         this.logger.log(`   Deletados: ${loyaltyTransactions.count} loyalty_transactions`);
 
-        // 16. Clientes
-        const customers = await tx.customer.deleteMany({});
-        stats['customers'] = customers.count;
-        this.logger.log(`   Deletados: ${customers.count} customers`);
+        // Nível 7: PurchaseItem e Purchase
+        const purchaseItems = await tx.purchaseItem.deleteMany({});
+        stats['purchase_items'] = purchaseItems.count;
+        this.logger.log(`   Deletados: ${purchaseItems.count} purchase_items`);
 
-        // 17. Produtos
+        const purchases = await tx.purchase.deleteMany({});
+        stats['purchases'] = purchases.count;
+        this.logger.log(`   Deletados: ${purchases.count} purchases`);
+
+        // Nível 8: CashBox
+        const cashBoxes = await tx.cashBox.deleteMany({});
+        stats['cash_boxes'] = cashBoxes.count;
+        this.logger.log(`   Deletados: ${cashBoxes.count} cash_boxes`);
+
+        // Nível 9: StockMovement (depende de Product, Sale, Purchase)
+        const stockMovements = await tx.stockMovement.deleteMany({});
+        stats['stock_movements'] = stockMovements.count;
+        this.logger.log(`   Deletados: ${stockMovements.count} stock_movements`);
+
+        // Nível 10: InventoryMovement (depende de InventoryItem)
+        const inventoryMovements = await tx.inventoryMovement.deleteMany({});
+        stats['inventory_movements'] = inventoryMovements.count;
+        this.logger.log(`   Deletados: ${inventoryMovements.count} inventory_movements`);
+
+        // Nível 11: InventoryItem (depende de Product) ⚠️ ESTA ERA A FALTANTE!
+        const inventoryItems = await tx.inventoryItem.deleteMany({});
+        stats['inventory_items'] = inventoryItems.count;
+        this.logger.log(`   Deletados: ${inventoryItems.count} inventory_items`);
+
+        // Nível 12: Inventory (depende de Product)
+        const inventory = await tx.inventory.deleteMany({});
+        stats['inventory'] = inventory.count;
+        this.logger.log(`   Deletados: ${inventory.count} inventory`);
+
+        // Nível 13: TableOrder (depende de Product, TableCustomer, TableSession)
+        const tableOrders = await tx.tableOrder.deleteMany({});
+        stats['table_orders'] = tableOrders.count;
+        this.logger.log(`   Deletados: ${tableOrders.count} table_orders`);
+
+        // Nível 14: ProductPriceHistory (depende de Product)
+        const productPriceHistory = await tx.productPriceHistory.deleteMany({});
+        stats['product_price_history'] = productPriceHistory.count;
+        this.logger.log(`   Deletados: ${productPriceHistory.count} product_price_history`);
+
+        // Nível 15: Feedback (depende de Customer, Sale)
+        const feedbacks = await tx.feedback.deleteMany({});
+        stats['feedbacks'] = feedbacks.count;
+        this.logger.log(`   Deletados: ${feedbacks.count} feedbacks`);
+
+        // Nível 16: TableCustomer (depende de TableSession e Customer)
+        const tableCustomers = await tx.tableCustomer.deleteMany({});
+        stats['table_customers'] = tableCustomers.count;
+        this.logger.log(`   Deletados: ${tableCustomers.count} table_customers`);
+
+        // Nível 17: TableSession (depende de Table)
+        const tableSessions = await tx.tableSession.deleteMany({});
+        stats['table_sessions'] = tableSessions.count;
+        this.logger.log(`   Deletados: ${tableSessions.count} table_sessions`);
+
+        // Nível 18: Table (depende de Branch)
+        const tables = await tx.table.deleteMany({});
+        stats['tables'] = tables.count;
+        this.logger.log(`   Deletados: ${tables.count} tables`);
+
+        // Nível 19: Product (tabela raiz)
         const products = await tx.product.deleteMany({});
         stats['products'] = products.count;
         this.logger.log(`   Deletados: ${products.count} products`);
 
-        // 18. Categorias
+        // Nível 20: Category, Supplier, Customer (tabelas raiz)
         const categories = await tx.category.deleteMany({});
         stats['categories'] = categories.count;
         this.logger.log(`   Deletados: ${categories.count} categories`);
 
-        // 19. Fornecedores
         const suppliers = await tx.supplier.deleteMany({});
         stats['suppliers'] = suppliers.count;
         this.logger.log(`   Deletados: ${suppliers.count} suppliers`);
+
+        const customers = await tx.customer.deleteMany({});
+        stats['customers'] = customers.count;
+        this.logger.log(`   Deletados: ${customers.count} customers`);
 
         // NOTA: NÃO deletar:
         // - users
@@ -138,7 +186,7 @@ export class AdminService {
         // - sessions (auth)
         // - settings (configurações globais)
       }, {
-        timeout: 60000, // 60 segundos para operação grande
+        timeout: 120000, // 2 minutos para operação grande
       });
 
       this.logger.warn(`✅ RESET DE DADOS DO SERVIDOR CONCLUÍDO!`);
@@ -168,9 +216,12 @@ export class AdminService {
   async getDataCountsForReset(): Promise<Record<string, number>> {
     const counts: Record<string, number> = {};
 
+    // Tabelas operacionais que serão deletadas
     counts['sales'] = await this.prisma.sale.count();
     counts['sale_items'] = await this.prisma.saleItem.count();
     counts['payments'] = await this.prisma.payment.count();
+    counts['debts'] = await this.prisma.debt.count();
+    counts['debt_payments'] = await this.prisma.debtPayment.count();
     counts['purchases'] = await this.prisma.purchase.count();
     counts['purchase_items'] = await this.prisma.purchaseItem.count();
     counts['products'] = await this.prisma.product.count();
@@ -178,13 +229,19 @@ export class AdminService {
     counts['suppliers'] = await this.prisma.supplier.count();
     counts['customers'] = await this.prisma.customer.count();
     counts['loyalty_transactions'] = await this.prisma.loyaltyTransaction.count();
-    counts['debts'] = await this.prisma.debt.count();
-    counts['debt_payments'] = await this.prisma.debtPayment.count();
     counts['inventory'] = await this.prisma.inventory.count();
+    counts['inventory_items'] = await this.prisma.inventoryItem.count();
     counts['inventory_movements'] = await this.prisma.inventoryMovement.count();
+    counts['stock_movements'] = await this.prisma.stockMovement.count();
+    counts['product_price_history'] = await this.prisma.productPriceHistory.count();
     counts['tables'] = await this.prisma.table.count();
     counts['table_sessions'] = await this.prisma.tableSession.count();
+    counts['table_customers'] = await this.prisma.tableCustomer.count();
+    counts['table_orders'] = await this.prisma.tableOrder.count();
+    counts['table_payments'] = await this.prisma.tablePayment.count();
+    counts['table_actions'] = await this.prisma.tableAction.count();
     counts['cash_boxes'] = await this.prisma.cashBox.count();
+    counts['feedbacks'] = await this.prisma.feedback.count();
 
     // Dados preservados
     counts['_preserved_users'] = await this.prisma.user.count();
