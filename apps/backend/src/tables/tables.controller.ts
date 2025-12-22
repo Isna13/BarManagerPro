@@ -19,32 +19,8 @@ export class TablesController {
     return this.tablesService.findAll(branchId);
   }
 
-  @Get('overview/:branchId')
-  getOverview(@Param('branchId') branchId: string) {
-    return this.tablesService.getTablesOverview(branchId);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.tablesService.findOne(id);
-  }
-
-  @Get(':id/status')
-  getStatus(@Param('id') id: string) {
-    return this.tablesService.getTableStatus(id);
-  }
-
-  @Put(':id')
-  update(@Param('id') id: string, @Body() updateDto: UpdateTableDto) {
-    return this.tablesService.update(id, updateDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.tablesService.remove(id);
-  }
-
   // ==================== SESSÕES ====================
+  // IMPORTANTE: Rotas específicas devem vir ANTES de rotas com :id
 
   @Get('sessions')
   findAllSessions(
@@ -218,5 +194,32 @@ export class TablesController {
   @Post('payments/clear-paid-orders')
   clearPaidOrders(@Body() data: { sessionId: string; tableCustomerId: string; clearedBy: string }) {
     return this.tablesService.clearPaidOrders(data.sessionId, data.tableCustomerId, data.clearedBy);
+  }
+
+  // ==================== MESAS (rotas com :id devem vir POR ÚLTIMO) ====================
+
+  @Get('overview/:branchId')
+  getOverview(@Param('branchId') branchId: string) {
+    return this.tablesService.getTablesOverview(branchId);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.tablesService.findOne(id);
+  }
+
+  @Get(':id/status')
+  getStatus(@Param('id') id: string) {
+    return this.tablesService.getTableStatus(id);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() updateDto: UpdateTableDto) {
+    return this.tablesService.update(id, updateDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.tablesService.remove(id);
   }
 }
