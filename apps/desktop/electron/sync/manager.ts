@@ -977,21 +977,22 @@ export class SyncManager {
       
       // 2. Pull de cada entidade importante
       // Algumas entidades precisam de sync completo (não incremental)
-      // CORREÇÃO: customers e debts precisam de fullSync para garantir que todas as dívidas
-      // e seus clientes associados sejam sincronizados, mesmo que sejam registros antigos
+      // CORREÇÃO COMPLETA: Após reset, lastSyncDate é null, forçando sync completo
+      // Entidades com fullSync: true sempre buscam todos os registros (independente de lastSyncDate)
       const entities = [
-        { name: 'branches', endpoint: '/branches' },
+        { name: 'branches', endpoint: '/branches', fullSync: true },
         { name: 'users', endpoint: '/users' },
-        { name: 'categories', endpoint: '/categories' },
-        { name: 'products', endpoint: '/products' },
+        { name: 'categories', endpoint: '/categories', fullSync: true },
+        { name: 'products', endpoint: '/products', fullSync: true },
         { name: 'customers', endpoint: '/customers', fullSync: true }, // Clientes sempre sync completo (necessário para debts)
-        { name: 'suppliers', endpoint: '/suppliers' },
-        { name: 'inventory', endpoint: '/inventory' },
+        { name: 'suppliers', endpoint: '/suppliers', fullSync: true }, // CORREÇÃO: Fornecedores precisam de sync completo
+        { name: 'inventory', endpoint: '/inventory', fullSync: true },
         { name: 'debts', endpoint: '/debts', fullSync: true }, // Dívidas sempre sync completo
-        { name: 'purchases', endpoint: '/purchases' },
-        { name: 'sales', endpoint: '/sales' },
-        { name: 'tables', endpoint: '/tables' },
-        { name: 'table_sessions', endpoint: '/table-sessions' }, // Rota separada para evitar conflito com /tables/:id
+        { name: 'purchases', endpoint: '/purchases?limit=500', fullSync: true }, // CORREÇÃO: Compras precisam de sync completo
+        { name: 'cash_boxes', endpoint: '/cash-box?limit=500', fullSync: true }, // CORREÇÃO: Caixas precisam de sync completo
+        { name: 'sales', endpoint: '/sales?limit=500', fullSync: true },
+        { name: 'tables', endpoint: '/tables', fullSync: true },
+        { name: 'table_sessions', endpoint: '/table-sessions', fullSync: true }, // Rota separada para evitar conflito com /tables/:id
       ];
       
       console.log('🔍 DEBUG: Entidades para sincronizar:', entities.map(e => e.name).join(', '));

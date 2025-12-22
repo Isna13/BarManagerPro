@@ -7651,6 +7651,15 @@ export class DatabaseManager {
           // Clientes
           stats['customers'] = this.db.prepare('DELETE FROM customers').run().changes;
 
+          // CORREÇÃO CRÍTICA: Limpar last_sync_date para forçar sync completo
+          // Sem isso, o sync usa updatedAfter=<data antiga> e servidor retorna vazio
+          try {
+            this.db.prepare("DELETE FROM settings WHERE key = 'last_sync_date'").run();
+            console.log('🗑️ last_sync_date removido - próximo sync será completo');
+          } catch (e) {
+            console.warn('⚠️ Não foi possível limpar last_sync_date');
+          }
+
           // Registrar a operação de reset no log
           // Colunas da tabela: id, device_id, action, entity, entity_id, direction, status, details, error_message, created_at
           const auditId = this.generateUUID();
