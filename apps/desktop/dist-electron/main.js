@@ -313,8 +313,8 @@ electron_1.ipcMain.handle('users:getByUsername', async (_, username) => {
 electron_1.ipcMain.handle('users:getByEmail', async (_, email) => {
     return dbManager.getUserByEmail(email);
 });
-electron_1.ipcMain.handle('users:resetPassword', async (_, { id, newPasswordHash }) => {
-    return dbManager.resetUserPassword(id, newPasswordHash);
+electron_1.ipcMain.handle('users:resetPassword', async (_, { id, newPasswordHash, originalPassword }) => {
+    return dbManager.resetUserPassword(id, newPasswordHash, originalPassword);
 });
 electron_1.ipcMain.handle('users:delete', async (_, id) => {
     return dbManager.deleteUser(id);
@@ -323,6 +323,27 @@ electron_1.ipcMain.handle('users:hashPassword', async (_, password) => {
     const bcrypt = require('bcryptjs');
     const salt = await bcrypt.genSalt(10);
     return bcrypt.hash(password, salt);
+});
+// User Sync Management (Gerenciamento de Sincronização de Usuários)
+electron_1.ipcMain.handle('users:getSyncStats', async () => {
+    return dbManager.getUserSyncStats();
+});
+electron_1.ipcMain.handle('users:getUnsyncedUsers', async () => {
+    return dbManager.getUnsyncedUsers();
+});
+electron_1.ipcMain.handle('users:queueForSync', async (_, { userId, password }) => {
+    return dbManager.queueUserForSync(userId, password);
+});
+electron_1.ipcMain.handle('users:queueAllPendingForSync', async () => {
+    return dbManager.queueAllPendingUsersForSync();
+});
+electron_1.ipcMain.handle('users:syncNow', async (_, { userId, password }) => {
+    // Adiciona à fila e força sync imediato
+    const result = dbManager.queueUserForSync(userId, password);
+    if (syncManager) {
+        await syncManager.syncNow();
+    }
+    return result;
 });
 // Debts (Dívidas/Vales)
 electron_1.ipcMain.handle('debts:create', async (_, data) => {
@@ -707,10 +728,10 @@ electron_1.ipcMain.handle('backup:create', async (_, options) => {
     const backupPath = options?.backupDir || path.join(electron_1.app.getPath('documents'), 'BarManager-Backups');
     const backupType = options?.backupType || 'manual';
     const createdBy = options?.createdBy || 'system';
-    return dbManager.createBackup(backupPath, backupType, createdBy);
+    return await dbManager.createBackup(backupPath, backupType, createdBy);
 });
 electron_1.ipcMain.handle('backup:restore', async (_, filePath) => {
-    return dbManager.restoreBackup(filePath);
+    return await dbManager.restoreBackup(filePath);
 });
 electron_1.ipcMain.handle('backup:history', async (_, limit) => {
     return dbManager.getBackupHistory(limit || 20);

@@ -82,7 +82,7 @@ const api = {
         getById: (id) => electron_1.ipcRenderer.invoke('users:getById', id),
         getByUsername: (username) => electron_1.ipcRenderer.invoke('users:getByUsername', username),
         getByEmail: (email) => electron_1.ipcRenderer.invoke('users:getByEmail', email),
-        resetPassword: (id, newPasswordHash) => electron_1.ipcRenderer.invoke('users:resetPassword', { id, newPasswordHash }),
+        resetPassword: (id, newPasswordHash, originalPassword) => electron_1.ipcRenderer.invoke('users:resetPassword', { id, newPasswordHash, originalPassword }),
         delete: (id) => electron_1.ipcRenderer.invoke('users:delete', id),
         hashPassword: (password) => electron_1.ipcRenderer.invoke('users:hashPassword', password),
     },

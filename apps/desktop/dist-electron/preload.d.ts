@@ -68,7 +68,7 @@ declare const api: {
         getById: (id: string) => Promise<any>;
         getByUsername: (username: string) => Promise<any>;
         getByEmail: (email: string) => Promise<any>;
-        resetPassword: (id: string, newPasswordHash: string) => Promise<any>;
+        resetPassword: (id: string, newPasswordHash: string, originalPassword?: string) => Promise<any>;
         delete: (id: string) => Promise<any>;
         hashPassword: (password: string) => Promise<any>;
     };

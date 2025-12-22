@@ -268,6 +268,7 @@ export declare class DatabaseManager {
      * Atualiza um usuário
      */
     updateUser(id: string, data: {
+        username?: string;
         fullName?: string;
         email?: string;
         role?: string;
@@ -275,11 +276,15 @@ export declare class DatabaseManager {
         phone?: string;
         isActive?: boolean;
         allowedTabs?: string[];
+        password?: string;
     }): any;
     /**
      * Reseta a senha de um usuário
+     * @param id - ID do usuário
+     * @param newPasswordHash - Hash da nova senha para armazenamento local
+     * @param originalPassword - Senha original em texto para sincronização com o backend (opcional)
      */
-    resetUserPassword(id: string, newPasswordHash: string): {
+    resetUserPassword(id: string, newPasswordHash: string, originalPassword?: string): {
         success: boolean;
     };
     /**
@@ -291,6 +296,45 @@ export declare class DatabaseManager {
      */
     deleteUser(id: string): {
         success: boolean;
+    };
+    /**
+     * Retorna todos os usuários que ainda não foram sincronizados com o servidor
+     */
+    getUnsyncedUsers(): any[];
+    /**
+     * Retorna estatísticas de sincronização de usuários
+     */
+    getUserSyncStats(): {
+        total: number;
+        synced: number;
+        pending: number;
+        error: number;
+    };
+    /**
+     * Marca usuário como sincronizado com sucesso
+     */
+    markUserSynced(id: string, serverId?: string): void;
+    /**
+     * Marca usuário com erro de sincronização
+     */
+    markUserSyncError(id: string, errorMessage: string): void;
+    /**
+     * Adiciona usuário pendente à fila de sincronização
+     * Usado para re-sincronizar usuários que falharam
+     */
+    queueUserForSync(userId: string, password?: string): {
+        queued: boolean;
+        userId: string;
+    };
+    /**
+     * Sincroniza todos os usuários pendentes para a fila
+     * NOTA: Sem senha disponível, os usuários não poderão ser criados no backend
+     * Este método é útil para reprocessar usuários que falharam
+     */
+    queueAllPendingUsersForSync(): {
+        queued: number;
+        skipped: number;
+        users: string[];
     };
     /**
      * Cria uma nova dívida para um cliente
@@ -694,21 +738,21 @@ export declare class DatabaseManager {
     /**
      * Cria um backup completo do banco de dados
      */
-    createBackup(backupDir: string, backupType?: string, createdBy?: string): {
+    createBackup(backupDir: string, backupType?: string, createdBy?: string): Promise<{
         success: boolean;
         filePath?: string;
         fileName?: string;
         fileSize?: number;
         error?: string;
-    };
+    }>;
     /**
      * Restaura o banco de dados a partir de um backup
      */
-    restoreBackup(backupFile: string): {
+    restoreBackup(backupFile: string): Promise<{
         success: boolean;
         error?: string;
         requiresRestart?: boolean;
-    };
+    }>;
     /**
      * Lista histórico de backups
      */
