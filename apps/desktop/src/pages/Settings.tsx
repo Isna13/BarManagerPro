@@ -58,6 +58,14 @@ export default function SettingsPage() {
   const [backupHistory, setBackupHistory] = useState<any[]>([]);
   const [backupPath, setBackupPath] = useState<string>('');
   
+  // Estados para Reset de Dados
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetStatus, setResetStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
+  const [localDataCounts, setLocalDataCounts] = useState<Record<string, number>>({});
+  const [serverDataCounts, setServerDataCounts] = useState<Record<string, number>>({});
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState<'local' | 'server' | 'mobile' | null>(null);
+  const [resetConfirmInput, setResetConfirmInput] = useState('');
+  
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     database: true,
     sync: true,
@@ -71,6 +79,7 @@ export default function SettingsPage() {
     printing: false,
     users: false,
     backup: false,
+    resetData: false,
     advanced: false
   });
 
@@ -407,6 +416,134 @@ export default function SettingsPage() {
         message: 'Não foi possível verificar conexão'
       });
     }
+  };
+
+  // ============================================
+  // FUNÇÕES DE RESET DE DADOS
+  // ============================================
+
+  const loadLocalDataCounts = async () => {
+    try {
+      // @ts-ignore
+      const counts = await window.electronAPI?.admin?.getLocalDataCounts?.();
+      if (counts) {
+        setLocalDataCounts(counts);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar contagem local:', error);
+    }
+  };
+
+  const loadServerDataCounts = async () => {
+    try {
+      // @ts-ignore
+      const counts = await window.electronAPI?.admin?.getServerDataCounts?.();
+      if (counts && !counts.error) {
+        setServerDataCounts(counts);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar contagem do servidor:', error);
+    }
+  };
+
+  const handleResetLocalData = async () => {
+    if (resetConfirmInput !== 'CONFIRMAR_RESET_LOCAL') {
+      setResetStatus({ type: 'error', message: 'Digite o código de confirmação corretamente' });
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      setResetStatus({ type: 'info', message: 'Zerando dados locais...' });
+
+      // @ts-ignore
+      const currentUser = await window.electronAPI?.auth?.getCurrentUser?.();
+      const userId = currentUser?.id || 'unknown';
+
+      // @ts-ignore
+      const result = await window.electronAPI?.admin?.resetLocalData?.(userId, 'CONFIRMAR_RESET_LOCAL');
+
+      if (result?.success) {
+        setResetStatus({
+          type: 'success',
+          message: `Dados locais zerados com sucesso! Backup: ${result.backupPath || 'N/A'}`
+        });
+        setShowResetConfirmModal(null);
+        setResetConfirmInput('');
+        loadLocalDataCounts(); // Atualizar contagens
+      } else {
+        setResetStatus({ type: 'error', message: result?.error || 'Erro ao zerar dados' });
+      }
+    } catch (error: any) {
+      setResetStatus({ type: 'error', message: error.message || 'Erro ao zerar dados locais' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetServerData = async () => {
+    if (resetConfirmInput !== 'CONFIRMAR_RESET_DADOS') {
+      setResetStatus({ type: 'error', message: 'Digite o código de confirmação corretamente' });
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      setResetStatus({ type: 'info', message: 'Zerando dados do servidor...' });
+
+      // @ts-ignore
+      const result = await window.electronAPI?.admin?.resetServerData?.('CONFIRMAR_RESET_DADOS');
+
+      if (result?.success) {
+        setResetStatus({
+          type: 'success',
+          message: `Dados do servidor zerados com sucesso!`
+        });
+        setShowResetConfirmModal(null);
+        setResetConfirmInput('');
+        loadServerDataCounts(); // Atualizar contagens
+      } else {
+        setResetStatus({ type: 'error', message: result?.error || 'Erro ao zerar dados do servidor' });
+      }
+    } catch (error: any) {
+      setResetStatus({ type: 'error', message: error.message || 'Erro ao zerar dados do servidor' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetMobileData = async () => {
+    if (resetConfirmInput !== 'CONFIRMAR_RESET_MOBILE') {
+      setResetStatus({ type: 'error', message: 'Digite o código de confirmação corretamente' });
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      setResetStatus({ type: 'info', message: 'Enviando comando de reset para o mobile...' });
+
+      // @ts-ignore
+      const result = await window.electronAPI?.admin?.resetMobileData?.('all', 'CONFIRMAR_RESET_MOBILE');
+
+      if (result?.success) {
+        setResetStatus({
+          type: 'success',
+          message: result.message || 'Comando de reset enviado ao mobile!'
+        });
+        setShowResetConfirmModal(null);
+        setResetConfirmInput('');
+      } else {
+        setResetStatus({ type: 'error', message: result?.message || 'Erro ao enviar comando' });
+      }
+    } catch (error: any) {
+      setResetStatus({ type: 'error', message: error.message || 'Erro ao resetar mobile' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const formatNumber = (num: number): string => {
+    return new Intl.NumberFormat('pt-BR').format(num);
   };
 
   const ConfigCard = ({ 
@@ -1315,7 +1452,274 @@ export default function SettingsPage() {
             </div>
           </ConfigCard>
 
-          {/* 9. Ajustes Avançados */}
+          {/* 9. Reset de Dados (Admin) */}
+          <ConfigCard title="Reset de Dados (Administração)" icon={Trash2} sectionKey="resetData">
+            <div className="space-y-6">
+              {/* Aviso de perigo */}
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-red-900 mb-1">⚠️ ZONA DE PERIGO</h4>
+                    <p className="text-sm text-red-800">
+                      As operações abaixo são <strong>irreversíveis</strong> e apagarão dados permanentemente.
+                      Usuários e permissões serão preservados. Faça backup antes de continuar.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status do Reset */}
+              {resetStatus.type && (
+                <div className={`p-4 rounded-lg border ${
+                  resetStatus.type === 'success' ? 'bg-green-50 border-green-200' :
+                  resetStatus.type === 'error' ? 'bg-red-50 border-red-200' :
+                  'bg-blue-50 border-blue-200'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {resetStatus.type === 'success' ? (
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    ) : resetStatus.type === 'error' ? (
+                      <XCircle className="w-5 h-5 text-red-600" />
+                    ) : (
+                      <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+                    )}
+                    <span className={`font-medium ${
+                      resetStatus.type === 'success' ? 'text-green-800' :
+                      resetStatus.type === 'error' ? 'text-red-800' :
+                      'text-blue-800'
+                    }`}>
+                      {resetStatus.message}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Botões de Carregar Contagens */}
+              <div className="flex gap-3">
+                <button
+                  onClick={loadLocalDataCounts}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                >
+                  <Database className="w-4 h-4" />
+                  Carregar Dados Locais
+                </button>
+                <button
+                  onClick={loadServerDataCounts}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                >
+                  <Cloud className="w-4 h-4" />
+                  Carregar Dados do Servidor
+                </button>
+              </div>
+
+              {/* Grid de Opções de Reset */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Reset Local */}
+                <div className="p-4 bg-orange-50 border-2 border-orange-300 rounded-lg">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Database className="w-6 h-6 text-orange-600" />
+                    <h3 className="font-semibold text-orange-900">Zerar Dados Locais</h3>
+                  </div>
+                  <p className="text-sm text-orange-800 mb-3">
+                    Apaga todos os dados do banco local do Electron (vendas, produtos, clientes, etc.)
+                  </p>
+                  
+                  {Object.keys(localDataCounts).length > 0 && (
+                    <div className="mb-3 p-2 bg-orange-100 rounded text-xs text-orange-800">
+                      <strong>Registros a serem deletados:</strong>
+                      <div className="grid grid-cols-2 gap-1 mt-1">
+                        {Object.entries(localDataCounts)
+                          .filter(([key]) => !key.startsWith('_'))
+                          .slice(0, 8)
+                          .map(([key, count]) => (
+                            <span key={key}>{key}: {formatNumber(count as number)}</span>
+                          ))}
+                      </div>
+                      <div className="mt-1 text-green-700">
+                        ✓ Usuários preservados: {formatNumber(localDataCounts['_preserved_users'] || 0)}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={() => setShowResetConfirmModal('local')}
+                    disabled={resetLoading}
+                    className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition-colors"
+                  >
+                    Zerar Banco Local
+                  </button>
+                </div>
+
+                {/* Reset Servidor */}
+                <div className="p-4 bg-red-50 border-2 border-red-300 rounded-lg">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Cloud className="w-6 h-6 text-red-600" />
+                    <h3 className="font-semibold text-red-900">Zerar Servidor Railway</h3>
+                  </div>
+                  <p className="text-sm text-red-800 mb-3">
+                    Apaga todos os dados do servidor Railway (afeta TODOS os dispositivos conectados)
+                  </p>
+                  
+                  {Object.keys(serverDataCounts).length > 0 && !serverDataCounts.error && (
+                    <div className="mb-3 p-2 bg-red-100 rounded text-xs text-red-800">
+                      <strong>Registros no servidor:</strong>
+                      <div className="grid grid-cols-2 gap-1 mt-1">
+                        {Object.entries(serverDataCounts)
+                          .filter(([key]) => !key.startsWith('_'))
+                          .slice(0, 8)
+                          .map(([key, count]) => (
+                            <span key={key}>{key}: {formatNumber(count as number)}</span>
+                          ))}
+                      </div>
+                      <div className="mt-1 text-green-700">
+                        ✓ Usuários preservados: {formatNumber(serverDataCounts['_preserved_users'] || 0)}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={() => setShowResetConfirmModal('server')}
+                    disabled={resetLoading}
+                    className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 transition-colors"
+                  >
+                    Zerar Servidor
+                  </button>
+                </div>
+
+                {/* Reset Mobile */}
+                <div className="p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Monitor className="w-6 h-6 text-purple-600" />
+                    <h3 className="font-semibold text-purple-900">Zerar App Mobile</h3>
+                  </div>
+                  <p className="text-sm text-purple-800 mb-3">
+                    Envia comando para o app Vendas-Mobile limpar seus dados locais
+                  </p>
+                  <p className="text-xs text-purple-600 mb-3">
+                    O mobile deve estar conectado ao mesmo servidor
+                  </p>
+                  
+                  <button
+                    onClick={() => setShowResetConfirmModal('mobile')}
+                    disabled={resetLoading}
+                    className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
+                  >
+                    Zerar Mobile
+                  </button>
+                </div>
+              </div>
+
+              {/* Dados Preservados */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <Shield className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-green-900 mb-1">Dados Preservados</h4>
+                    <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                      <li>Usuários e credenciais de login</li>
+                      <li>Filiais (branches)</li>
+                      <li>Permissões e roles</li>
+                      <li>Configurações do sistema</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ConfigCard>
+
+          {/* Modal de Confirmação de Reset */}
+          {showResetConfirmModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 bg-red-100 rounded-full">
+                    <AlertTriangle className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Confirmar Reset de Dados
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {showResetConfirmModal === 'local' && 'Banco de dados local'}
+                      {showResetConfirmModal === 'server' && 'Servidor Railway'}
+                      {showResetConfirmModal === 'mobile' && 'App Vendas-Mobile'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">
+                    Esta ação é <strong>IRREVERSÍVEL</strong>. Todos os dados serão apagados permanentemente.
+                    Usuários e permissões serão mantidos.
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Digite o código de confirmação:
+                  </label>
+                  <input
+                    type="text"
+                    value={resetConfirmInput}
+                    onChange={(e) => setResetConfirmInput(e.target.value.toUpperCase())}
+                    placeholder={
+                      showResetConfirmModal === 'local' ? 'CONFIRMAR_RESET_LOCAL' :
+                      showResetConfirmModal === 'server' ? 'CONFIRMAR_RESET_DADOS' :
+                      'CONFIRMAR_RESET_MOBILE'
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 font-mono text-sm"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Código: <code className="bg-gray-100 px-1 rounded">
+                      {showResetConfirmModal === 'local' ? 'CONFIRMAR_RESET_LOCAL' :
+                       showResetConfirmModal === 'server' ? 'CONFIRMAR_RESET_DADOS' :
+                       'CONFIRMAR_RESET_MOBILE'}
+                    </code>
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowResetConfirmModal(null);
+                      setResetConfirmInput('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (showResetConfirmModal === 'local') handleResetLocalData();
+                      else if (showResetConfirmModal === 'server') handleResetServerData();
+                      else if (showResetConfirmModal === 'mobile') handleResetMobileData();
+                    }}
+                    disabled={resetLoading || (
+                      (showResetConfirmModal === 'local' && resetConfirmInput !== 'CONFIRMAR_RESET_LOCAL') ||
+                      (showResetConfirmModal === 'server' && resetConfirmInput !== 'CONFIRMAR_RESET_DADOS') ||
+                      (showResetConfirmModal === 'mobile' && resetConfirmInput !== 'CONFIRMAR_RESET_MOBILE')
+                    )}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {resetLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Processando...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        Confirmar Reset
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 10. Ajustes Avançados */}
           <ConfigCard title="Ajustes Avançados e Logs" icon={Activity} sectionKey="advanced">
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

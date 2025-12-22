@@ -41,6 +41,9 @@ import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
 import { SettingsModule } from './settings/settings.module';
 
+// Admin
+import { AdminModule } from './admin/admin.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -92,6 +95,9 @@ import { SettingsModule } from './settings/settings.module';
     HealthModule,
     ImportModule,
     SettingsModule,
+    
+    // Admin
+    AdminModule,
   ],
 })
 export class AppModule implements NestModule {

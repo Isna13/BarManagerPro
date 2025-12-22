@@ -1127,3 +1127,89 @@ ipcMain.handle('printer:print', async (_, { type, data }) => {
   console.log('Print:', type, data);
   return { success: true };
 });
+
+// ============================================
+// ADMIN - Reset de Dados
+// ============================================
+
+// Obter contagem de dados para preview
+ipcMain.handle('admin:getLocalDataCounts', async () => {
+  return dbManager.getDataCountsForReset();
+});
+
+// Zerar dados locais (Electron)
+ipcMain.handle('admin:resetLocalData', async (_, { adminUserId, confirmationCode }) => {
+  // Verificar código de confirmação
+  if (confirmationCode !== 'CONFIRMAR_RESET_LOCAL') {
+    return { success: false, error: 'Código de confirmação inválido' };
+  }
+  
+  console.log(`🔐 Reset local solicitado por: ${adminUserId}`);
+  return dbManager.resetLocalData(adminUserId);
+});
+
+// Obter contagem de dados do servidor
+ipcMain.handle('admin:getServerDataCounts', async () => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = store.get('token') as string;
+  
+  try {
+    const response = await axios.get(`${apiUrl}/admin/data-counts`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Erro ao obter contagem do servidor:', error?.message);
+    return { error: error?.response?.data?.message || error?.message };
+  }
+});
+
+// Zerar dados do servidor (Railway)
+ipcMain.handle('admin:resetServerData', async (_, { confirmationCode }) => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = store.get('token') as string;
+  
+  try {
+    const response = await axios.post(
+      `${apiUrl}/admin/reset-server-data`,
+      { confirmationCode },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 60000, // 60 segundos para operação grande
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    console.error('Erro ao resetar servidor:', error?.message);
+    return { 
+      success: false, 
+      error: error?.response?.data?.message || error?.message 
+    };
+  }
+});
+
+// Zerar dados do mobile (envia comando via API)
+ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }) => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = store.get('token') as string;
+  
+  try {
+    const response = await axios.post(
+      `${apiUrl}/admin/reset-mobile-data`,
+      { deviceId, confirmationCode },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 30000,
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    console.error('Erro ao resetar mobile:', error?.message);
+    return { 
+      success: false, 
+      message: error?.response?.data?.message || error?.message 
+    };
+  }
+});
+

@@ -294,6 +294,18 @@ const api = {
   printer: {
     print: (type: string, data: any) => ipcRenderer.invoke('printer:print', { type, data }),
   },
+  
+  // Admin - Reset de Dados
+  admin: {
+    getLocalDataCounts: () => ipcRenderer.invoke('admin:getLocalDataCounts'),
+    resetLocalData: (adminUserId: string, confirmationCode: string) =>
+      ipcRenderer.invoke('admin:resetLocalData', { adminUserId, confirmationCode }),
+    getServerDataCounts: () => ipcRenderer.invoke('admin:getServerDataCounts'),
+    resetServerData: (confirmationCode: string) =>
+      ipcRenderer.invoke('admin:resetServerData', { confirmationCode }),
+    resetMobileData: (deviceId: string, confirmationCode: string) =>
+      ipcRenderer.invoke('admin:resetMobileData', { deviceId, confirmationCode }),
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
