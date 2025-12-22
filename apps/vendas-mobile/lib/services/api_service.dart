@@ -700,6 +700,45 @@ class ApiService {
     }
   }
 
+  // ==================== COMANDOS REMOTOS ====================
+  
+  /// Verifica se há comandos pendentes do admin (ex: reset de dados)
+  Future<List<Map<String, dynamic>>> getPendingCommands({String? deviceId}) async {
+    try {
+      final response = await _dio.get(
+        '/admin/pending-commands',
+        queryParameters: {'deviceId': deviceId ?? 'all'},
+      );
+      
+      if (response.data != null && response.data['commands'] != null) {
+        return List<Map<String, dynamic>>.from(response.data['commands']);
+      }
+      return [];
+    } on DioException catch (e) {
+      debugPrint('⚠️ Erro ao buscar comandos pendentes: ${_handleError(e)}');
+      return [];
+    }
+  }
+
+  /// Confirma que um comando foi executado
+  Future<bool> acknowledgeCommand({
+    required String commandId,
+    required bool success,
+    Map<String, dynamic>? stats,
+  }) async {
+    try {
+      final response = await _dio.post('/admin/acknowledge-command', data: {
+        'commandId': commandId,
+        'success': success,
+        'stats': stats,
+      });
+      return response.data?['success'] == true;
+    } on DioException catch (e) {
+      debugPrint('⚠️ Erro ao confirmar comando: ${_handleError(e)}');
+      return false;
+    }
+  }
+
   // Error handler
   String _handleError(DioException e) {
     if (e.response != null) {

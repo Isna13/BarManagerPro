@@ -249,4 +249,158 @@ export class AdminService {
 
     return counts;
   }
+
+  // ============================================================
+  // COMANDOS REMOTOS PARA MOBILE
+  // ============================================================
+
+  /**
+   * Cria um comando de reset para o mobile
+   * O mobile irá verificar comandos pendentes durante o sync
+   */
+  async createMobileResetCommand(
+    createdBy: string,
+    targetDeviceId: string,
+  ): Promise<{ success: boolean; message: string; commandId?: string }> {
+    try {
+      const commandId = `reset-mobile-${Date.now()}`;
+      const command = {
+        id: commandId,
+        type: 'RESET_LOCAL_DATA',
+        targetDeviceId,
+        createdBy,
+        createdAt: new Date().toISOString(),
+        status: 'pending',
+      };
+
+      // Salvar na tabela settings como JSON
+      await this.prisma.setting.upsert({
+        where: { key: 'pending_mobile_commands' },
+        create: {
+          key: 'pending_mobile_commands',
+          value: JSON.stringify([command]),
+        },
+        update: {
+          value: JSON.stringify([
+            ...await this.getExistingCommands(),
+            command,
+          ]),
+        },
+      });
+
+      this.logger.warn(`📱 Comando de reset mobile criado: ${commandId}`);
+      this.logger.warn(`   Target: ${targetDeviceId}`);
+      this.logger.warn(`   Criado por: ${createdBy}`);
+
+      return {
+        success: true,
+        message: 'Comando de reset criado. O app mobile executará na próxima sincronização.',
+        commandId,
+      };
+    } catch (error: any) {
+      this.logger.error(`❌ Erro ao criar comando de reset mobile: ${error.message}`);
+      return {
+        success: false,
+        message: `Erro ao criar comando: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Obtém comandos pendentes para um dispositivo
+   */
+  async getPendingMobileCommands(
+    deviceId: string,
+  ): Promise<{ commands: Array<{ id: string; type: string; createdAt: string; createdBy: string }> }> {
+    try {
+      const commands = await this.getExistingCommands();
+      
+      // Filtrar comandos pendentes para este dispositivo ou 'all'
+      const pendingCommands = commands.filter(cmd => 
+        cmd.status === 'pending' && 
+        (cmd.targetDeviceId === deviceId || cmd.targetDeviceId === 'all')
+      );
+
+      return {
+        commands: pendingCommands.map(cmd => ({
+          id: cmd.id,
+          type: cmd.type,
+          createdAt: cmd.createdAt,
+          createdBy: cmd.createdBy,
+        })),
+      };
+    } catch (error: any) {
+      this.logger.error(`❌ Erro ao buscar comandos pendentes: ${error.message}`);
+      return { commands: [] };
+    }
+  }
+
+  /**
+   * Confirma que um comando foi executado
+   */
+  async acknowledgeCommand(
+    commandId: string,
+    success: boolean,
+    stats?: Record<string, number>,
+  ): Promise<{ success: boolean }> {
+    try {
+      const commands = await this.getExistingCommands();
+      
+      const updatedCommands = commands.map(cmd => {
+        if (cmd.id === commandId) {
+          return {
+            ...cmd,
+            status: success ? 'completed' : 'failed',
+            executedAt: new Date().toISOString(),
+            stats,
+          };
+        }
+        return cmd;
+      });
+
+      await this.prisma.setting.upsert({
+        where: { key: 'pending_mobile_commands' },
+        create: {
+          key: 'pending_mobile_commands',
+          value: JSON.stringify(updatedCommands),
+        },
+        update: {
+          value: JSON.stringify(updatedCommands),
+        },
+      });
+
+      this.logger.log(`✅ Comando ${commandId} confirmado: ${success ? 'sucesso' : 'falha'}`);
+      if (stats) {
+        this.logger.log(`   Stats: ${JSON.stringify(stats)}`);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      this.logger.error(`❌ Erro ao confirmar comando: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Obtém comandos existentes do banco
+   */
+  private async getExistingCommands(): Promise<any[]> {
+    try {
+      const setting = await this.prisma.setting.findUnique({
+        where: { key: 'pending_mobile_commands' },
+      });
+      
+      if (!setting) return [];
+      
+      const commands = JSON.parse(setting.value);
+      
+      // Limpar comandos com mais de 24 horas
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      return commands.filter((cmd: any) => 
+        new Date(cmd.createdAt).getTime() > oneDayAgo
+      );
+    } catch {
+      return [];
+    }
+  }
 }

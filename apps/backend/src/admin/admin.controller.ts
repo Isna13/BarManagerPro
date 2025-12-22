@@ -1,4 +1,4 @@
-import { Controller, Post, Get, UseGuards, Request, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, UseGuards, Request, Body, HttpCode, HttpStatus, Query } from '@nestjs/common';
 import { AdminService, ResetDataResult } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -52,15 +52,15 @@ export class AdminController {
 
   /**
    * POST /admin/reset-mobile-data
-   * Envia comando para o app mobile limpar seus dados locais
-   * O mobile recebe via WebSocket/API
+   * Cria um comando pendente para o app mobile limpar seus dados locais
+   * O mobile verifica comandos pendentes durante a sincronização
    */
   @Post('reset-mobile-data')
   @HttpCode(HttpStatus.OK)
   async resetMobileData(
     @Request() req: any,
     @Body() body: { deviceId?: string; confirmationCode?: string },
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; commandId?: string }> {
     const userId = req.user?.id || req.user?.userId;
     const userRole = req.user?.role || req.user?.roleName;
 
@@ -72,11 +72,34 @@ export class AdminController {
       return { success: false, message: 'Código de confirmação inválido' };
     }
 
-    // TODO: Implementar notificação via WebSocket para o mobile
-    // Por enquanto, retornar instrução para reset manual
-    return {
-      success: true,
-      message: 'Comando de reset enviado. O app mobile deve ser reiniciado para aplicar.',
-    };
+    // Criar comando pendente para o mobile
+    const result = await this.adminService.createMobileResetCommand(userId, body.deviceId || 'all');
+    return result;
+  }
+
+  /**
+   * GET /admin/pending-commands
+   * Verifica se há comandos pendentes para um dispositivo mobile
+   * Chamado pelo app mobile durante a sincronização
+   */
+  @Get('pending-commands')
+  async getPendingCommands(
+    @Request() req: any,
+    @Query('deviceId') deviceId?: string,
+  ): Promise<{ commands: Array<{ id: string; type: string; createdAt: string; createdBy: string }> }> {
+    return this.adminService.getPendingMobileCommands(deviceId || 'all');
+  }
+
+  /**
+   * POST /admin/acknowledge-command
+   * Confirma que um comando foi executado pelo mobile
+   */
+  @Post('acknowledge-command')
+  @HttpCode(HttpStatus.OK)
+  async acknowledgeCommand(
+    @Request() req: any,
+    @Body() body: { commandId: string; success: boolean; stats?: Record<string, number> },
+  ): Promise<{ success: boolean }> {
+    return this.adminService.acknowledgeCommand(body.commandId, body.success, body.stats);
   }
 }

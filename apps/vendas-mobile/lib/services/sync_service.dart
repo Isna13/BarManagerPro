@@ -94,6 +94,10 @@ class SyncService {
         .add(SyncStatus(isSyncing: true, message: 'Sincronizando...'));
 
     try {
+      // 0. Verificar comandos remotos pendentes (ex: reset de dados)
+      debugPrint('🔍 Etapa 0: Verificando comandos remotos...');
+      await _checkPendingRemoteCommands();
+
       // 1. Primeiro, enviar dados locais pendentes
       debugPrint('📤 Etapa 1: Enviando dados pendentes...');
       await _uploadPendingChanges();
@@ -1354,6 +1358,107 @@ class SyncService {
     final prefs = await SharedPreferences.getInstance();
     final lastSync = prefs.getString('last_sync');
     return lastSync != null ? DateTime.tryParse(lastSync) : null;
+  }
+
+  /// Verifica e executa comandos remotos pendentes do admin
+  /// Executado no início de cada sincronização
+  Future<void> _checkPendingRemoteCommands() async {
+    try {
+      final commands = await _api.getPendingCommands();
+      
+      if (commands.isEmpty) {
+        debugPrint('✅ Nenhum comando remoto pendente');
+        return;
+      }
+
+      debugPrint('⚠️ ${commands.length} comando(s) remoto(s) pendente(s)');
+
+      for (final command in commands) {
+        final commandId = command['id'] as String?;
+        final commandType = command['type'] as String?;
+
+        if (commandId == null || commandType == null) continue;
+
+        debugPrint('🔧 Executando comando: $commandType ($commandId)');
+
+        if (commandType == 'RESET_LOCAL_DATA') {
+          // Executar reset local
+          final stats = await _executeLocalReset();
+          
+          // Confirmar execução
+          final acknowledged = await _api.acknowledgeCommand(
+            commandId: commandId,
+            success: true,
+            stats: stats,
+          );
+          
+          if (acknowledged) {
+            debugPrint('✅ Comando $commandId executado e confirmado');
+          } else {
+            debugPrint('⚠️ Comando executado, mas não confirmado no servidor');
+          }
+
+          // Notificar UI que houve reset remoto
+          _syncStatusController.add(SyncStatus(
+            isSyncing: true,
+            message: '🔄 Reset remoto executado. Recarregando dados...',
+            success: true,
+          ));
+        } else {
+          debugPrint('⚠️ Comando desconhecido: $commandType');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao verificar comandos remotos: $e');
+      // Não propagar erro - comandos remotos são opcionais
+    }
+  }
+
+  /// Executa reset local e retorna estatísticas
+  Future<Map<String, dynamic>> _executeLocalReset() async {
+    debugPrint('═══════════════════════════════════════════════════════');
+    debugPrint('🗑️ RESET LOCAL REMOTO - Iniciando...');
+    debugPrint('═══════════════════════════════════════════════════════');
+
+    final stats = <String, dynamic>{};
+
+    try {
+      // Contar registros antes de deletar
+      final db = await _db.database;
+      
+      final tables = [
+        'sync_queue', 'payments', 'table_payments', 'sale_items', 'sales',
+        'table_orders', 'table_customers', 'table_sessions', 'tables',
+        'debts', 'cash_boxes', 'inventory', 'customers', 'products', 'categories'
+      ];
+
+      for (final table in tables) {
+        try {
+          final result = await db.rawQuery('SELECT COUNT(*) as count FROM $table');
+          final count = (result.first['count'] as int?) ?? 0;
+          if (count > 0) {
+            stats['$table'] = count;
+          }
+        } catch (_) {}
+      }
+
+      // Executar reset
+      await _db.clearAllData();
+      
+      stats['timestamp'] = DateTime.now().toIso8601String();
+      stats['success'] = true;
+
+      debugPrint('✅ Reset local concluído');
+      debugPrint('📊 Estatísticas: $stats');
+      debugPrint('═══════════════════════════════════════════════════════');
+
+      return stats;
+    } catch (e) {
+      debugPrint('❌ Erro no reset local: $e');
+      stats['error'] = e.toString();
+      stats['success'] = false;
+      return stats;
+    }
   }
 
   /// Limpa todos os dados locais e sincroniza novamente do servidor

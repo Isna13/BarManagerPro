@@ -676,8 +676,9 @@ export default function SettingsPage() {
       const result = await window.electronAPI?.admin?.resetMobileData?.('all', 'CONFIRMAR_RESET_MOBILE');
 
       if (result?.success) {
-        const successMsg = `✅ ${result.message || 'Comando de reset enviado ao mobile!'}`;
-        setResetStatus({ type: 'success', message: successMsg });
+        const commandId = result.commandId ? ` (ID: ${result.commandId})` : '';
+        const successMsg = `✅ ${result.message || 'Comando de reset enfileirado!'}${commandId}\n\n⚠️ O app mobile executará o reset na próxima sincronização.`;
+        setResetStatus({ type: 'success', message: result.message || 'Comando enfileirado' });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
         setTimeout(() => alert(successMsg), 100);
