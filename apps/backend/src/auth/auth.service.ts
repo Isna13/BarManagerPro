@@ -88,11 +88,14 @@ export class AuthService {
       accessToken: token,
       user: {
         id: user.id,
+        username: user.username,
         email: user.email,
         fullName: user.fullName,
         role: user.role, // role é string: 'admin', 'manager', etc
         branchId: user.branchId,
         branch: user.branch,
+        phone: user.phone,
+        allowedTabs: user.allowedTabs ? JSON.parse(user.allowedTabs) : null,
         permissions: rolePermissions[user.role] || [],
       },
     };

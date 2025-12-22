@@ -6820,11 +6820,20 @@ export class DatabaseManager {
       const fields = [];
       const values = [];
 
+      if (data.username !== undefined) { fields.push('username = ?'); values.push(data.username); }
       if (data.email !== undefined) { fields.push('email = ?'); values.push(data.email); }
       if (data.full_name !== undefined) { fields.push('full_name = ?'); values.push(data.full_name); }
       if (data.role !== undefined) { fields.push('role = ?'); values.push(data.role); }
       if (data.branch_id !== undefined) { fields.push('branch_id = ?'); values.push(data.branch_id); }
       if (data.phone !== undefined) { fields.push('phone = ?'); values.push(data.phone); }
+      if (data.allowed_tabs !== undefined) { 
+        // Aceitar tanto array quanto string JSON
+        const allowedTabsJson = Array.isArray(data.allowed_tabs) 
+          ? JSON.stringify(data.allowed_tabs) 
+          : data.allowed_tabs;
+        fields.push('allowed_tabs = ?'); 
+        values.push(allowedTabsJson); 
+      }
       if (data.is_active !== undefined) { fields.push('is_active = ?'); values.push(data.is_active); }
       if (data.synced !== undefined) { fields.push('synced = ?'); values.push(data.synced); }
       if (data.last_sync !== undefined) { fields.push('last_sync = ?'); values.push(data.last_sync); }

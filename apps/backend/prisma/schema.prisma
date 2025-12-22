@@ -68,6 +68,7 @@ model User {
   branchId     String?   @map("branch_id")
   branch       Branch?   @relation(fields: [branchId], references: [id])
   phone        String?
+  allowedTabs  String?   @map("allowed_tabs") // JSON array de abas permitidas
   language     String?   @default("pt")
   isActive     Boolean   @default(true) @map("is_active")
   lastLogin    DateTime? @map("last_login")

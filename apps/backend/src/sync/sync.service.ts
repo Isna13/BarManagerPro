@@ -197,7 +197,7 @@ export class SyncService {
     const since = new Date(lastSync);
 
     // Get all changes since lastSync
-    const [sales, customers, inventory, products, debts, payments, tables, tableSessions] = await Promise.all([
+    const [sales, customers, inventory, products, debts, payments, tables, tableSessions, users, categories, suppliers, branches] = await Promise.all([
       this.prisma.sale.findMany({
         where: { branchId, updatedAt: { gte: since } },
         include: { items: true, payments: true },
@@ -237,6 +237,44 @@ export class SyncService {
           payments: true,
         },
       }),
+      // Usuários (sem senha)
+      this.prisma.user.findMany({
+        where: { 
+          OR: [
+            { branchId },
+            { branchId: null }, // Usuários globais (admin/owner)
+          ],
+          updatedAt: { gte: since },
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          fullName: true,
+          role: true,
+          roleName: true,
+          branchId: true,
+          phone: true,
+          allowedTabs: true,
+          isActive: true,
+          synced: true,
+          lastSync: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      // Categorias
+      this.prisma.category.findMany({
+        where: { branchId, updatedAt: { gte: since } },
+      }),
+      // Fornecedores
+      this.prisma.supplier.findMany({
+        where: { branchId, updatedAt: { gte: since } },
+      }),
+      // Branches
+      this.prisma.branch.findMany({
+        where: { updatedAt: { gte: since } },
+      }),
     ]);
 
     return {
@@ -250,6 +288,10 @@ export class SyncService {
         payments,
         tables,
         tableSessions,
+        users,
+        categories,
+        suppliers,
+        branches,
       },
     };
   }

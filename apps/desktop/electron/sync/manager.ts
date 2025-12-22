@@ -1195,16 +1195,29 @@ export class SyncManager {
             
             if (existing) {
               // Não sobrescrever senha local se usuário já existe
+              // Processar allowedTabs - pode vir como string JSON ou array
+              let allowedTabs = item.allowedTabs;
+              if (typeof allowedTabs === 'string') {
+                try {
+                  allowedTabs = JSON.parse(allowedTabs);
+                } catch (e) {
+                  // Já é string, manter
+                }
+              }
+              
               this.dbManager.updateUserFromServer((existing as any).id, {
+                username: item.username,
                 email: item.email,
                 full_name: item.fullName,
-                role: item.role,
+                role: item.role || item.roleName,
                 branch_id: item.branchId,
                 phone: item.phone,
+                allowed_tabs: allowedTabs,
                 is_active: item.isActive !== false ? 1 : 0,
                 synced: 1,
                 last_sync: new Date().toISOString(),
               });
+              console.log(`✅ Usuário atualizado: ${item.email}`);
             }
             // Não criar usuários do servidor localmente sem senha
           } catch (e: any) {
@@ -2483,24 +2496,28 @@ export class SyncManager {
             }
           }
           
-          if (!branchId) {
-            console.error('❌ branchId obrigatório para sincronização de usuário');
-            return { 
-              success: false, 
-              reason: 'branchId não disponível. Configure uma filial primeiro.' 
-            };
-          }
-          
-          // Formatar dados para o backend (CreateUserDto)
+          // Formatar dados para o backend (CreateUserDto completo)
           const createUserPayload = {
+            id: data.id || entity_id, // Usar ID do Electron para manter consistência
+            username: data.username,
             email: data.email,
+            fullName: data.fullName,
             password: data.password,
-            role: data.role,
+            role: data.role || 'cashier',
             branchId: branchId,
-            isActive: true,
+            phone: data.phone,
+            allowedTabs: data.allowedTabs,
+            isActive: data.isActive !== undefined ? data.isActive : true,
           };
           
-          console.log('📤 Enviando usuário para backend:', { email: data.email, role: data.role, branchId });
+          console.log('📤 Enviando usuário para backend:', { 
+            id: createUserPayload.id,
+            username: createUserPayload.username,
+            email: data.email, 
+            role: data.role, 
+            branchId,
+            allowedTabs: data.allowedTabs,
+          });
           
           try {
             await this.apiClient.post('/users', createUserPayload);
@@ -2515,18 +2532,24 @@ export class SyncManager {
             throw error;
           }
         } else if (operation === 'update') {
-          // Para update, usar PATCH /users/:id
+          // Para update, usar PUT /users/:id com todos os campos
           const updatePayload: any = {};
+          if (data.username) updatePayload.username = data.username;
+          if (data.email) updatePayload.email = data.email;
+          if (data.fullName) updatePayload.fullName = data.fullName;
           if (data.role) updatePayload.role = data.role;
           if (data.branchId) updatePayload.branchId = data.branchId;
+          if (data.phone !== undefined) updatePayload.phone = data.phone;
+          if (data.allowedTabs !== undefined) updatePayload.allowedTabs = data.allowedTabs;
           if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
+          if (data.password) updatePayload.password = data.password;
           
-          await this.apiClient.patch(`/users/${entity_id}`, updatePayload);
+          await this.apiClient.put(`/users/${entity_id}`, updatePayload);
           console.log('✅ Usuário atualizado no backend:', entity_id);
           return { success: true };
         } else if (operation === 'delete') {
           // Desativar usuário
-          await this.apiClient.patch(`/users/${entity_id}`, { isActive: false });
+          await this.apiClient.put(`/users/${entity_id}`, { isActive: false });
           console.log('✅ Usuário desativado no backend:', entity_id);
           return { success: true };
         }

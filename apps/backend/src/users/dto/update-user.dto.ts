@@ -1,23 +1,38 @@
-import { IsEmail, IsString, MinLength, IsEnum, IsUUID, IsOptional, IsBoolean } from 'class-validator';
-import { UserRole } from './create-user.dto';
+import { IsEmail, IsString, MinLength, IsUUID, IsOptional, IsBoolean, IsArray } from 'class-validator';
 
 export class UpdateUserDto {
+  @IsString()
+  @IsOptional()
+  username?: string;
+
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsString()
+  @IsOptional()
+  fullName?: string;
 
   @IsString()
   @MinLength(6)
   @IsOptional()
   password?: string;
 
-  @IsEnum(UserRole)
+  @IsString()
   @IsOptional()
-  role?: UserRole;
+  role?: string;
 
   @IsUUID()
   @IsOptional()
   branchId?: string;
+
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @IsArray()
+  @IsOptional()
+  allowedTabs?: string[];
 
   @IsBoolean()
   @IsOptional()

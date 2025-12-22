@@ -9,30 +9,67 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-    const existing = await this.prisma.user.findUnique({
+    // Verificar por email OU username
+    const existingEmail = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
     });
 
-    if (existing) {
-      throw new ConflictException('User already exists');
+    if (existingEmail) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    // Verificar username se fornecido
+    if (createUserDto.username) {
+      const existingUsername = await this.prisma.user.findUnique({
+        where: { username: createUserDto.username },
+      });
+      if (existingUsername) {
+        throw new ConflictException('User with this username already exists');
+      }
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
+    // Converter allowedTabs array para JSON string se fornecido
+    const allowedTabsJson = createUserDto.allowedTabs 
+      ? JSON.stringify(createUserDto.allowedTabs) 
+      : null;
+
+    // Obter branchId default se não fornecido
+    let branchId = createUserDto.branchId;
+    if (!branchId) {
+      const defaultBranch = await this.prisma.branch.findFirst({
+        where: { isActive: true },
+        orderBy: { isMain: 'desc' },
+      });
+      branchId = defaultBranch?.id || null;
+    }
+
     return this.prisma.user.create({
       data: {
+        id: createUserDto.id, // Usar ID do Electron se fornecido
+        username: createUserDto.username,
         email: createUserDto.email,
         password: hashedPassword,
-        fullName: createUserDto.email.split('@')[0], // Fallback name
-        roleName: createUserDto.role,
-        branchId: createUserDto.branchId || null,
+        fullName: createUserDto.fullName || createUserDto.username || createUserDto.email.split('@')[0],
+        role: createUserDto.role || 'cashier',
+        roleName: createUserDto.role || 'cashier',
+        branchId: branchId,
+        phone: createUserDto.phone,
+        allowedTabs: allowedTabsJson,
         isActive: createUserDto.isActive ?? true,
+        synced: true,
+        lastSync: new Date(),
       },
       select: {
         id: true,
+        username: true,
         email: true,
+        fullName: true,
         role: true,
         branchId: true,
+        phone: true,
+        allowedTabs: true,
         isActive: true,
         createdAt: true,
       },
@@ -48,9 +85,13 @@ export class UsersService {
       where,
       select: {
         id: true,
+        username: true,
         email: true,
+        fullName: true,
         role: true,
         branchId: true,
+        phone: true,
+        allowedTabs: true,
         isActive: true,
         createdAt: true,
         branch: { select: { name: true, code: true } },
@@ -64,9 +105,13 @@ export class UsersService {
       where: { id },
       select: {
         id: true,
+        username: true,
         email: true,
+        fullName: true,
         role: true,
         branchId: true,
+        phone: true,
+        allowedTabs: true,
         isActive: true,
         createdAt: true,
         branch: { select: { name: true, code: true } },
@@ -89,22 +134,41 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     const data: any = {};
 
+    if (updateUserDto.username) data.username = updateUserDto.username;
     if (updateUserDto.email) data.email = updateUserDto.email;
-    if (updateUserDto.role) data.role = updateUserDto.role;
+    if (updateUserDto.fullName) data.fullName = updateUserDto.fullName;
+    if (updateUserDto.role) {
+      data.role = updateUserDto.role;
+      data.roleName = updateUserDto.role;
+    }
     if (updateUserDto.branchId) data.branchId = updateUserDto.branchId;
+    if (updateUserDto.phone !== undefined) data.phone = updateUserDto.phone;
+    if (updateUserDto.allowedTabs !== undefined) {
+      data.allowedTabs = updateUserDto.allowedTabs 
+        ? JSON.stringify(updateUserDto.allowedTabs) 
+        : null;
+    }
     if (updateUserDto.isActive !== undefined) data.isActive = updateUserDto.isActive;
     if (updateUserDto.password) {
       data.password = await bcrypt.hash(updateUserDto.password, 10);
     }
+
+    // Marcar como sincronizado
+    data.synced = true;
+    data.lastSync = new Date();
 
     return this.prisma.user.update({
       where: { id },
       data,
       select: {
         id: true,
+        username: true,
         email: true,
+        fullName: true,
         role: true,
         branchId: true,
+        phone: true,
+        allowedTabs: true,
         isActive: true,
         updatedAt: true,
       },
