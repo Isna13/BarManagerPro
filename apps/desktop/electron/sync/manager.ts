@@ -87,6 +87,20 @@ export class SyncManager {
     this.mainWindow = window;
   }
 
+  /**
+   * Retorna o token de autenticação atual
+   */
+  getToken(): string | null {
+    return this.token;
+  }
+
+  /**
+   * Verifica se o token é válido (não é null e não é offline-token)
+   */
+  hasValidToken(): boolean {
+    return this.token !== null && this.token !== 'offline-token';
+  }
+
   private emit(event: string, data?: any) {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       console.log(`📡 Emitting event: ${event}`, data);

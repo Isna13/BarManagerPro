@@ -1151,9 +1151,10 @@ ipcMain.handle('admin:resetLocalData', async (_, { adminUserId, confirmationCode
 // Obter contagem de dados do servidor
 ipcMain.handle('admin:getServerDataCounts', async () => {
   const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
-  const token = store.get('token') as string;
+  // Usar token do syncManager ao invés do store
+  const token = syncManager?.getToken();
   
-  if (!token) {
+  if (!token || token === 'offline-token') {
     console.error('❌ Token não encontrado para obter contagem');
     return { error: 'Usuário não autenticado. Faça login novamente.' };
   }
@@ -1179,15 +1180,16 @@ ipcMain.handle('admin:getServerDataCounts', async () => {
 // Zerar dados do servidor (Railway)
 ipcMain.handle('admin:resetServerData', async (_, { confirmationCode }) => {
   const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
-  const token = store.get('token') as string;
+  // Usar token do syncManager ao invés do store
+  const token = syncManager?.getToken();
   
-  if (!token) {
+  if (!token || token === 'offline-token') {
     console.error('❌ Token não encontrado para reset servidor');
     return { success: false, error: 'Usuário não autenticado. Faça login novamente.' };
   }
   
   console.log(`🗄️ Reset servidor solicitado`);
-  console.log(`🔑 Token presente: ${token ? 'Sim' : 'Não'}`);
+  console.log(`🔑 Token presente: Sim`);
   
   try {
     const response = await axios.post(
@@ -1221,10 +1223,11 @@ ipcMain.handle('admin:resetServerData', async (_, { confirmationCode }) => {
 // Zerar dados do mobile (envia comando via API)
 ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }) => {
   const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
-  const token = store.get('token') as string;
+  // Usar token do syncManager ao invés do store
+  const token = syncManager?.getToken();
   
-  // Verificar se tem token
-  if (!token) {
+  // Verificar se tem token válido
+  if (!token || token === 'offline-token') {
     console.error('❌ Token não encontrado para reset mobile');
     return { 
       success: false, 
@@ -1233,7 +1236,7 @@ ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }
   }
   
   console.log(`📱 Reset mobile solicitado - deviceId: ${deviceId}`);
-  console.log(`🔑 Token presente: ${token ? 'Sim' : 'Não'} (${token?.substring(0, 20)}...)`);
+  console.log(`🔑 Token válido presente`);
   
   try {
     const response = await axios.post(
