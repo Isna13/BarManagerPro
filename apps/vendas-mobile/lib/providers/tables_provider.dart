@@ -326,14 +326,11 @@ class TablesProvider extends ChangeNotifier {
           }
         }
 
-        // Salvar localmente
+        // Salvar localmente (apenas mesas, NÃO sessões - sessões virão do overview com dados completos)
         for (final table in fetchedTables) {
           await _saveTableLocally(table);
-
-          // Se mesa tem sessão ativa, salvar também
-          if (table['currentSession'] != null) {
-            await _saveSessionLocally(table['currentSession']);
-          }
+          // NOTA: NÃO salvar currentSession aqui porque getTables() não retorna customers.
+          // O getTablesOverview() abaixo traz sessões completas com customers e orders.
         }
 
         // Se temos branchId, tentar buscar overview com sessões detalhadas
@@ -350,6 +347,18 @@ class TablesProvider extends ChangeNotifier {
               for (final table in overviewTables) {
                 await _saveTableLocally(table);
                 if (table['currentSession'] != null) {
+                  debugPrint(
+                      '🔄 SYNC OVERVIEW: Mesa ${table['number']} tem sessão ativa');
+                  final session = table['currentSession'];
+                  final customers =
+                      session['customers'] as List<dynamic>? ?? [];
+                  debugPrint(
+                      '🔄 SYNC OVERVIEW: Sessão ${session['id']} tem ${customers.length} clientes');
+                  for (final c in customers) {
+                    final orders = (c as Map)['orders'] as List<dynamic>? ?? [];
+                    debugPrint(
+                        '🔄 SYNC OVERVIEW: Cliente ${c['customerName'] ?? c['customer_name']} tem ${orders.length} pedidos');
+                  }
                   await _saveSessionLocally(table['currentSession']);
                 }
               }
@@ -1251,9 +1260,13 @@ class TablesProvider extends ChangeNotifier {
     await _db.insert('tables', mappedData);
   }
 
-  Future<void> _saveSessionLocally(Map<String, dynamic> session, {bool saveNested = true}) async {
+  Future<void> _saveSessionLocally(Map<String, dynamic> session,
+      {bool saveNested = true}) async {
     final sessionId = session['id']?.toString();
     if (sessionId == null || sessionId.isEmpty) return;
+
+    debugPrint(
+        '💾 _saveSessionLocally: sessionId=$sessionId, saveNested=$saveNested');
 
     final mappedData = <String, dynamic>{
       'id': sessionId,
@@ -1280,39 +1293,49 @@ class TablesProvider extends ChangeNotifier {
     if (!saveNested) return;
 
     final customers = session['customers'] as List<dynamic>? ?? [];
+    debugPrint(
+        '💾 _saveSessionLocally: processando ${customers.length} customers aninhados');
+
     for (final customer in customers) {
       if (customer is! Map<String, dynamic>) continue;
-      
+
+      debugPrint(
+          '💾 Salvando customer: ${customer['customerName'] ?? customer['customer_name']}');
+
       // Adicionar session_id ao customer para garantir a relação
       final customerWithSession = Map<String, dynamic>.from(customer);
       customerWithSession['session_id'] = sessionId;
       customerWithSession['sessionId'] = sessionId;
-      
+
       await _saveCustomerLocally(customerWithSession);
 
       // Salvar orders do customer
       final orders = customer['orders'] as List<dynamic>? ?? [];
       for (final order in orders) {
         if (order is! Map<String, dynamic>) continue;
-        
+
         // Adicionar session_id e table_customer_id ao order
         final orderWithRefs = Map<String, dynamic>.from(order);
         orderWithRefs['session_id'] = sessionId;
         orderWithRefs['sessionId'] = sessionId;
         orderWithRefs['table_customer_id'] = customer['id'];
         orderWithRefs['tableCustomerId'] = customer['id'];
-        
+
         await _saveOrderLocally(orderWithRefs);
       }
     }
   }
 
   Future<void> _saveCustomerLocally(Map<String, dynamic> customer) async {
+    final customerId = customer['id'];
+    final customerName = customer['customerName'] ?? customer['customer_name'];
+    debugPrint('💾 _saveCustomerLocally: id=$customerId, name=$customerName');
+
     final mappedData = <String, dynamic>{
-      'id': customer['id'],
+      'id': customerId,
       'session_id': customer['sessionId'] ?? customer['session_id'],
       'customer_id': customer['customerId'] ?? customer['customer_id'],
-      'customer_name': customer['customerName'] ?? customer['customer_name'],
+      'customer_name': customerName,
       'subtotal': customer['subtotal'] ?? 0,
       'total': customer['total'] ?? 0,
       'paid_amount': customer['paidAmount'] ?? customer['paid_amount'] ?? 0,
@@ -1322,6 +1345,7 @@ class TablesProvider extends ChangeNotifier {
     };
 
     await _db.insert('table_customers', mappedData);
+    debugPrint('💾 Customer salvo com sucesso: $customerId');
   }
 
   Future<void> _saveOrderLocally(Map<String, dynamic> order) async {
