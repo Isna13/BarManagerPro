@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -21,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  StreamSubscription<SyncStatus>? _syncSubscription;
 
   final List<Widget> _screens = [
     const DashboardScreen(),
@@ -44,6 +47,32 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadInitialData();
+    _setupSyncListener();
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Escuta eventos de sincronização para recarregar dados após reset remoto
+  void _setupSyncListener() {
+    _syncSubscription = SyncService.instance.syncStatusStream.listen((status) {
+      if (status.requiresReload && mounted) {
+        debugPrint('🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
+        _loadInitialData().then((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(status.message),
+                backgroundColor: status.success == true ? Colors.green : Colors.orange,
+              ),
+            );
+          }
+        });
+      }
+    });
   }
 
   Future<void> _loadInitialData() async {

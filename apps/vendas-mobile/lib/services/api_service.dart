@@ -701,15 +701,16 @@ class ApiService {
   }
 
   // ==================== COMANDOS REMOTOS ====================
-  
+
   /// Verifica se há comandos pendentes do admin (ex: reset de dados)
-  Future<List<Map<String, dynamic>>> getPendingCommands({String? deviceId}) async {
+  Future<List<Map<String, dynamic>>> getPendingCommands(
+      {String? deviceId}) async {
     try {
       final response = await _dio.get(
         '/admin/pending-commands',
         queryParameters: {'deviceId': deviceId ?? 'all'},
       );
-      
+
       if (response.data != null && response.data['commands'] != null) {
         return List<Map<String, dynamic>>.from(response.data['commands']);
       }

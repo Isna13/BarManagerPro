@@ -1365,7 +1365,7 @@ class SyncService {
   Future<void> _checkPendingRemoteCommands() async {
     try {
       final commands = await _api.getPendingCommands();
-      
+
       if (commands.isEmpty) {
         debugPrint('✅ Nenhum comando remoto pendente');
         return;
@@ -1384,26 +1384,52 @@ class SyncService {
         if (commandType == 'RESET_LOCAL_DATA') {
           // Executar reset local
           final stats = await _executeLocalReset();
-          
+
           // Confirmar execução
           final acknowledged = await _api.acknowledgeCommand(
             commandId: commandId,
             success: true,
             stats: stats,
           );
-          
+
           if (acknowledged) {
             debugPrint('✅ Comando $commandId executado e confirmado');
           } else {
             debugPrint('⚠️ Comando executado, mas não confirmado no servidor');
           }
 
-          // Notificar UI que houve reset remoto
+          // Notificar UI que está iniciando download
           _syncStatusController.add(SyncStatus(
             isSyncing: true,
-            message: '🔄 Reset remoto executado. Recarregando dados...',
-            success: true,
+            message: '🔄 Reset remoto executado. Baixando dados...',
+            success: null,
           ));
+          
+          // IMPORTANTE: Após reset remoto, forçar download imediato dos dados
+          // Isso garante que o app não fique com banco vazio
+          debugPrint('📥 Iniciando download de dados após reset remoto...');
+          try {
+            await _downloadServerData();
+            debugPrint('✅ Dados baixados com sucesso após reset remoto');
+            
+            // Notificar UI que os dados foram recarregados e providers devem atualizar
+            _syncStatusController.add(SyncStatus(
+              isSyncing: false,
+              message: '✅ Reset remoto concluído. Dados recarregados!',
+              success: true,
+              requiresReload: true, // Sinaliza que providers devem recarregar
+            ));
+          } catch (downloadError) {
+            debugPrint('⚠️ Erro ao baixar dados após reset: $downloadError');
+            
+            // Ainda assim notificar que precisa recarregar (tentará usar cache)
+            _syncStatusController.add(SyncStatus(
+              isSyncing: false,
+              message: '⚠️ Reset executado. Erro ao baixar dados: $downloadError',
+              success: false,
+              requiresReload: true,
+            ));
+          }
         } else {
           debugPrint('⚠️ Comando desconhecido: $commandType');
         }
@@ -1425,16 +1451,29 @@ class SyncService {
     try {
       // Contar registros antes de deletar
       final db = await _db.database;
-      
+
       final tables = [
-        'sync_queue', 'payments', 'table_payments', 'sale_items', 'sales',
-        'table_orders', 'table_customers', 'table_sessions', 'tables',
-        'debts', 'cash_boxes', 'inventory', 'customers', 'products', 'categories'
+        'sync_queue',
+        'payments',
+        'table_payments',
+        'sale_items',
+        'sales',
+        'table_orders',
+        'table_customers',
+        'table_sessions',
+        'tables',
+        'debts',
+        'cash_boxes',
+        'inventory',
+        'customers',
+        'products',
+        'categories'
       ];
 
       for (final table in tables) {
         try {
-          final result = await db.rawQuery('SELECT COUNT(*) as count FROM $table');
+          final result =
+              await db.rawQuery('SELECT COUNT(*) as count FROM $table');
           final count = (result.first['count'] as int?) ?? 0;
           if (count > 0) {
             stats['$table'] = count;
@@ -1444,7 +1483,7 @@ class SyncService {
 
       // Executar reset
       await _db.clearAllData();
-      
+
       stats['timestamp'] = DateTime.now().toIso8601String();
       stats['success'] = true;
 
@@ -1504,10 +1543,12 @@ class SyncStatus {
   final bool isSyncing;
   final String message;
   final bool? success;
+  final bool requiresReload; // Indica que providers devem recarregar dados
 
   SyncStatus({
     required this.isSyncing,
     required this.message,
     this.success,
+    this.requiresReload = false,
   });
 }
