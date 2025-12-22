@@ -380,7 +380,8 @@ class DatabaseManager {
         retry_count INTEGER DEFAULT 0,
         last_error TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        processed_at DATETIME
+        processed_at DATETIME,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
       -- Sync Audit Log (log de auditoria de sincronização)
@@ -486,8 +487,10 @@ class DatabaseManager {
         id TEXT PRIMARY KEY,
         branch_id TEXT NOT NULL,
         number TEXT NOT NULL,
+        name TEXT,
         seats INTEGER DEFAULT 4,
         area TEXT,
+        status TEXT DEFAULT 'available',
         qr_code TEXT,
         is_active BOOLEAN DEFAULT 1,
         synced BOOLEAN DEFAULT 0,
@@ -893,6 +896,42 @@ class DatabaseManager {
         }
         catch (error) {
             console.error('Erro na migration backup_history:', error);
+        }
+        // Migration 15: Adicionar colunas name e status à tabela tables
+        try {
+            const tablesInfo = this.db.pragma('table_info(tables)');
+            const hasName = tablesInfo.some((col) => col.name === 'name');
+            const hasStatus = tablesInfo.some((col) => col.name === 'status');
+            if (!hasName) {
+                console.log('Executando migration: adicionando coluna name em tables...');
+                this.db.exec('ALTER TABLE tables ADD COLUMN name TEXT');
+                // Atualizar registros existentes com nome padrão
+                this.db.exec(`UPDATE tables SET name = 'Mesa ' || number WHERE name IS NULL`);
+                console.log('✅ Migration tables.name concluída!');
+            }
+            if (!hasStatus) {
+                console.log('Executando migration: adicionando coluna status em tables...');
+                this.db.exec("ALTER TABLE tables ADD COLUMN status TEXT DEFAULT 'available'");
+                console.log('✅ Migration tables.status concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration tables name/status:', error);
+        }
+        // Migration 16: Adicionar coluna updated_at à tabela sync_queue
+        try {
+            const syncQueueInfo = this.db.pragma('table_info(sync_queue)');
+            const hasUpdatedAt = syncQueueInfo.some((col) => col.name === 'updated_at');
+            if (!hasUpdatedAt) {
+                console.log('Executando migration: adicionando coluna updated_at em sync_queue...');
+                // SQLite não permite DEFAULT com função em ALTER TABLE, então adicionamos como NULL e depois atualizamos
+                this.db.exec('ALTER TABLE sync_queue ADD COLUMN updated_at DATETIME');
+                this.db.exec("UPDATE sync_queue SET updated_at = created_at WHERE updated_at IS NULL");
+                console.log('✅ Migration sync_queue.updated_at concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration sync_queue updated_at:', error);
         }
     }
     // ============================================
