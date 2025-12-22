@@ -29,7 +29,9 @@ export interface BackupData {
   tableCustomers: any[];
   tableOrders: any[];
   inventory: any[];
+  inventoryItems: any[];
   inventoryMovements: any[];
+  stockMovements: any[];
   purchases: any[];
   purchaseItems: any[];
   sales: any[];
