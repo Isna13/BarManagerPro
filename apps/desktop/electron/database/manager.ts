@@ -7567,75 +7567,106 @@ export class DatabaseManager {
 
       const stats: Record<string, number> = {};
 
-      // 2. Executar dentro de uma transação
-      const transaction = this.db.transaction(() => {
-        // Ordem de deleção respeitando foreign keys
+      // 2. Desabilitar foreign keys temporariamente para evitar erros de constraint
+      this.db.pragma('foreign_keys = OFF');
+      console.log('🔓 Foreign keys desabilitadas temporariamente');
 
-        // Tabelas de sincronização e logs (podem ser deletadas primeiro)
-        stats['sync_queue'] = this.db.prepare('DELETE FROM sync_queue').run().changes;
-        stats['sync_audit_log'] = this.db.prepare('DELETE FROM sync_audit_log').run().changes;
-        stats['sync_conflicts'] = this.db.prepare('DELETE FROM sync_conflicts').run().changes;
+      try {
+        // 3. Executar dentro de uma transação
+        const transaction = this.db.transaction(() => {
+          // Tabelas de sincronização e logs
+          stats['sync_queue'] = this.db.prepare('DELETE FROM sync_queue').run().changes;
+          stats['sync_audit_log'] = this.db.prepare('DELETE FROM sync_audit_log').run().changes;
+          
+          try {
+            stats['sync_conflicts'] = this.db.prepare('DELETE FROM sync_conflicts').run().changes;
+          } catch (e) { stats['sync_conflicts'] = 0; }
 
-        // Pagamentos (dependem de sales e debts)
-        stats['payments'] = this.db.prepare('DELETE FROM payments').run().changes;
-        stats['debt_payments'] = this.db.prepare('DELETE FROM debt_payments').run().changes;
+          // Pagamentos
+          stats['payments'] = this.db.prepare('DELETE FROM payments').run().changes;
+          
+          try {
+            stats['debt_payments'] = this.db.prepare('DELETE FROM debt_payments').run().changes;
+          } catch (e) { stats['debt_payments'] = 0; }
 
-        // Itens de vendas e compras
-        stats['sale_items'] = this.db.prepare('DELETE FROM sale_items').run().changes;
-        stats['purchase_items'] = this.db.prepare('DELETE FROM purchase_items').run().changes;
+          // Itens de vendas e compras
+          stats['sale_items'] = this.db.prepare('DELETE FROM sale_items').run().changes;
+          
+          try {
+            stats['purchase_items'] = this.db.prepare('DELETE FROM purchase_items').run().changes;
+          } catch (e) { stats['purchase_items'] = 0; }
 
-        // Vendas, compras e caixas
-        stats['sales'] = this.db.prepare('DELETE FROM sales').run().changes;
-        stats['purchases'] = this.db.prepare('DELETE FROM purchases').run().changes;
-        stats['cash_boxes'] = this.db.prepare('DELETE FROM cash_boxes').run().changes;
+          // Vendas, compras e caixas
+          stats['sales'] = this.db.prepare('DELETE FROM sales').run().changes;
+          
+          try {
+            stats['purchases'] = this.db.prepare('DELETE FROM purchases').run().changes;
+          } catch (e) { stats['purchases'] = 0; }
+          
+          try {
+            stats['cash_boxes'] = this.db.prepare('DELETE FROM cash_boxes').run().changes;
+          } catch (e) { stats['cash_boxes'] = 0; }
 
-        // Dívidas
-        stats['debts'] = this.db.prepare('DELETE FROM debts').run().changes;
+          // Dívidas
+          try {
+            stats['debts'] = this.db.prepare('DELETE FROM debts').run().changes;
+          } catch (e) { stats['debts'] = 0; }
 
-        // Movimentações de estoque
-        stats['stock_movements'] = this.db.prepare('DELETE FROM stock_movements').run().changes;
+          // Movimentações de estoque
+          try {
+            stats['stock_movements'] = this.db.prepare('DELETE FROM stock_movements').run().changes;
+          } catch (e) { stats['stock_movements'] = 0; }
 
-        // Inventário
-        stats['inventory_items'] = this.db.prepare('DELETE FROM inventory_items').run().changes;
+          // Inventário
+          try {
+            stats['inventory_items'] = this.db.prepare('DELETE FROM inventory_items').run().changes;
+          } catch (e) { stats['inventory_items'] = 0; }
 
-        // Produtos e categorias
-        stats['products'] = this.db.prepare('DELETE FROM products').run().changes;
-        stats['categories'] = this.db.prepare('DELETE FROM categories').run().changes;
+          // Mesas e sessões (deletar em ordem: orders -> customers -> sessions -> tables)
+          try {
+            stats['table_orders'] = this.db.prepare('DELETE FROM table_orders').run().changes;
+          } catch (e) { stats['table_orders'] = 0; }
+          
+          try {
+            stats['table_customers'] = this.db.prepare('DELETE FROM table_customers').run().changes;
+          } catch (e) { stats['table_customers'] = 0; }
+          
+          try {
+            stats['table_sessions'] = this.db.prepare('DELETE FROM table_sessions').run().changes;
+          } catch (e) { stats['table_sessions'] = 0; }
+          
+          try {
+            stats['tables'] = this.db.prepare('DELETE FROM tables').run().changes;
+          } catch (e) { stats['tables'] = 0; }
 
-        // Fornecedores
-        stats['suppliers'] = this.db.prepare('DELETE FROM suppliers').run().changes;
+          // Produtos e categorias
+          stats['products'] = this.db.prepare('DELETE FROM products').run().changes;
+          stats['categories'] = this.db.prepare('DELETE FROM categories').run().changes;
 
-        // Clientes
-        stats['customers'] = this.db.prepare('DELETE FROM customers').run().changes;
+          // Fornecedores
+          try {
+            stats['suppliers'] = this.db.prepare('DELETE FROM suppliers').run().changes;
+          } catch (e) { stats['suppliers'] = 0; }
 
-        // Mesas e sessões
-        try {
-          stats['table_orders'] = this.db.prepare('DELETE FROM table_orders').run().changes;
-        } catch (e) { stats['table_orders'] = 0; }
-        
-        try {
-          stats['table_customers'] = this.db.prepare('DELETE FROM table_customers').run().changes;
-        } catch (e) { stats['table_customers'] = 0; }
-        
-        try {
-          stats['table_sessions'] = this.db.prepare('DELETE FROM table_sessions').run().changes;
-        } catch (e) { stats['table_sessions'] = 0; }
-        
-        stats['tables'] = this.db.prepare('DELETE FROM tables').run().changes;
+          // Clientes
+          stats['customers'] = this.db.prepare('DELETE FROM customers').run().changes;
 
-        // Backup history (opcional - manter para referência)
-        // stats['backup_history'] = this.db.prepare('DELETE FROM backup_history').run().changes;
+          // Registrar a operação de reset no log
+          const auditId = this.generateUUID();
+          this.db.prepare(`
+            INSERT INTO sync_audit_log (id, device_id, operation, entity_type, entity_id, status, details, created_at)
+            VALUES (?, ?, 'RESET_LOCAL_DATA', 'system', ?, 'completed', ?, datetime('now'))
+          `).run(auditId, this.getDeviceId(), adminUserId, JSON.stringify(stats));
+        });
 
-        // Registrar a operação de reset no log
-        const auditId = this.generateUUID();
-        this.db.prepare(`
-          INSERT INTO sync_audit_log (id, device_id, operation, entity_type, entity_id, status, details, created_at)
-          VALUES (?, ?, 'RESET_LOCAL_DATA', 'system', ?, 'completed', ?, datetime('now'))
-        `).run(auditId, this.getDeviceId(), adminUserId, JSON.stringify(stats));
-      });
+        // Executar transação
+        transaction();
 
-      // Executar transação
-      transaction();
+      } finally {
+        // 4. Reabilitar foreign keys
+        this.db.pragma('foreign_keys = ON');
+        console.log('🔒 Foreign keys reabilitadas');
+      }
 
       console.log('✅ RESET DE DADOS LOCAIS CONCLUÍDO!');
       console.log('📊 Estatísticas de deleção:');
@@ -7653,6 +7684,10 @@ export class DatabaseManager {
 
     } catch (error: any) {
       console.error('❌ ERRO NO RESET DE DADOS LOCAIS:', error);
+      // Garantir que foreign keys são reabilitadas mesmo em caso de erro
+      try {
+        this.db.pragma('foreign_keys = ON');
+      } catch (e) {}
       return { 
         success: false, 
         error: error.message 
