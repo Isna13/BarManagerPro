@@ -1153,6 +1153,11 @@ ipcMain.handle('admin:getServerDataCounts', async () => {
   const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
+  if (!token) {
+    console.error('❌ Token não encontrado para obter contagem');
+    return { error: 'Usuário não autenticado. Faça login novamente.' };
+  }
+  
   try {
     const response = await axios.get(`${apiUrl}/admin/data-counts`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -1161,6 +1166,12 @@ ipcMain.handle('admin:getServerDataCounts', async () => {
     return response.data;
   } catch (error: any) {
     console.error('Erro ao obter contagem do servidor:', error?.message);
+    if (error?.response?.status === 401) {
+      return { error: 'Sessão expirada. Faça logout e login novamente.' };
+    }
+    if (error?.response?.status === 403) {
+      return { error: 'Sem permissão. Apenas administradores podem ver estes dados.' };
+    }
     return { error: error?.response?.data?.message || error?.message };
   }
 });
@@ -1170,22 +1181,40 @@ ipcMain.handle('admin:resetServerData', async (_, { confirmationCode }) => {
   const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
   
+  if (!token) {
+    console.error('❌ Token não encontrado para reset servidor');
+    return { success: false, error: 'Usuário não autenticado. Faça login novamente.' };
+  }
+  
+  console.log(`🗄️ Reset servidor solicitado`);
+  console.log(`🔑 Token presente: ${token ? 'Sim' : 'Não'}`);
+  
   try {
     const response = await axios.post(
       `${apiUrl}/admin/reset-server-data`,
       { confirmationCode },
       {
         headers: { Authorization: `Bearer ${token}` },
-        timeout: 60000, // 60 segundos para operação grande
+        timeout: 60000,
       }
     );
     return response.data;
   } catch (error: any) {
     console.error('Erro ao resetar servidor:', error?.message);
-    return { 
-      success: false, 
-      error: error?.response?.data?.message || error?.message 
-    };
+    console.error('Status:', error?.response?.status);
+    
+    let errorMsg = 'Erro desconhecido';
+    if (error?.response?.status === 401) {
+      errorMsg = 'Sessão expirada. Faça logout e login novamente.';
+    } else if (error?.response?.status === 403) {
+      errorMsg = 'Sem permissão. Apenas administradores podem executar esta ação.';
+    } else if (error?.response?.data?.message) {
+      errorMsg = error.response.data.message;
+    } else if (error?.message) {
+      errorMsg = error.message;
+    }
+    
+    return { success: false, error: errorMsg };
   }
 });
 
@@ -1193,6 +1222,18 @@ ipcMain.handle('admin:resetServerData', async (_, { confirmationCode }) => {
 ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }) => {
   const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
   const token = store.get('token') as string;
+  
+  // Verificar se tem token
+  if (!token) {
+    console.error('❌ Token não encontrado para reset mobile');
+    return { 
+      success: false, 
+      message: 'Usuário não autenticado. Faça login novamente.' 
+    };
+  }
+  
+  console.log(`📱 Reset mobile solicitado - deviceId: ${deviceId}`);
+  console.log(`🔑 Token presente: ${token ? 'Sim' : 'Não'} (${token?.substring(0, 20)}...)`);
   
   try {
     const response = await axios.post(
@@ -1206,10 +1247,22 @@ ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }
     return response.data;
   } catch (error: any) {
     console.error('Erro ao resetar mobile:', error?.message);
-    return { 
-      success: false, 
-      message: error?.response?.data?.message || error?.message 
-    };
+    console.error('Status:', error?.response?.status);
+    console.error('Data:', error?.response?.data);
+    
+    // Mensagem mais específica baseada no erro
+    let message = 'Erro desconhecido';
+    if (error?.response?.status === 401) {
+      message = 'Sessão expirada. Faça logout e login novamente.';
+    } else if (error?.response?.status === 403) {
+      message = 'Sem permissão. Apenas administradores podem executar esta ação.';
+    } else if (error?.response?.data?.message) {
+      message = error.response.data.message;
+    } else if (error?.message) {
+      message = error.message;
+    }
+    
+    return { success: false, message };
   }
 });
 
