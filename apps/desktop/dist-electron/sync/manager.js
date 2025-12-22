@@ -294,19 +294,56 @@ class SyncManager {
         try {
             console.log('📥 Buscando caixa ativo...');
             const currentCashBoxResponse = await this.apiClient.get('/cash-box/current', { timeout: 15000 });
+            console.log('   📦 Resposta do caixa atual:', JSON.stringify(currentCashBoxResponse.data).substring(0, 200));
             if (currentCashBoxResponse.data && currentCashBoxResponse.data.id) {
-                console.log(`   ✅ Caixa ativo encontrado: ${currentCashBoxResponse.data.id}`);
-                await this.mergeEntityData('cash_boxes', [currentCashBoxResponse.data]);
-                stats['cash_box_current'] = 1;
+                console.log(`   ✅ Caixa ativo encontrado: ${currentCashBoxResponse.data.id} (status: ${currentCashBoxResponse.data.status})`);
+                // FORÇAR inserção/atualização do caixa atual, ignorando conflitos
+                const cashBoxData = currentCashBoxResponse.data;
+                try {
+                    const existingCashBox = this.dbManager.getCashBoxById ? this.dbManager.getCashBoxById(cashBoxData.id) : null;
+                    if (existingCashBox) {
+                        // Atualizar caixa existente
+                        this.dbManager.prepare(`
+              UPDATE cash_boxes SET
+                status = ?,
+                closing_cash = ?,
+                total_sales = ?,
+                total_cash = ?,
+                total_card = ?,
+                total_mobile_money = ?,
+                total_debt = ?,
+                difference = ?,
+                closed_at = ?,
+                synced = 1,
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).run(cashBoxData.status || 'open', cashBoxData.closingCash || cashBoxData.closing_cash || null, cashBoxData.totalSales || cashBoxData.total_sales || cashBoxData.stats?.totalSales || 0, cashBoxData.totalCash || cashBoxData.total_cash || cashBoxData.stats?.cashPayments || 0, cashBoxData.totalCard || cashBoxData.total_card || cashBoxData.stats?.cardPayments || 0, cashBoxData.totalMobileMoney || cashBoxData.total_mobile_money || cashBoxData.stats?.mobileMoneyPayments || 0, cashBoxData.totalDebt || cashBoxData.total_debt || cashBoxData.stats?.debtPayments || 0, cashBoxData.difference || 0, cashBoxData.closedAt || cashBoxData.closed_at || null, cashBoxData.id);
+                        console.log(`   📝 Caixa ativo ATUALIZADO: ${cashBoxData.id}`);
+                    }
+                    else {
+                        // Inserir novo caixa
+                        this.dbManager.prepare(`
+              INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, status, opening_cash, closing_cash, total_sales, total_cash, total_card, total_mobile_money, total_debt, difference, notes, opened_at, closed_at, synced, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+            `).run(cashBoxData.id, cashBoxData.boxNumber || cashBoxData.box_number || `CX-${Date.now()}`, cashBoxData.branchId || cashBoxData.branch_id || 'main-branch', cashBoxData.openedBy || cashBoxData.opened_by || 'unknown', cashBoxData.status || 'open', cashBoxData.openingCash || cashBoxData.opening_cash || 0, cashBoxData.closingCash || cashBoxData.closing_cash || null, cashBoxData.totalSales || cashBoxData.total_sales || cashBoxData.stats?.totalSales || 0, cashBoxData.totalCash || cashBoxData.total_cash || cashBoxData.stats?.cashPayments || 0, cashBoxData.totalCard || cashBoxData.total_card || cashBoxData.stats?.cardPayments || 0, cashBoxData.totalMobileMoney || cashBoxData.total_mobile_money || cashBoxData.stats?.mobileMoneyPayments || 0, cashBoxData.totalDebt || cashBoxData.total_debt || cashBoxData.stats?.debtPayments || 0, cashBoxData.difference || 0, cashBoxData.notes || null, cashBoxData.openedAt || cashBoxData.opened_at || new Date().toISOString(), cashBoxData.closedAt || cashBoxData.closed_at || null);
+                        console.log(`   ➕ Caixa ativo INSERIDO: ${cashBoxData.id} (status: ${cashBoxData.status})`);
+                    }
+                    stats['cash_box_current'] = 1;
+                }
+                catch (insertError) {
+                    console.error(`   ❌ Erro ao salvar caixa ativo: ${insertError?.message}`);
+                    stats['cash_box_current'] = -1;
+                }
             }
             else {
-                console.log('   ℹ️ Nenhum caixa ativo no servidor');
+                console.log('   ℹ️ Nenhum caixa ativo no servidor (resposta vazia ou null)');
                 stats['cash_box_current'] = 0;
             }
         }
         catch (error) {
+            console.error('   ❌ Erro ao buscar caixa ativo:', error?.response?.status, error?.message);
             if (error?.response?.status !== 404) {
-                console.error('   ❌ Erro ao buscar caixa ativo:', error?.message);
+                console.error('   ❌ Detalhes:', error?.response?.data);
             }
             stats['cash_box_current'] = 0;
         }
