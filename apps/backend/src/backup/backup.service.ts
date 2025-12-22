@@ -278,44 +278,90 @@ export class BackupService {
         // ====== FASE 1: LIMPAR DADOS EXISTENTES ======
         this.logger.log('🗑️ Fase 1: Limpando dados existentes...');
 
-        // Ordem de deleção (respeitando FKs - do mais dependente ao menos dependente)
-        // Nível 1: Tabelas sem dependentes ou com dependentes já removidos
-        await tx.payment.deleteMany({});
-        await tx.saleItem.deleteMany({});
-        await tx.sale.deleteMany({});
+        // ============================================================
+        // ORDEM DE DELEÇÃO (FKs - filhos antes de pais):
+        // 
+        // Cadeia principal de vendas/dívidas/pagamentos:
+        // DebtPayment -> Payment, Debt
+        // Payment -> Sale, Debt
+        // Debt -> Sale, Customer
+        // SaleItem -> Sale
+        // Sale -> Customer, Table
+        //
+        // Outras dependências:
+        // StockMovement -> Product, Sale, Purchase
+        // InventoryMovement -> InventoryItem
+        // InventoryItem -> Product
+        // TableOrder -> Product, TableCustomer, TableSession
+        // TablePayment -> TableSession, TableCustomer, Payment
+        // TableAction -> TableSession
+        // TableCustomer -> TableSession, Customer
+        // TableSession -> Table
+        // ============================================================
+
+        // Nível 0: Tabelas de ação/pagamento de mesa (dependem de TableSession e Payment)
+        await tx.tablePayment.deleteMany({});
+        await tx.tableAction.deleteMany({});
+        
+        // Nível 1: DebtPayment (depende de Debt e Payment)
         await tx.debtPayment.deleteMany({});
+        
+        // Nível 2: Payment (depende de Sale e Debt)
+        await tx.payment.deleteMany({});
+        
+        // Nível 3: Debt (depende de Sale e Customer)
         await tx.debt.deleteMany({});
+        
+        // Nível 4: SaleItem (depende de Sale)
+        await tx.saleItem.deleteMany({});
+        
+        // Nível 5: Sale (depende de Customer e Table)
+        await tx.sale.deleteMany({});
+        
+        // Nível 6: LoyaltyTransaction (depende de Customer)
         await tx.loyaltyTransaction.deleteMany({});
+        
+        // Nível 7: PurchaseItem e Purchase
         await tx.purchaseItem.deleteMany({});
         await tx.purchase.deleteMany({});
+        
+        // Nível 8: CashBox (depende de Branch e User - não deletamos esses)
         await tx.cashBox.deleteMany({});
         
-        // Nível 2: Tabelas que referenciam Product (devem ser deletadas ANTES de product)
-        // StockMovement referencia Product, Sale e Purchase
+        // Nível 9: StockMovement (depende de Product, Sale, Purchase)
         await tx.stockMovement.deleteMany({});
         
-        // InventoryMovement referencia InventoryItem
+        // Nível 10: InventoryMovement (depende de InventoryItem)
         await tx.inventoryMovement.deleteMany({});
         
-        // InventoryItem referencia Product
+        // Nível 11: InventoryItem (depende de Product)
         await tx.inventoryItem.deleteMany({});
         
-        // Inventory referencia Product
+        // Nível 12: Inventory (depende de Product)
         await tx.inventory.deleteMany({});
         
-        // TableOrder referencia Product
+        // Nível 13: TableOrder (depende de Product, TableCustomer, TableSession)
         await tx.tableOrder.deleteMany({});
         
-        // ProductPriceHistory referencia Product
+        // Nível 14: ProductPriceHistory (depende de Product)
         await tx.productPriceHistory.deleteMany({});
         
-        // Nível 3: Tabelas de mesas (TableCustomer depende de TableSession)
+        // Nível 15: Feedback (depende de Customer, Sale)
+        await tx.feedback.deleteMany({});
+        
+        // Nível 16: TableCustomer (depende de TableSession e Customer)
         await tx.tableCustomer.deleteMany({});
+        
+        // Nível 17: TableSession (depende de Table)
         await tx.tableSession.deleteMany({});
+        
+        // Nível 18: Table (depende de Branch)
         await tx.table.deleteMany({});
         
-        // Nível 4: Tabelas principais
+        // Nível 19: Product (tabela raiz)
         await tx.product.deleteMany({});
+        
+        // Nível 20: Category, Supplier, Customer (tabelas raiz)
         await tx.category.deleteMany({});
         await tx.supplier.deleteMany({});
         await tx.customer.deleteMany({});
@@ -445,7 +491,19 @@ export class BackupService {
           stats['cashBoxes'] = backupData.cashBoxes.length;
         }
 
-        // 15. Sales (sem items/payments aninhados) - ANTES de Debts (debts.saleId -> sales.id)
+        // ============================================================
+        // ORDEM CRÍTICA DE INSERÇÃO (FKs):
+        // Sales -> Debts -> Payments -> DebtPayments
+        // 
+        // Porque:
+        // - Debt.saleId -> Sale.id (debts_sale_id_fkey)
+        // - Payment.saleId -> Sale.id (payments_sale_id_fkey)  
+        // - Payment.debtId -> Debt.id (payments_debt_id_fkey) ⚠️
+        // - DebtPayment.debtId -> Debt.id
+        // - DebtPayment.paymentId -> Payment.id
+        // ============================================================
+
+        // 15. Sales (sem items/payments aninhados)
         if (backupData.sales?.length > 0) {
           const salesClean = backupData.sales.map(s => {
             const { items, payments, ...sale } = s;
@@ -455,19 +513,13 @@ export class BackupService {
           stats['sales'] = salesClean.length;
         }
 
-        // 16. Sale Items
+        // 16. Sale Items (depende de Sales)
         if (backupData.saleItems?.length > 0) {
           await tx.saleItem.createMany({ data: backupData.saleItems, skipDuplicates: true });
           stats['saleItems'] = backupData.saleItems.length;
         }
 
-        // 17. Payments
-        if (backupData.payments?.length > 0) {
-          await tx.payment.createMany({ data: backupData.payments, skipDuplicates: true });
-          stats['payments'] = backupData.payments.length;
-        }
-
-        // 18. Debts (sem payments aninhados) - DEPOIS de Sales (debts.saleId -> sales.id)
+        // 17. Debts (depende de Sales via saleId) - ANTES de Payments
         if (backupData.debts?.length > 0) {
           const debtsClean = backupData.debts.map(d => {
             const { payments, ...debt } = d;
@@ -477,7 +529,13 @@ export class BackupService {
           stats['debts'] = debtsClean.length;
         }
 
-        // 19. Debt Payments
+        // 18. Payments (depende de Sales E Debts) - DEPOIS de Debts
+        if (backupData.payments?.length > 0) {
+          await tx.payment.createMany({ data: backupData.payments, skipDuplicates: true });
+          stats['payments'] = backupData.payments.length;
+        }
+
+        // 19. Debt Payments (depende de Debts e Payments)
         if (backupData.debtPayments?.length > 0) {
           await tx.debtPayment.createMany({ data: backupData.debtPayments, skipDuplicates: true });
           stats['debtPayments'] = backupData.debtPayments.length;
