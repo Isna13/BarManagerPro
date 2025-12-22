@@ -18,35 +18,60 @@ async function bootstrap() {
   const apiPrefix = configService.get('API_PREFIX') || 'api/v1';
   const nodeEnv = configService.get('NODE_ENV') || 'development';
 
-  // Trust proxy para Railway/Heroku/etc (corrige X-Forwarded-For warning)
+  // ============================================================
+  // 🔐 TRUST PROXY - DEVE SER CONFIGURADO PRIMEIRO!
+  // Railway/Heroku/etc injetam X-Forwarded-For
+  // Isso DEVE vir ANTES de qualquer middleware, especialmente rate-limit
+  // ============================================================
   const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.set('trust proxy', 1);
+  expressApp.set('trust proxy', true); // true = confia em qualquer proxy (Railway)
 
-  // Aumentar limite de tamanho do body para backups grandes (100MB)
+  // ============================================================
+  // 📦 BODY PARSER - Limite de 100MB para backups grandes
+  // ============================================================
   app.use(bodyParser.json({ limit: '100mb' }));
   app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
-  // Security - Helmet with production-ready settings
+  // ============================================================
+  // 🛡️ HELMET - Segurança HTTP
+  // ============================================================
   app.use(helmet({
     contentSecurityPolicy: nodeEnv === 'production',
     crossOriginEmbedderPolicy: nodeEnv === 'production',
   }));
   
-  // Compression for responses
+  // ============================================================
+  // 📦 COMPRESSION - Compressão de respostas
+  // ============================================================
   app.use(compression());
   
-  // Rate limiting to prevent abuse
+  // ============================================================
+  // ⏱️ RATE LIMITING - Proteção contra abuso
+  // keyGenerator explícito usa req.ip que já considera trust proxy
+  // validate: false desabilita validação que causa ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+  // ============================================================
   const limiter = rateLimit({
-    windowMs: parseInt(configService.get('RATE_LIMIT_WINDOW_MS') || '60000'), // 1 minute
-    max: parseInt(configService.get('RATE_LIMIT_MAX_REQUESTS') || '100'), // 100 requests per minute
+    windowMs: parseInt(configService.get('RATE_LIMIT_WINDOW_MS') || '60000'),
+    max: parseInt(configService.get('RATE_LIMIT_MAX_REQUESTS') || '100'),
     message: 'Muitas requisições deste IP, tente novamente mais tarde.',
     standardHeaders: true,
     legacyHeaders: false,
+    skipFailedRequests: true,
+    // keyGenerator explícito - usa req.ip que já respeita trust proxy
+    keyGenerator: (req) => {
+      return req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0] || 'unknown';
+    },
+    // Desabilita validações que causam ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+    validate: {
+      xForwardedForHeader: false,
+      trustProxy: false,
+    },
   });
   app.use(limiter);
 
-  // CORS - Configurado para aceitar todas as origens em desenvolvimento
-  // e apenas origens específicas em produção
+  // ============================================================
+  // 🌐 CORS - Cross-Origin Resource Sharing
+  // ============================================================
   const corsOrigin = configService.get('CORS_ORIGIN');
   app.enableCors({
     origin: corsOrigin === '*' ? true : corsOrigin?.split(',') || '*',
@@ -63,7 +88,7 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: false, // Permitir campos extras (serão ignorados)
+      forbidNonWhitelisted: false,
     })
   );
 
