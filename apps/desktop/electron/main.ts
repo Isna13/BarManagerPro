@@ -1269,3 +1269,200 @@ ipcMain.handle('admin:resetMobileData', async (_, { deviceId, confirmationCode }
   }
 });
 
+// ========== BACKUP DO SERVIDOR ==========
+
+// Criar backup do servidor
+ipcMain.handle('backup:createServerBackup', async () => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = syncManager?.getToken();
+  
+  if (!token || token === 'offline-token') {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  console.log('📦 Criando backup do servidor...');
+  
+  try {
+    const response = await axios.post(
+      `${apiUrl}/backup/download`,
+      {},
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 120000, // 2 minutos para backups grandes
+      }
+    );
+    
+    return { success: true, data: response.data };
+  } catch (error: any) {
+    console.error('Erro ao criar backup:', error?.message);
+    return { 
+      success: false, 
+      error: error?.response?.data?.message || error?.message 
+    };
+  }
+});
+
+// Salvar backup em arquivo
+ipcMain.handle('backup:saveToFile', async (_, { backupData }) => {
+  const { dialog } = require('electron');
+  
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const defaultFilename = `backup-servidor-${timestamp}.json`;
+    
+    const result = await dialog.showSaveDialog({
+      title: 'Salvar Backup do Servidor',
+      defaultPath: defaultFilename,
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+    
+    const fs = require('fs');
+    fs.writeFileSync(result.filePath, JSON.stringify(backupData, null, 2));
+    
+    const stats = fs.statSync(result.filePath);
+    console.log(`✅ Backup salvo: ${result.filePath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+    
+    return { 
+      success: true, 
+      filePath: result.filePath,
+      size: stats.size,
+    };
+  } catch (error: any) {
+    console.error('Erro ao salvar backup:', error?.message);
+    return { success: false, error: error?.message };
+  }
+});
+
+// Carregar backup de arquivo
+ipcMain.handle('backup:loadFromFile', async () => {
+  const { dialog } = require('electron');
+  const fs = require('fs');
+  
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'Selecionar Arquivo de Backup',
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+    
+    const filePath = result.filePaths[0];
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const backupData = JSON.parse(content);
+    
+    // Validar estrutura básica
+    if (!backupData.metadata || !backupData.metadata.version) {
+      return { success: false, error: 'Arquivo de backup inválido: falta metadata' };
+    }
+    
+    console.log(`📂 Backup carregado: ${filePath}`);
+    console.log(`   Versão: ${backupData.metadata.version}`);
+    console.log(`   Data: ${backupData.metadata.timestamp}`);
+    console.log(`   Registros: ${backupData.metadata.totalRecords}`);
+    
+    return { 
+      success: true, 
+      filePath,
+      backupData,
+      metadata: backupData.metadata,
+    };
+  } catch (error: any) {
+    console.error('Erro ao carregar backup:', error?.message);
+    return { success: false, error: error?.message };
+  }
+});
+
+// Restaurar backup no servidor
+ipcMain.handle('backup:restoreServerBackup', async (_, { backupData, confirmationCode }) => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = syncManager?.getToken();
+  
+  if (!token || token === 'offline-token') {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  if (confirmationCode !== 'CONFIRMAR_RESTAURACAO') {
+    return { success: false, error: 'Código de confirmação inválido' };
+  }
+
+  console.log('🔄 Restaurando backup no servidor...');
+  
+  try {
+    const response = await axios.post(
+      `${apiUrl}/backup/restore`,
+      { backupData, confirmationCode },
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 180000, // 3 minutos para restaurações grandes
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      }
+    );
+    
+    console.log('✅ Restauração concluída:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('Erro ao restaurar backup:', error?.message);
+    return { 
+      success: false, 
+      error: error?.response?.data?.message || error?.message,
+      details: error?.response?.data,
+    };
+  }
+});
+
+// Obter status do backup
+ipcMain.handle('backup:getStatus', async () => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = syncManager?.getToken();
+  
+  if (!token || token === 'offline-token') {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+  
+  try {
+    const response = await axios.get(`${apiUrl}/backup/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+    return { success: true, ...response.data };
+  } catch (error: any) {
+    return { success: false, error: error?.message };
+  }
+});
+
+// Listar backups no servidor
+ipcMain.handle('backup:listServerBackups', async () => {
+  const apiUrl = store.get('apiUrl', DEFAULT_API_URL) as string;
+  const token = syncManager?.getToken();
+  
+  if (!token || token === 'offline-token') {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+  
+  try {
+    const response = await axios.get(`${apiUrl}/backup/list`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+    return { success: true, backups: response.data };
+  } catch (error: any) {
+    return { success: false, error: error?.message };
+  }
+});

@@ -306,6 +306,17 @@ const api = {
     resetMobileData: (deviceId: string, confirmationCode: string) =>
       ipcRenderer.invoke('admin:resetMobileData', { deviceId, confirmationCode }),
   },
+
+  // Backup do Servidor
+  serverBackup: {
+    createBackup: () => ipcRenderer.invoke('backup:createServerBackup'),
+    saveToFile: (backupData: any) => ipcRenderer.invoke('backup:saveToFile', { backupData }),
+    loadFromFile: () => ipcRenderer.invoke('backup:loadFromFile'),
+    restoreBackup: (backupData: any, confirmationCode: string) =>
+      ipcRenderer.invoke('backup:restoreServerBackup', { backupData, confirmationCode }),
+    getStatus: () => ipcRenderer.invoke('backup:getStatus'),
+    listServerBackups: () => ipcRenderer.invoke('backup:listServerBackups'),
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

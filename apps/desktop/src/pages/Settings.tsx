@@ -58,6 +58,13 @@ export default function SettingsPage() {
   const [backupHistory, setBackupHistory] = useState<any[]>([]);
   const [backupPath, setBackupPath] = useState<string>('');
   
+  // Estados para Backup do Servidor
+  const [serverBackupLoading, setServerBackupLoading] = useState(false);
+  const [serverBackupStatus, setServerBackupStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
+  const [serverBackupData, setServerBackupData] = useState<any>(null);
+  const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
+  const [restoreConfirmInput, setRestoreConfirmInput] = useState('');
+  
   // Estados para Reset de Dados
   const [resetLoading, setResetLoading] = useState(false);
   const [resetStatus, setResetStatus] = useState<{ type: 'success' | 'error' | 'info' | null; message: string }>({ type: null, message: '' });
@@ -79,6 +86,7 @@ export default function SettingsPage() {
     printing: false,
     users: false,
     backup: false,
+    serverBackup: false,
     resetData: false,
     advanced: false
   });
@@ -252,6 +260,141 @@ export default function SettingsPage() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  // ===== FUNÇÕES DE BACKUP DO SERVIDOR =====
+  
+  const handleCreateServerBackup = async () => {
+    try {
+      setServerBackupLoading(true);
+      setServerBackupStatus({ type: 'info', message: 'Gerando backup do servidor...' });
+      
+      // @ts-ignore - Criar backup no servidor
+      const result = await window.electronAPI?.serverBackup?.createBackup?.();
+      
+      if (result?.success && result.data) {
+        // Salvar em arquivo
+        // @ts-ignore
+        const saveResult = await window.electronAPI?.serverBackup?.saveToFile?.(result.data);
+        
+        if (saveResult?.success) {
+          setServerBackupStatus({ 
+            type: 'success', 
+            message: `Backup salvo com sucesso em: ${saveResult.filePath}` 
+          });
+        } else if (saveResult?.canceled) {
+          setServerBackupStatus({ 
+            type: 'info', 
+            message: 'Operação cancelada' 
+          });
+        } else {
+          setServerBackupStatus({ 
+            type: 'error', 
+            message: saveResult?.error || 'Erro ao salvar backup' 
+          });
+        }
+      } else {
+        setServerBackupStatus({ 
+          type: 'error', 
+          message: result?.error || 'Erro ao criar backup no servidor' 
+        });
+      }
+    } catch (error: any) {
+      setServerBackupStatus({ 
+        type: 'error', 
+        message: error.message || 'Erro ao criar backup do servidor' 
+      });
+    } finally {
+      setServerBackupLoading(false);
+    }
+  };
+
+  const handleLoadServerBackupFile = async () => {
+    try {
+      setServerBackupLoading(true);
+      setServerBackupStatus({ type: 'info', message: 'Carregando arquivo de backup...' });
+      
+      // @ts-ignore
+      const result = await window.electronAPI?.serverBackup?.loadFromFile?.();
+      
+      if (result?.success && result.data) {
+        setServerBackupData(result.data);
+        setServerBackupStatus({ 
+          type: 'info', 
+          message: `Backup carregado: ${result.data.metadata?.createdAt ? formatBackupDate(result.data.metadata.createdAt) : 'Data desconhecida'} - ${Object.keys(result.data.data || {}).length} entidades` 
+        });
+        setShowRestoreConfirmModal(true);
+      } else if (result?.canceled) {
+        setServerBackupStatus({ type: null, message: '' });
+      } else {
+        setServerBackupStatus({ 
+          type: 'error', 
+          message: result?.error || 'Erro ao carregar arquivo de backup' 
+        });
+      }
+    } catch (error: any) {
+      setServerBackupStatus({ 
+        type: 'error', 
+        message: error.message || 'Erro ao carregar backup' 
+      });
+    } finally {
+      setServerBackupLoading(false);
+    }
+  };
+
+  const handleConfirmRestoreServerBackup = async () => {
+    if (restoreConfirmInput !== 'CONFIRMAR_RESTAURACAO') {
+      setServerBackupStatus({ 
+        type: 'error', 
+        message: 'Código de confirmação incorreto. Digite: CONFIRMAR_RESTAURACAO' 
+      });
+      return;
+    }
+    
+    if (!serverBackupData) {
+      setServerBackupStatus({ 
+        type: 'error', 
+        message: 'Nenhum backup carregado' 
+      });
+      return;
+    }
+    
+    try {
+      setServerBackupLoading(true);
+      setShowRestoreConfirmModal(false);
+      setServerBackupStatus({ type: 'info', message: 'Restaurando backup no servidor... Isso pode levar alguns minutos.' });
+      
+      // @ts-ignore
+      const result = await window.electronAPI?.serverBackup?.restoreBackup?.(serverBackupData, 'CONFIRMAR_RESTAURACAO');
+      
+      if (result?.success) {
+        setServerBackupStatus({ 
+          type: 'success', 
+          message: `Backup restaurado com sucesso! ${result.data?.recordsRestored || 0} registros restaurados.` 
+        });
+        setServerBackupData(null);
+        setRestoreConfirmInput('');
+      } else {
+        setServerBackupStatus({ 
+          type: 'error', 
+          message: result?.error || 'Erro ao restaurar backup' 
+        });
+      }
+    } catch (error: any) {
+      setServerBackupStatus({ 
+        type: 'error', 
+        message: error.message || 'Erro ao restaurar backup' 
+      });
+    } finally {
+      setServerBackupLoading(false);
+    }
+  };
+
+  const handleCancelRestoreServerBackup = () => {
+    setShowRestoreConfirmModal(false);
+    setServerBackupData(null);
+    setRestoreConfirmInput('');
+    setServerBackupStatus({ type: null, message: '' });
   };
 
   const loadDetailedSyncStatus = async () => {
@@ -1462,6 +1605,88 @@ export default function SettingsPage() {
             </div>
           </ConfigCard>
 
+          {/* 8.1 Backup do Servidor Railway */}
+          <ConfigCard title="Backup do Servidor (Railway)" icon={Cloud} sectionKey="serverBackup">
+            <div className="space-y-6">
+              {/* Status Message */}
+              {serverBackupStatus.type && (
+                <div className={`p-4 rounded-lg border ${
+                  serverBackupStatus.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
+                  serverBackupStatus.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
+                  'bg-blue-50 border-blue-200 text-blue-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {serverBackupStatus.type === 'success' && <CheckCircle className="w-5 h-5" />}
+                    {serverBackupStatus.type === 'error' && <AlertCircle className="w-5 h-5" />}
+                    {serverBackupStatus.type === 'info' && <RefreshCw className="w-5 h-5 animate-spin" />}
+                    <span className="text-sm font-medium">{serverBackupStatus.message}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Descrição */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <Cloud className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-blue-900 mb-1">Backup Completo do Servidor</h4>
+                    <p className="text-sm text-blue-800">
+                      Esta funcionalidade permite criar e restaurar backups completos do banco de dados do servidor Railway.
+                      Inclui todas as entidades (produtos, clientes, vendas, compras, etc.) exceto usuários e autenticação.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button 
+                  onClick={handleCreateServerBackup}
+                  disabled={serverBackupLoading}
+                  className="p-4 bg-green-50 border-2 border-green-200 rounded-lg hover:bg-green-100 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <Download className="w-5 h-5 text-green-600" />
+                    <span className="font-semibold text-green-900">
+                      {serverBackupLoading ? 'Gerando Backup...' : 'Criar Backup do Servidor'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-green-700">Gerar backup completo e salvar em arquivo local</p>
+                </button>
+
+                <button 
+                  onClick={handleLoadServerBackupFile}
+                  disabled={serverBackupLoading}
+                  className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg hover:bg-orange-100 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <Upload className="w-5 h-5 text-orange-600" />
+                    <span className="font-semibold text-orange-900">
+                      {serverBackupLoading ? 'Carregando...' : 'Restaurar Backup no Servidor'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-orange-700">Carregar arquivo de backup e restaurar no servidor</p>
+                </button>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-amber-900 mb-1">Importante</h4>
+                    <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside">
+                      <li>Backups são salvos localmente no seu computador</li>
+                      <li>A restauração exige código de confirmação: <code className="bg-amber-100 px-1 rounded">CONFIRMAR_RESTAURACAO</code></li>
+                      <li>A restauração substituirá <strong>todos os dados do servidor</strong></li>
+                      <li>Usuários e credenciais de login são preservados</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ConfigCard>
+
           {/* 9. Reset de Dados (Admin) */}
           <ConfigCard title="Reset de Dados (Administração)" icon={Trash2} sectionKey="resetData">
             <div className="space-y-6">
@@ -1721,6 +1946,88 @@ export default function SettingsPage() {
                       <>
                         <Trash2 className="w-4 h-4" />
                         Confirmar Reset
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal de Confirmação de Restauração do Servidor */}
+          {showRestoreConfirmModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 bg-orange-100 rounded-full">
+                    <Cloud className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Confirmar Restauração do Servidor
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Backup de: {serverBackupData?.metadata?.createdAt ? formatBackupDate(serverBackupData.metadata.createdAt) : 'Data desconhecida'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Info do Backup */}
+                {serverBackupData && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800 mb-2">
+                      <strong>Versão do backup:</strong> {serverBackupData.metadata?.version || 'N/A'}
+                    </p>
+                    <p className="text-sm text-blue-800">
+                      <strong>Entidades incluídas:</strong> {Object.keys(serverBackupData.data || {}).length}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">
+                    ⚠️ <strong>ATENÇÃO:</strong> Esta ação irá substituir <strong>TODOS os dados do servidor Railway</strong> pelos dados do backup.
+                    Usuários e credenciais de login serão preservados.
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Digite o código de confirmação:
+                  </label>
+                  <input
+                    type="text"
+                    value={restoreConfirmInput}
+                    onChange={(e) => setRestoreConfirmInput(e.target.value.toUpperCase())}
+                    placeholder="CONFIRMAR_RESTAURACAO"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-mono text-sm"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Código: <code className="bg-gray-100 px-1 rounded">CONFIRMAR_RESTAURACAO</code>
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCancelRestoreServerBackup}
+                    className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleConfirmRestoreServerBackup}
+                    disabled={serverBackupLoading || restoreConfirmInput !== 'CONFIRMAR_RESTAURACAO'}
+                    className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {serverBackupLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Restaurando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Confirmar Restauração
                       </>
                     )}
                   </button>
