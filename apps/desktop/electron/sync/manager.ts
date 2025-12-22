@@ -258,7 +258,8 @@ export class SyncManager {
       { name: 'inventory_movements', endpoint: '/inventory/movements?limit=500' },
       { name: 'debts', endpoint: '/debts' },
       { name: 'tables', endpoint: '/tables' },
-      { name: 'sales', endpoint: '/sales' },
+      { name: 'table_sessions', endpoint: '/tables/sessions?status=open' }, // Sessões de mesas abertas
+      { name: 'sales', endpoint: '/sales?limit=500' }, // Limitar para performance
       { name: 'cash_boxes', endpoint: '/cash-box/history?limit=100' },
       { name: 'purchases', endpoint: '/purchases' },
       { name: 'settings', endpoint: '/settings' },
