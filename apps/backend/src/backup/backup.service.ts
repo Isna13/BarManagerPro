@@ -277,6 +277,7 @@ export class BackupService {
         this.logger.log('🗑️ Fase 1: Limpando dados existentes...');
 
         // Ordem de deleção (respeitando FKs - do mais dependente ao menos dependente)
+        // Nível 1: Tabelas sem dependentes ou com dependentes já removidos
         await tx.payment.deleteMany({});
         await tx.saleItem.deleteMany({});
         await tx.sale.deleteMany({});
@@ -287,6 +288,7 @@ export class BackupService {
         await tx.purchase.deleteMany({});
         await tx.cashBox.deleteMany({});
         
+        // Nível 2: Tabelas que referenciam Product (devem ser deletadas ANTES de product)
         // StockMovement referencia Product, Sale e Purchase
         await tx.stockMovement.deleteMany({});
         
@@ -299,15 +301,23 @@ export class BackupService {
         // Inventory referencia Product
         await tx.inventory.deleteMany({});
         
+        // TableOrder referencia Product
         await tx.tableOrder.deleteMany({});
+        
+        // ProductPriceHistory referencia Product
+        await tx.productPriceHistory.deleteMany({});
+        
+        // Nível 3: Tabelas de mesas (TableCustomer depende de TableSession)
         await tx.tableCustomer.deleteMany({});
         await tx.tableSession.deleteMany({});
         await tx.table.deleteMany({});
+        
+        // Nível 4: Tabelas principais
         await tx.product.deleteMany({});
         await tx.category.deleteMany({});
         await tx.supplier.deleteMany({});
         await tx.customer.deleteMany({});
-        // NÃO deletar: users, branches (manter estrutura), sessions
+        // NÃO deletar: users, branches (manter estrutura), sessions, settings
 
         this.logger.log('✅ Dados antigos removidos');
 

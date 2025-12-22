@@ -10,6 +10,8 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BackupService, BackupData } from './backup.service';
@@ -49,7 +51,6 @@ export class BackupController {
    * ATENÇÃO: Operação destrutiva - apaga dados existentes
    */
   @Post('restore')
-  @HttpCode(HttpStatus.OK)
   async restoreBackup(
     @Request() req: any,
     @Body() body: { backupData: BackupData; confirmationCode: string },
@@ -59,13 +60,17 @@ export class BackupController {
 
     // Verificar código de confirmação
     if (body.confirmationCode !== 'CONFIRMAR_RESTAURACAO') {
-      return {
-        success: false,
-        message: 'Código de confirmação inválido. Use: CONFIRMAR_RESTAURACAO',
-      };
+      throw new BadRequestException('Código de confirmação inválido. Use: CONFIRMAR_RESTAURACAO');
     }
 
-    return this.backupService.restoreBackup(body.backupData, userId, userRole);
+    const result = await this.backupService.restoreBackup(body.backupData, userId, userRole);
+    
+    // Se a restauração falhou, retornar erro HTTP 500
+    if (!result.success) {
+      throw new InternalServerErrorException(result.message);
+    }
+    
+    return result;
   }
 
   /**
