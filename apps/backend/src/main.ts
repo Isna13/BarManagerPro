@@ -18,6 +18,10 @@ async function bootstrap() {
   const apiPrefix = configService.get('API_PREFIX') || 'api/v1';
   const nodeEnv = configService.get('NODE_ENV') || 'development';
 
+  // Trust proxy para Railway/Heroku/etc (corrige X-Forwarded-For warning)
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', 1);
+
   // Aumentar limite de tamanho do body para backups grandes (100MB)
   app.use(bodyParser.json({ limit: '100mb' }));
   app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
