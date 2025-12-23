@@ -409,19 +409,10 @@ export default function POS() {
         }
       }
 
-      // Atualizar totais do caixa
-      if (currentCashBox) {
-        try {
-          // @ts-ignore
-          await window.electronAPI?.cashBox?.updateTotals?.(
-            currentCashBox.id,
-            totalCents, // Total em centavos
-            selectedPaymentMethod
-          );
-        } catch (error) {
-          console.error('Erro ao atualizar totais do caixa:', error);
-        }
-      }
+      // 🔴 REMOVIDO: Chamada duplicada de updateCashBoxTotals
+      // O addSalePayment() já atualiza os totais do caixa automaticamente (linha 1204 do manager.ts)
+      // Esta chamada explícita causava DUPLICAÇÃO dos valores (34.400 ao invés de 17.200)
+      // if (currentCashBox) { ... cashBox.updateTotals ... }
       
       const paymentMethodLabel = selectedPaymentMethod === 'vale' ? 'Vale (Crédito)' : selectedPaymentMethod;
       const message = `Venda #${saleNumber} finalizada!\n\nTotal: ${total.toFixed(2)} FCFA\nMétodo: ${paymentMethodLabel}${savings > 0 ? `\nEconomia Muntu: ${savings.toFixed(2)} FCFA` : ''}${selectedCustomer ? `\nCliente: ${selectedCustomer.name}` : ''}`;
