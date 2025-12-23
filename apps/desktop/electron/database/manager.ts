@@ -1324,8 +1324,9 @@ export class DatabaseManager {
     );
 
     // Só adiciona na fila de sync se skipSyncQueue for false
+    // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
     if (!skipSyncQueue) {
-      this.addToSyncQueue('create', 'product', id, productData);
+      this.addToSyncQueue('create', 'product', id, { id, ...productData });
     }
     
     // Criar registro inicial de inventário
@@ -1484,8 +1485,9 @@ export class DatabaseManager {
     );
 
     // Só adiciona à fila se não vier do servidor
+    // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
     if (!skipSyncQueue && categoryData.synced !== 1) {
-      this.addToSyncQueue('create', 'category', id, categoryData);
+      this.addToSyncQueue('create', 'category', id, { id, ...categoryData });
     }
     return { id, ...categoryData };
   }
@@ -1579,8 +1581,9 @@ export class DatabaseManager {
       supplierData.notes || null
     );
     
+    // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
     if (!skipSyncQueue) {
-      this.addToSyncQueue('create', 'supplier', id, supplierData);
+      this.addToSyncQueue('create', 'supplier', id, { id, ...supplierData });
     }
     return { id, ...supplierData };
   }

@@ -1151,8 +1151,9 @@ class DatabaseManager {
     `);
         stmt.run(id, productData.sku, productData.barcode || null, productData.name, productData.categoryId || null, productData.supplierId || null, productData.priceUnit || 0, productData.priceBox || null, productData.costUnit || 0, productData.costBox || null, productData.unitsPerBox || null, productData.priceBox ? 1 : 0, productData.isMuntuEligible ? 1 : 0, productData.muntuQuantity || null, productData.muntuPrice || null, productData.lowStockAlert || 10);
         // Só adiciona na fila de sync se skipSyncQueue for false
+        // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
         if (!skipSyncQueue) {
-            this.addToSyncQueue('create', 'product', id, productData);
+            this.addToSyncQueue('create', 'product', id, { id, ...productData });
         }
         // Criar registro inicial de inventário
         const branchId = 'main-branch'; // Filial padrão
@@ -1290,8 +1291,9 @@ class DatabaseManager {
     `);
         stmt.run(id, categoryData.name, categoryData.description || null, categoryData.parent_id || categoryData.parentId || null, categoryData.sort_order || categoryData.sortOrder || 0, categoryData.synced || 0);
         // Só adiciona à fila se não vier do servidor
+        // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
         if (!skipSyncQueue && categoryData.synced !== 1) {
-            this.addToSyncQueue('create', 'category', id, categoryData);
+            this.addToSyncQueue('create', 'category', id, { id, ...categoryData });
         }
         return { id, ...categoryData };
     }
@@ -1361,8 +1363,9 @@ class DatabaseManager {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
     `);
         stmt.run(id, supplierData.code, supplierData.name, supplierData.contactPerson || null, supplierData.phone || null, supplierData.email || null, supplierData.address || null, supplierData.taxId || null, supplierData.paymentTerms || null, supplierData.notes || null);
+        // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
         if (!skipSyncQueue) {
-            this.addToSyncQueue('create', 'supplier', id, supplierData);
+            this.addToSyncQueue('create', 'supplier', id, { id, ...supplierData });
         }
         return { id, ...supplierData };
     }
