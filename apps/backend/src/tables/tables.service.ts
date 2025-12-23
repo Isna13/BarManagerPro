@@ -69,6 +69,21 @@ export class TablesService {
     return result;
   }
 
+  // 🔴 CORREÇÃO: Listar pagamentos de mesa para sincronização
+  async findAllPayments(limit: number = 500, updatedAfter?: string) {
+    const where: any = {};
+    
+    if (updatedAfter) {
+      where.paidAt = { gte: new Date(updatedAfter) };
+    }
+
+    return this.prisma.tablePayment.findMany({
+      where,
+      take: limit,
+      orderBy: { paidAt: 'desc' },
+    });
+  }
+
   async findOne(id: string) {
     const table = await this.prisma.table.findUnique({
       where: { id },

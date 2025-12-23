@@ -297,6 +297,7 @@ export class SyncManager {
       { name: 'debts', endpoint: '/debts' },
       { name: 'tables', endpoint: '/tables' },
       { name: 'table_sessions', endpoint: '/tables/sessions?status=open' },
+      { name: 'table_payments', endpoint: '/tables/payments?limit=500' }, // 🔴 CORREÇÃO: Baixar pagamentos de mesa
       { name: 'sales', endpoint: '/sales?limit=500' },
       { name: 'cash_boxes', endpoint: '/cash-box?limit=500' }, // Usar endpoint raiz
       { name: 'purchases', endpoint: '/purchases?limit=500' }, // Adicionar limite
@@ -2610,6 +2611,55 @@ export class SyncManager {
             console.error(`Erro ao mesclar sale ${item.id}:`, e?.message);
           }
         }
+      },
+
+      // 🔴 CORREÇÃO: Handler para sincronizar pagamentos de mesa
+      table_payments: (items) => {
+        console.log(`💳 Processando ${items.length} pagamentos de mesa...`);
+        let created = 0, updated = 0, errors = 0;
+        
+        for (const item of items) {
+          try {
+            const existing = this.dbManager.prepare(`SELECT id FROM table_payments WHERE id = ?`).get(item.id);
+            
+            if (existing) {
+              // Atualizar pagamento existente
+              this.dbManager.prepare(`
+                UPDATE table_payments SET
+                  amount = ?,
+                  method = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(
+                item.amount || 0,
+                item.method || 'cash',
+                item.id
+              );
+              updated++;
+            } else {
+              // Criar novo pagamento
+              this.dbManager.prepare(`
+                INSERT INTO table_payments (id, session_id, table_customer_id, payment_id, amount, method, processed_by, paid_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(
+                item.id,
+                item.sessionId || item.session_id,
+                item.tableCustomerId || item.table_customer_id || null,
+                item.paymentId || item.payment_id || null,
+                item.amount || 0,
+                item.method || 'cash',
+                item.processedBy || item.processed_by || 'system',
+                item.paidAt || item.paid_at || new Date().toISOString()
+              );
+              created++;
+            }
+          } catch (e: any) {
+            errors++;
+            console.error(`❌ Erro ao mesclar table_payment ${item.id}:`, e?.message);
+          }
+        }
+        console.log(`📊 TABLE_PAYMENTS RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
       },
     };
     

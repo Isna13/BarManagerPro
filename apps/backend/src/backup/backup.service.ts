@@ -28,6 +28,8 @@ export interface BackupData {
   tableSessions: any[];
   tableCustomers: any[];
   tableOrders: any[];
+  tablePayments: any[];     // 🔴 CORREÇÃO: Adicionado (pagamentos de mesa)
+  tableActions: any[];      // 🔴 CORREÇÃO: Adicionado (log de ações de mesa)
   inventory: any[];
   inventoryItems: any[];
   inventoryMovements: any[];
@@ -41,6 +43,8 @@ export interface BackupData {
   debts: any[];
   debtPayments: any[];
   loyaltyTransactions: any[];
+  productPriceHistory: any[]; // 🔴 CORREÇÃO: Adicionado (histórico de preços)
+  feedback: any[];            // 🔴 CORREÇÃO: Adicionado (feedbacks de clientes)
   settings: any[];
 }
 
@@ -96,6 +100,8 @@ export class BackupService {
         tableSessions,
         tableCustomers,
         tableOrders,
+        tablePayments,      // 🔴 CORREÇÃO: Adicionado
+        tableActions,       // 🔴 CORREÇÃO: Adicionado
         inventory,
         inventoryItems,
         inventoryMovements,
@@ -109,6 +115,8 @@ export class BackupService {
         debts,
         debtPayments,
         loyaltyTransactions,
+        productPriceHistory, // 🔴 CORREÇÃO: Adicionado
+        feedback,            // 🔴 CORREÇÃO: Adicionado
         settings,
       ] = await Promise.all([
         this.prisma.branch.findMany(),
@@ -120,6 +128,8 @@ export class BackupService {
         this.prisma.tableSession.findMany({ include: { customers: true, orders: true } }),
         this.prisma.tableCustomer.findMany(),
         this.prisma.tableOrder.findMany(),
+        this.prisma.tablePayment.findMany(),     // 🔴 CORREÇÃO: Adicionado
+        this.prisma.tableAction.findMany(),      // 🔴 CORREÇÃO: Adicionado
         this.prisma.inventory.findMany(),
         this.prisma.inventoryItem.findMany(),
         this.prisma.inventoryMovement.findMany(),
@@ -133,6 +143,8 @@ export class BackupService {
         this.prisma.debt.findMany({ include: { payments: true } }),
         this.prisma.debtPayment.findMany(),
         this.prisma.loyaltyTransaction.findMany(),
+        this.prisma.productPriceHistory.findMany(), // 🔴 CORREÇÃO: Adicionado
+        this.prisma.feedback.findMany(),            // 🔴 CORREÇÃO: Adicionado
         this.prisma.setting.findMany(),
       ]);
 
@@ -147,6 +159,8 @@ export class BackupService {
         tableSessions: tableSessions.length,
         tableCustomers: tableCustomers.length,
         tableOrders: tableOrders.length,
+        tablePayments: tablePayments.length,       // 🔴 CORREÇÃO: Adicionado
+        tableActions: tableActions.length,         // 🔴 CORREÇÃO: Adicionado
         inventory: inventory.length,
         inventoryItems: inventoryItems.length,
         inventoryMovements: inventoryMovements.length,
@@ -160,6 +174,8 @@ export class BackupService {
         debts: debts.length,
         debtPayments: debtPayments.length,
         loyaltyTransactions: loyaltyTransactions.length,
+        productPriceHistory: productPriceHistory.length, // 🔴 CORREÇÃO: Adicionado
+        feedback: feedback.length,                       // 🔴 CORREÇÃO: Adicionado
         settings: settings.length,
       };
 
@@ -185,6 +201,8 @@ export class BackupService {
         tableSessions,
         tableCustomers,
         tableOrders,
+        tablePayments,       // 🔴 CORREÇÃO: Adicionado
+        tableActions,        // 🔴 CORREÇÃO: Adicionado
         inventory,
         inventoryItems,
         inventoryMovements,
@@ -198,6 +216,8 @@ export class BackupService {
         debts,
         debtPayments,
         loyaltyTransactions,
+        productPriceHistory, // 🔴 CORREÇÃO: Adicionado
+        feedback,            // 🔴 CORREÇÃO: Adicionado
         settings,
       };
 
@@ -441,6 +461,18 @@ export class BackupService {
           stats['tableOrders'] = backupData.tableOrders.length;
         }
 
+        // 9.1 Table Payments 🔴 CORREÇÃO: Restaurar pagamentos de mesa
+        if (backupData.tablePayments?.length > 0) {
+          await tx.tablePayment.createMany({ data: backupData.tablePayments, skipDuplicates: true });
+          stats['tablePayments'] = backupData.tablePayments.length;
+        }
+
+        // 9.2 Table Actions 🔴 CORREÇÃO: Restaurar log de ações de mesa
+        if (backupData.tableActions?.length > 0) {
+          await tx.tableAction.createMany({ data: backupData.tableActions, skipDuplicates: true });
+          stats['tableActions'] = backupData.tableActions.length;
+        }
+
         // 10. Inventory
         if (backupData.inventory?.length > 0) {
           await tx.inventory.createMany({ data: backupData.inventory, skipDuplicates: true });
@@ -545,6 +577,18 @@ export class BackupService {
         if (backupData.loyaltyTransactions?.length > 0) {
           await tx.loyaltyTransaction.createMany({ data: backupData.loyaltyTransactions, skipDuplicates: true });
           stats['loyaltyTransactions'] = backupData.loyaltyTransactions.length;
+        }
+
+        // 20.1 Product Price History 🔴 CORREÇÃO: Restaurar histórico de preços
+        if (backupData.productPriceHistory?.length > 0) {
+          await tx.productPriceHistory.createMany({ data: backupData.productPriceHistory, skipDuplicates: true });
+          stats['productPriceHistory'] = backupData.productPriceHistory.length;
+        }
+
+        // 20.2 Feedback 🔴 CORREÇÃO: Restaurar feedbacks de clientes
+        if (backupData.feedback?.length > 0) {
+          await tx.feedback.createMany({ data: backupData.feedback, skipDuplicates: true });
+          stats['feedback'] = backupData.feedback.length;
         }
 
         // 21. Settings (usa 'key' como chave primária, não 'id')

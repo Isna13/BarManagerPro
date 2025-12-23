@@ -158,6 +158,18 @@ export class TablesController {
 
   // ==================== PAGAMENTOS ====================
 
+  // 🔴 CORREÇÃO: Endpoint para listar pagamentos de mesa (necessário para sync)
+  @Get('payments')
+  findAllPayments(
+    @Query('limit') limit?: string,
+    @Query('updatedAfter') updatedAfter?: string
+  ) {
+    return this.tablesService.findAllPayments(
+      limit ? parseInt(limit, 10) : 500,
+      updatedAfter
+    );
+  }
+
   @Post('payments/customer')
   processCustomerPayment(@Body() data: { 
     sessionId: string; 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -709,8 +710,55 @@ class DatabaseService {
     });
   }
 
-  // Limpar banco (para debug)
-  Future<void> clearAllData() async {
+  // 🔴 CORREÇÃO: Criar backup local antes de operações destrutivas
+  Future<String?> createLocalBackup() async {
+    try {
+      final db = await database;
+      final dbPath = await getDatabasesPath();
+      final sourceFile = File(join(dbPath, 'barmanager_vendas.db'));
+      
+      if (!await sourceFile.exists()) {
+        debugPrint('⚠️ Arquivo de banco não encontrado para backup');
+        return null;
+      }
+
+      // Criar diretório de backup
+      final backupDir = Directory(join(dbPath, 'backups'));
+      if (!await backupDir.exists()) {
+        await backupDir.create(recursive: true);
+      }
+
+      // Nome do backup com timestamp
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final backupPath = join(backupDir.path, 'backup-$timestamp.db');
+      
+      // Fechar conexões antes de copiar
+      await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      
+      // Copiar arquivo
+      await sourceFile.copy(backupPath);
+      
+      debugPrint('✅ Backup local criado: $backupPath');
+      return backupPath;
+    } catch (e) {
+      debugPrint('❌ Erro ao criar backup local: $e');
+      return null;
+    }
+  }
+
+  // Limpar banco (para debug ou reset remoto)
+  // 🔴 CORREÇÃO: Agora cria backup automático antes de limpar
+  Future<void> clearAllData({bool createBackup = true}) async {
+    if (createBackup) {
+      debugPrint('📦 Criando backup de segurança antes de limpar dados...');
+      final backupPath = await createLocalBackup();
+      if (backupPath != null) {
+        debugPrint('✅ Backup de segurança: $backupPath');
+      } else {
+        debugPrint('⚠️ Backup não foi criado, mas continuando com o reset...');
+      }
+    }
+
     final db = await database;
     await db.delete('sync_queue');
     await db.delete('payments');
@@ -728,5 +776,7 @@ class DatabaseService {
     await db.delete('products');
     await db.delete('categories');
     // NÃO limpa 'users' para manter login ativo
+    
+    debugPrint('🗑️ Todos os dados locais foram limpos');
   }
 }
