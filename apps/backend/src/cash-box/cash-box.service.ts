@@ -291,7 +291,9 @@ export class CashBoxService {
         debtPayments,
         totalCashOut: 0, // Saídas de caixa (não implementado ainda)
         currentAmount: cashBox.openingCash + cashPayments,
-        salesCount: sales.length + tablePayments.length,
+        // CORREÇÃO: Não somar tablePayments.length pois vendas de mesa já criam Sale
+        // Antes: sales.length + tablePayments.length (DUPLICAVA!)
+        salesCount: sales.length,
       },
     };
   }
@@ -409,7 +411,7 @@ export class CashBoxService {
             debtPayments,
             totalCashOut: 0, // Saídas de caixa (não implementado ainda)
             currentAmount: cashBox.openingCash + cashPayments,
-            salesCount: sales.length + tablePayments.length,
+            salesCount: sales.length,
           },
         };
       })
@@ -556,7 +558,7 @@ export class CashBoxService {
         debtPayments,
         totalCashOut: 0, // Saídas de caixa (não implementado ainda, mas necessário para consistência)
         currentAmount: cashBox.openingCash + cashPayments,
-        salesCount: sales.length + tablePayments.length,
+        salesCount: sales.length,
       },
     };
   }
@@ -678,7 +680,7 @@ export class CashBoxService {
             debtPayments,
             totalCashOut: 0, // Saídas de caixa (não implementado ainda)
             currentAmount: cashBox.openingCash + cashPayments,
-            salesCount: sales.length + tablePayments.length,
+            salesCount: sales.length,
           },
         };
       })
