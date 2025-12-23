@@ -3336,7 +3336,9 @@ class DatabaseManager {
       ORDER BY s.created_at DESC
     `).all(cashBox.opened_at, cashBox.closed_at, cashBox.closed_at, cashBox.branch_id);
         // Se total_debt não está registrado (caixas antigos), calcular dinamicamente
+        // CRÍTICO: Incluir AMBOS payments E table_payments!
         if (!cashBox.total_debt || cashBox.total_debt === 0) {
+            // Pagamentos normais (Payment via Sales)
             const valeTotal = this.db.prepare(`
         SELECT COALESCE(SUM(s.total), 0) as total_vale
         FROM sales s
@@ -3344,9 +3346,19 @@ class DatabaseManager {
         WHERE s.created_at >= ?
           AND (? IS NULL OR s.created_at <= ?)
           AND s.branch_id = ?
-          AND (p.method = 'vale' OR p.method = 'debt')
+          AND (LOWER(p.method) = 'vale' OR LOWER(p.method) = 'debt')
       `).get(cashBox.opened_at, cashBox.closed_at, cashBox.closed_at, cashBox.branch_id);
-            cashBox.total_debt = valeTotal?.total_vale || 0;
+            // CRÍTICO: Pagamentos de mesas (TablePayment) - não passam pela tabela Payment!
+            const tableValeTotal = this.db.prepare(`
+        SELECT COALESCE(SUM(tp.amount), 0) as total_vale
+        FROM table_payments tp
+        INNER JOIN table_sessions ts ON tp.session_id = ts.id
+        WHERE tp.processed_at >= ?
+          AND (? IS NULL OR tp.processed_at <= ?)
+          AND ts.branch_id = ?
+          AND (LOWER(tp.method) = 'vale' OR LOWER(tp.method) = 'debt')
+      `).get(cashBox.opened_at, cashBox.closed_at, cashBox.closed_at, cashBox.branch_id);
+            cashBox.total_debt = (valeTotal?.total_vale || 0) + (tableValeTotal?.total_vale || 0);
         }
         // Calcular métricas de lucro
         const profitMetrics = this.calculateCashBoxProfitMetrics(id, cashBox);
@@ -3519,11 +3531,18 @@ class DatabaseManager {
     `).run(id);
     }
     markSyncItemFailed(id, error) {
+        // Garantir que id não é null (proteção contra chamadas inválidas)
+        if (!id) {
+            console.warn('⚠️ markSyncItemFailed chamado com id nulo');
+            return;
+        }
+        // Converter array de erros para string
+        const errorStr = Array.isArray(error) ? error.join(', ') : String(error);
         this.db.prepare(`
       UPDATE sync_queue 
       SET status = 'failed', retry_count = retry_count + 1, last_error = ? 
       WHERE id = ?
-    `).run(error, id);
+    `).run(errorStr, id);
     }
     /**
      * Marca itens falhados como pendentes para re-tentativa
@@ -4605,10 +4624,8 @@ class DatabaseManager {
         }
         // Calcular total dos pedidos PENDENTES (não usar customer.total que inclui pagos)
         const pendingTotal = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-        // Gerar número de venda único
-        const lastSale = this.db.prepare('SELECT sale_number FROM sales ORDER BY created_at DESC LIMIT 1').get();
-        const lastNumber = lastSale?.sale_number ? parseInt(lastSale.sale_number.split('-')[1]) : 0;
-        const saleNumber = `SALE-${String(lastNumber + 1).padStart(6, '0')}`;
+        // Gerar número de venda único - usar MAX para evitar duplicação após sync
+        const saleNumber = this.generateUniqueSaleNumber();
         // Criar venda (SALE) - usar pendingTotal em vez de customer.total
         const saleId = this.generateUUID();
         this.db.prepare(`
@@ -4806,10 +4823,8 @@ class DatabaseManager {
         }
         // Calcular total dos pedidos
         const totalOrders = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-        // Gerar número de venda único
-        const lastSale = this.db.prepare('SELECT sale_number FROM sales ORDER BY created_at DESC LIMIT 1').get();
-        const lastNumber = lastSale?.sale_number ? parseInt(lastSale.sale_number.split('-')[1]) : 0;
-        const saleNumber = `SALE-${String(lastNumber + 1).padStart(6, '0')}`;
+        // Gerar número de venda único - usar MAX para evitar duplicação após sync
+        const saleNumber = this.generateUniqueSaleNumber();
         // Verificar se há cliente único cadastrado na mesa
         const customers = this.db.prepare(`
       SELECT DISTINCT customer_id 
@@ -5569,6 +5584,27 @@ class DatabaseManager {
             return v.toString(16);
         });
     }
+    /**
+     * Gera um número de venda único (SALE-XXXXXX)
+     * Usa MAX para extrair o maior número existente, evitando duplicação após sync
+     */
+    generateUniqueSaleNumber() {
+        // Buscar TODOS os sale_numbers e encontrar o maior número
+        const allSales = this.db.prepare("SELECT sale_number FROM sales WHERE sale_number LIKE 'SALE-%'").all();
+        let maxNumber = 0;
+        for (const sale of allSales) {
+            if (sale.sale_number) {
+                const match = sale.sale_number.match(/SALE-(\d+)/);
+                if (match) {
+                    const num = parseInt(match[1], 10);
+                    if (num > maxNumber) {
+                        maxNumber = num;
+                    }
+                }
+            }
+        }
+        return `SALE-${String(maxNumber + 1).padStart(6, '0')}`;
+    }
     generateSequentialNumber(lastNumber, prefix) {
         if (!lastNumber) {
             return `${prefix}-00001`;
@@ -5970,8 +6006,8 @@ class DatabaseManager {
         console.log('🗑️ Limpando fila de sincronização atual...');
         this.db.prepare('DELETE FROM sync_queue').run();
         const insertQueue = this.db.prepare(`
-      INSERT INTO sync_queue (entity, entity_id, operation, data, status, priority, created_at)
-      VALUES (?, ?, 'create', ?, 'pending', ?, datetime('now'))
+      INSERT INTO sync_queue (id, entity, entity_id, operation, data, status, priority, created_at)
+      VALUES (?, ?, ?, 'create', ?, 'pending', ?, datetime('now'))
     `);
         let totalAdded = 0;
         const byEntity = {};
@@ -5979,7 +6015,8 @@ class DatabaseManager {
             try {
                 const rows = this.db.prepare(`SELECT * FROM ${table}`).all();
                 for (const row of rows) {
-                    insertQueue.run(entity, row.id, JSON.stringify(row), priority);
+                    const queueId = this.generateUUID(); // Gerar ID único para cada item da fila
+                    insertQueue.run(queueId, entity, row.id, JSON.stringify(row), priority);
                     totalAdded++;
                 }
                 byEntity[entity] = rows.length;
@@ -6345,6 +6382,15 @@ class DatabaseManager {
                     }
                     // Clientes
                     stats['customers'] = this.db.prepare('DELETE FROM customers').run().changes;
+                    // CORREÇÃO CRÍTICA: Limpar last_sync_date para forçar sync completo
+                    // Sem isso, o sync usa updatedAfter=<data antiga> e servidor retorna vazio
+                    try {
+                        this.db.prepare("DELETE FROM settings WHERE key = 'last_sync_date'").run();
+                        console.log('🗑️ last_sync_date removido - próximo sync será completo');
+                    }
+                    catch (e) {
+                        console.warn('⚠️ Não foi possível limpar last_sync_date');
+                    }
                     // Registrar a operação de reset no log
                     // Colunas da tabela: id, device_id, action, entity, entity_id, direction, status, details, error_message, created_at
                     const auditId = this.generateUUID();

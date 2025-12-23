@@ -7253,8 +7253,8 @@ export class DatabaseManager {
     this.db.prepare('DELETE FROM sync_queue').run();
     
     const insertQueue = this.db.prepare(`
-      INSERT INTO sync_queue (entity, entity_id, operation, data, status, priority, created_at)
-      VALUES (?, ?, 'create', ?, 'pending', ?, datetime('now'))
+      INSERT INTO sync_queue (id, entity, entity_id, operation, data, status, priority, created_at)
+      VALUES (?, ?, ?, 'create', ?, 'pending', ?, datetime('now'))
     `);
     
     let totalAdded = 0;
@@ -7265,7 +7265,8 @@ export class DatabaseManager {
         const rows = this.db.prepare(`SELECT * FROM ${table}`).all() as any[];
         
         for (const row of rows) {
-          insertQueue.run(entity, row.id, JSON.stringify(row), priority);
+          const queueId = this.generateUUID(); // Gerar ID único para cada item da fila
+          insertQueue.run(queueId, entity, row.id, JSON.stringify(row), priority);
           totalAdded++;
         }
         

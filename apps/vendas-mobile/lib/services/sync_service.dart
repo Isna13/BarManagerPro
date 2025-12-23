@@ -38,23 +38,23 @@ class SyncService {
 
   // 🔴 CORREÇÃO: Debounce para evitar múltiplas chamadas em sequência rápida
   Timer? _syncDebounceTimer;
-  
+
   // 🔴 NOVO: Callbacks para notificar providers sobre atualizações
   final List<SyncEventCallback> _eventListeners = [];
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
-  
+
   /// Registrar listener para eventos de sync
   void addSyncEventListener(SyncEventCallback callback) {
     _eventListeners.add(callback);
   }
-  
+
   /// Remover listener
   void removeSyncEventListener(SyncEventCallback callback) {
     _eventListeners.remove(callback);
   }
-  
+
   /// Emitir evento para todos os listeners
   void _emitSyncEvent(SyncEventType type, [dynamic data]) {
     debugPrint('📢 SyncEvent: $type');

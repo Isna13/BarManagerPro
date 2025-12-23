@@ -16,6 +16,9 @@ export declare class SyncManager {
     private _coldStartDetected;
     private _consecutiveFailures;
     private _lastSuccessfulRequest;
+    private _isSyncing;
+    private _pendingSyncRequested;
+    private _syncDebounceTimer;
     constructor(dbManager: DatabaseManager, apiUrl: string);
     setMainWindow(window: BrowserWindow): void;
     /**
@@ -55,6 +58,7 @@ export declare class SyncManager {
     };
     /**
      * Verifica se o banco local está vazio ou precisa de sincronização inicial
+     * Também verifica se existe caixa aberto sincronizado
      */
     isLocalDatabaseEmpty(): boolean;
     /**
@@ -78,6 +82,12 @@ export declare class SyncManager {
     }): Promise<any>;
     logout(): Promise<void>;
     start(): Promise<void>;
+    /**
+     * 🔴 CORREÇÃO CRÍTICA: Sync imediato para vendas
+     * Garante que vendas rápidas em sequência não sejam perdidas
+     * Usa debounce de 500ms para agrupar vendas muito rápidas
+     */
+    syncSalesImmediately(): void;
     stop(): Promise<void>;
     syncNow(): Promise<void>;
     private pushLocalChanges;

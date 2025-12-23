@@ -432,7 +432,7 @@ export declare class DatabaseManager {
     private addToSyncQueue;
     getPendingSyncItems(): any;
     markSyncItemCompleted(id: string): void;
-    markSyncItemFailed(id: string, error: string): void;
+    markSyncItemFailed(id: string | null, error: string | string[]): void;
     /**
      * Marca itens falhados como pendentes para re-tentativa
      * Útil após sincronizar dependências (ex: clientes antes de vendas)
@@ -776,6 +776,11 @@ export declare class DatabaseManager {
         recordsAfter: number;
     };
     private generateUUID;
+    /**
+     * Gera um número de venda único (SALE-XXXXXX)
+     * Usa MAX para extrair o maior número existente, evitando duplicação após sync
+     */
+    private generateUniqueSaleNumber;
     private generateSequentialNumber;
     /**
      * Criar vendas de exemplo para testes de relatórios

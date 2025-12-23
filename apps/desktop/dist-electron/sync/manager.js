@@ -48,6 +48,12 @@ class SyncManager {
         this._coldStartDetected = false;
         this._consecutiveFailures = 0;
         this._lastSuccessfulRequest = null;
+        // 🔴 CORREÇÃO CRÍTICA: Mutex para evitar sincronizações simultâneas
+        this._isSyncing = false;
+        // Flag para re-sync após sync atual (vendas rápidas em sequência)
+        this._pendingSyncRequested = false;
+        // Debounce timer para vendas rápidas
+        this._syncDebounceTimer = null;
         this.apiClient = axios_1.default.create({
             baseURL: apiUrl,
             timeout: RAILWAY_FREE_CONFIG.REQUEST_TIMEOUT_MS,
@@ -183,18 +189,33 @@ class SyncManager {
     }
     /**
      * Verifica se o banco local está vazio ou precisa de sincronização inicial
+     * Também verifica se existe caixa aberto sincronizado
      */
     isLocalDatabaseEmpty() {
         try {
             const products = this.dbManager.getProducts();
             const customers = this.dbManager.getCustomers();
             const sales = this.dbManager.getSales({});
+            // Verificar se existe caixa aberto
+            let currentCashBox = null;
+            try {
+                currentCashBox = this.dbManager.getCurrentCashBox?.() || null;
+            }
+            catch (e) {
+                // Ignorar erro se método não existir
+            }
             const isEmpty = products.length === 0 && customers.length === 0 && sales.length === 0;
+            const needsCashBoxSync = !currentCashBox && products.length > 0;
             console.log(`📊 Verificação do banco local: ${isEmpty ? 'VAZIO' : 'COM DADOS'}`);
             console.log(`   - Produtos: ${products.length}`);
             console.log(`   - Clientes: ${customers.length}`);
             console.log(`   - Vendas: ${sales.length}`);
-            return isEmpty;
+            console.log(`   - Caixa atual: ${currentCashBox ? 'SIM' : 'NÃO'}`);
+            // Retorna true se banco vazio OU se precisa sincronizar caixa
+            if (needsCashBoxSync) {
+                console.log(`⚠️ Banco tem dados mas não tem caixa - forçando sync inicial`);
+            }
+            return isEmpty || needsCashBoxSync;
         }
         catch (error) {
             console.error('Erro ao verificar banco local:', error);
@@ -542,16 +563,48 @@ class SyncManager {
             this.syncNow();
         }, RAILWAY_FREE_CONFIG.SYNC_INTERVAL_MS);
     }
+    /**
+     * 🔴 CORREÇÃO CRÍTICA: Sync imediato para vendas
+     * Garante que vendas rápidas em sequência não sejam perdidas
+     * Usa debounce de 500ms para agrupar vendas muito rápidas
+     */
+    syncSalesImmediately() {
+        console.log('🔥 syncSalesImmediately() chamado - sync imediato de vendas');
+        // Cancelar debounce anterior se existir
+        if (this._syncDebounceTimer) {
+            clearTimeout(this._syncDebounceTimer);
+        }
+        // Debounce de 500ms para evitar múltiplas chamadas em sequência rápida
+        this._syncDebounceTimer = setTimeout(() => {
+            if (this._isSyncing) {
+                // Se já está sincronizando, marcar para re-sync
+                this._pendingSyncRequested = true;
+                console.log('⏳ Sync em andamento, re-sync agendado para após conclusão');
+            }
+            else {
+                this.syncNow();
+            }
+        }, 500);
+    }
     async stop() {
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
             this.syncInterval = null;
+        }
+        if (this._syncDebounceTimer) {
+            clearTimeout(this._syncDebounceTimer);
         }
         this.stopConnectionMonitor();
         this.isRunning = false;
         console.log('⏸ Sincronização pausada');
     }
     async syncNow() {
+        // 🔴 CORREÇÃO CRÍTICA: Mutex para evitar race conditions
+        if (this._isSyncing) {
+            console.log('⚠️ Sincronização já em andamento, agendando re-sync');
+            this._pendingSyncRequested = true;
+            return;
+        }
         if (!this.token) {
             console.warn('⚠️ Token não disponível, sincronização ignorada');
             return;
@@ -583,6 +636,8 @@ class SyncManager {
             return;
         }
         try {
+            // 🔴 CORREÇÃO: Marcar sync como em andamento
+            this._isSyncing = true;
             this.emit('sync:started');
             // Verificar se Railway está vazio e banco local tem dados
             // Se sim, fazer resync automático completo
@@ -635,6 +690,17 @@ class SyncManager {
             }
             this.emit('sync:error', error?.message || 'Erro desconhecido na sincronização');
         }
+        finally {
+            // 🔴 CORREÇÃO CRÍTICA: Sempre liberar mutex e verificar re-sync pendente
+            this._isSyncing = false;
+            // Se há sync pendente (vendas rápidas em sequência), executar
+            if (this._pendingSyncRequested) {
+                this._pendingSyncRequested = false;
+                console.log('🔁 Re-sync solicitado durante sync anterior, executando...');
+                // Pequeno delay para evitar loop infinito
+                setTimeout(() => this.syncNow(), 100);
+            }
+        }
     }
     async pushLocalChanges() {
         const pendingItems = this.dbManager.getPendingSyncItems();
@@ -678,7 +744,27 @@ class SyncManager {
             }
             catch (error) {
                 hasFailures = true;
-                const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+                // Garantir que errorMsg é sempre uma string (pode vir como array do backend)
+                let errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+                if (Array.isArray(errorMsg)) {
+                    errorMsg = errorMsg.join(', ');
+                }
+                // 🔴 CORREÇÃO: Tratar 409 (duplicata) como sucesso
+                // Isso ocorre quando o item já foi sincronizado anteriormente
+                if (error?.response?.status === 409) {
+                    console.log(`✅ Sync ${item.entity} - já existe no servidor (409), marcando como completado`);
+                    this.dbManager.markSyncItemCompleted(item.id);
+                    this.dbManager.logSyncAudit({
+                        action: item.operation,
+                        entity: item.entity,
+                        entityId: item.entity_id,
+                        direction: 'push',
+                        status: 'success',
+                        details: { itemId: item.id, note: 'Duplicata - já existia no servidor' },
+                    });
+                    hasFailures = false; // Não é uma falha real
+                    continue;
+                }
                 console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
                 // Log de auditoria - erro
                 this.dbManager.logSyncAudit({
@@ -687,7 +773,7 @@ class SyncManager {
                     entityId: item.entity_id,
                     direction: 'push',
                     status: 'error',
-                    errorMessage: errorMsg,
+                    errorMessage: String(errorMsg),
                 });
                 // Verificar tipo de erro
                 if (error.response?.status === 401) {
@@ -714,7 +800,8 @@ class SyncManager {
         // Se houve falhas, tentar re-sincronizar itens falhados
         // (útil quando dependências foram sincronizadas nesta rodada)
         if (hasFailures) {
-            const retried = this.dbManager.retryFailedSyncItems(5); // max 5 tentativas
+            // 🔴 CORREÇÃO: Aumentado para 10 tentativas - vendas não podem ser perdidas
+            const retried = this.dbManager.retryFailedSyncItems(10);
             if (retried > 0) {
                 console.log(`🔄 Re-tentando ${retried} itens que podem ter sido desbloqueados por dependências...`);
                 // Fazer uma segunda passada imediata
@@ -733,9 +820,11 @@ class SyncManager {
                         }
                     }
                     catch (error) {
-                        const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+                        let errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+                        if (Array.isArray(errorMsg))
+                            errorMsg = errorMsg.join(', ');
                         console.error(`❌ Re-sync ${item.entity} falhou:`, errorMsg);
-                        this.dbManager.markSyncItemFailed(item.id, errorMsg);
+                        this.dbManager.markSyncItemFailed(item.id, String(errorMsg));
                     }
                 }
             }
@@ -1225,12 +1314,18 @@ class SyncManager {
                                 barcode: item.barcode,
                                 description: item.description,
                                 categoryId: item.categoryId,
+                                supplierId: item.supplierId,
                                 priceBox: item.priceBox,
                                 priceUnit: item.priceUnit || 0,
                                 costUnit: item.costUnit || 0,
+                                costBox: item.costBox,
                                 unitsPerBox: item.unitsPerBox,
                                 lowStockAlert: item.lowStockAlert,
                                 isActive: item.isActive !== false ? 1 : 0,
+                                // MUNTU: Campos booleanos e numéricos - usar ?? para preservar false/0
+                                isMuntuEligible: item.isMuntuEligible ?? false,
+                                muntuQuantity: item.muntuQuantity ?? null,
+                                muntuPrice: item.muntuPrice ?? null,
                                 synced: 1,
                                 lastSync: new Date().toISOString(),
                             }, true); // skipSyncQueue = true para evitar loop
@@ -1243,12 +1338,18 @@ class SyncManager {
                                 barcode: item.barcode,
                                 description: item.description,
                                 categoryId: item.categoryId,
+                                supplierId: item.supplierId,
                                 priceBox: item.priceBox || 0,
                                 priceUnit: item.priceUnit || 0,
                                 costUnit: item.costUnit || 0,
+                                costBox: item.costBox || null,
                                 unitsPerBox: item.unitsPerBox || 1,
                                 lowStockAlert: item.lowStockAlert || 10,
                                 isActive: item.isActive !== false ? 1 : 0,
+                                // MUNTU: Campos booleanos e numéricos - usar ?? para preservar false/0
+                                isMuntuEligible: item.isMuntuEligible ?? false,
+                                muntuQuantity: item.muntuQuantity ?? null,
+                                muntuPrice: item.muntuPrice ?? null,
                                 synced: 1,
                                 lastSync: new Date().toISOString(),
                             }, true); // skipSyncQueue = true para evitar loop
@@ -1964,27 +2065,16 @@ class SyncManager {
                                     }
                                 }
                             }
-                            // Decrementar estoque para itens da venda
-                            if (item.items && Array.isArray(item.items)) {
-                                for (const saleItem of item.items) {
-                                    try {
-                                        const productId = saleItem.productId || saleItem.product_id;
-                                        const qty = saleItem.qtyUnits || saleItem.qty_units || 1;
-                                        // Buscar inventory_item e decrementar
-                                        const inventoryItem = this.dbManager.getInventoryItemByProductId(productId);
-                                        if (inventoryItem) {
-                                            const newQty = Math.max(0, (inventoryItem.qty_units || 0) - qty);
-                                            this.dbManager.updateInventoryItemByProductId(productId, {
-                                                qtyUnits: newQty,
-                                            }, true); // skipSyncQueue
-                                            console.log(`  📦 Estoque decrementado: ${productId} -${qty} = ${newQty}`);
-                                        }
-                                    }
-                                    catch (stockError) {
-                                        console.error(`  ❌ Erro ao decrementar estoque:`, stockError?.message);
-                                    }
-                                }
-                            }
+                            // ⚠️ NÃO decrementar estoque aqui!
+                            // O estoque já foi decrementado no dispositivo que criou a venda (Mobile ou outro Desktop)
+                            // E o servidor sincroniza o inventário separadamente.
+                            // Decrementar aqui causaria DUPLICAÇÃO: estoque cairia 2x para cada venda.
+                            // ANTIGO CÓDIGO PROBLEMÁTICO (REMOVIDO):
+                            // if (item.items && Array.isArray(item.items)) {
+                            //   for (const saleItem of item.items) {
+                            //     // decrementava estoque para vendas recebidas do servidor - ERRADO!
+                            //   }
+                            // }
                         }
                         else {
                             // Venda já existe - verificar se precisa atualizar
@@ -2955,17 +3045,20 @@ class SyncManager {
     prepareDataForSync(entityName, item) {
         // Clone para não modificar o original
         const data = {};
+        // Normalizar nome da entidade (singular/plural)
+        const entity = entityName.toLowerCase();
         // Mapeamentos específicos por entidade (SQLite -> Backend)
-        if (entityName === 'categories') {
+        if (entity === 'categories' || entity === 'category') {
             data.name = item.name;
-            data.description = item.description;
-            data.parentId = item.parent_id;
-            data.sortOrder = item.sort_order || 0;
-            data.isActive = item.is_active === 1;
+            data.description = item.description || '';
+            data.parentId = item.parent_id || item.parentId || null;
+            data.sortOrder = item.sort_order ?? item.sortOrder ?? 0;
+            // Converter 0/1 para boolean
+            data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
             if (item.id)
                 data.id = item.id;
         }
-        else if (entityName === 'sale') {
+        else if (entity === 'sale' || entity === 'sales') {
             // Venda - mapear campos do desktop para o backend
             data.branchId = item.branchId || item.branch_id || 'main-branch';
             data.type = item.type || 'counter';
@@ -2985,38 +3078,46 @@ class SyncManager {
             if (item.id)
                 data.id = item.id;
         }
-        else if (entityName === 'suppliers') {
+        else if (entity === 'suppliers' || entity === 'supplier') {
             data.name = item.name;
             data.code = item.code;
-            data.contactPerson = item.contact_person;
-            data.phone = item.phone;
-            data.email = item.email;
-            data.address = item.address;
-            data.taxId = item.tax_id;
-            data.paymentTerms = item.payment_terms;
-            data.notes = item.notes;
-            data.isActive = item.is_active === 1;
+            data.contactPerson = item.contact_person || item.contactPerson || '';
+            data.phone = item.phone || '';
+            data.email = item.email || '';
+            data.address = item.address || '';
+            data.taxId = item.tax_id || item.taxId || '';
+            data.paymentTerms = item.payment_terms || item.paymentTerms || '';
+            data.notes = item.notes || '';
+            // Converter 0/1 para boolean
+            data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
             if (item.id)
                 data.id = item.id;
         }
-        else if (entityName === 'products') {
+        else if (entity === 'products' || entity === 'product') {
             data.name = item.name;
-            data.description = item.description;
+            data.description = item.description || '';
             data.sku = item.sku;
-            data.barcode = item.barcode;
-            data.categoryId = item.category_id;
-            data.unitsPerBox = item.units_per_box || 1;
-            data.priceUnit = Math.round((item.sell_price || 0) * 100); // Converter para centavos
-            data.priceBox = Math.round((item.sell_price || 0) * (item.units_per_box || 1) * 100);
-            data.costUnit = Math.round((item.cost_price || 0) * 100);
-            data.costBox = Math.round((item.cost_price || 0) * (item.units_per_box || 1) * 100);
-            data.minStock = item.low_stock_alert || 0;
-            data.isActive = item.is_active === 1;
-            data.trackInventory = true;
+            data.barcode = item.barcode || '';
+            data.categoryId = item.category_id || item.categoryId;
+            data.supplierId = item.supplier_id || item.supplierId || null;
+            data.unitsPerBox = item.units_per_box || item.unitsPerBox || 1;
+            // Preços - aceitar camelCase ou snake_case, e verificar se já está em centavos
+            const sellPrice = item.sell_price ?? item.sellPrice ?? item.priceUnit ?? 0;
+            const costPrice = item.cost_price ?? item.costPrice ?? item.costUnit ?? 0;
+            // Se o preço for muito pequeno (< 100), provavelmente não está em centavos ainda
+            data.priceUnit = sellPrice >= 100 ? sellPrice : Math.round(sellPrice * 100);
+            data.priceBox = Math.round((data.priceUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
+            data.costUnit = costPrice >= 100 ? costPrice : Math.round(costPrice * 100);
+            data.costBox = Math.round((data.costUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
+            data.minStock = item.low_stock_alert || item.minStock || 0;
+            // Converter 0/1 para boolean
+            data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
+            data.trackInventory = item.track_inventory === 1 || item.track_inventory === true || item.trackInventory === 1 || item.trackInventory === true || true;
+            data.isMuntuEligible = item.is_muntu_eligible === 1 || item.is_muntu_eligible === true || item.isMuntuEligible === 1 || item.isMuntuEligible === true || false;
             if (item.id)
                 data.id = item.id;
         }
-        else if (entityName === 'customers' || entityName === 'customer') {
+        else if (entity === 'customers' || entity === 'customer') {
             data.name = item.full_name || item.name || 'Cliente';
             data.fullName = item.full_name || item.name;
             data.phone = item.phone;
@@ -3032,10 +3133,23 @@ class SyncManager {
         }
         else {
             // Fallback: copiar todos os campos com mapeamento básico
+            // Lista de campos internos que não devem ser enviados ao backend
+            const internalFields = ['synced', 'created_at', 'updated_at', 'createdAt', 'updatedAt', '_deviceId', '_timestamp'];
+            // Lista de campos booleanos conhecidos
+            const booleanFields = ['isActive', 'is_active', 'trackInventory', 'track_inventory', 'isMuntuEligible', 'is_muntu_eligible'];
             for (const [key, value] of Object.entries(item)) {
+                // Ignorar campos internos
+                if (internalFields.includes(key))
+                    continue;
                 // Converter snake_case para camelCase
                 const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-                data[camelKey] = value;
+                // Converter campos booleanos de 0/1 para true/false
+                if (booleanFields.includes(key) || booleanFields.includes(camelKey)) {
+                    data[camelKey] = value === 1 || value === true;
+                }
+                else {
+                    data[camelKey] = value;
+                }
             }
         }
         // Remover campos nulos ou undefined

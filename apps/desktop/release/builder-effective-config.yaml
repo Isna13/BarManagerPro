@@ -7,6 +7,17 @@ files:
   - filter:
       - dist/**/*
       - dist-electron/**/*
+      - node_modules/**/*
+      - '!node_modules/.cache'
+      - '!node_modules/@types'
+      - '!node_modules/**/test'
+      - '!node_modules/**/tests'
+      - '!node_modules/**/*.md'
+      - '!node_modules/**/*.ts'
+      - '!node_modules/**/*.map'
+asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
 win:
   target:
     - nsis

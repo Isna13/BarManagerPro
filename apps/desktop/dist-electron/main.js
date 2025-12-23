@@ -177,13 +177,23 @@ electron_1.ipcMain.handle('auth:logout', async () => {
 });
 // Sales
 electron_1.ipcMain.handle('sales:create', async (_, saleData) => {
-    return dbManager.createSale(saleData);
+    const sale = dbManager.createSale(saleData);
+    // 🔴 CORREÇÃO CRÍTICA: Sync imediato após criar venda
+    // Garante que vendas rápidas em sequência não sejam perdidas
+    syncManager.syncSalesImmediately();
+    return sale;
 });
 electron_1.ipcMain.handle('sales:addItem', async (_, { saleId, itemData }) => {
-    return dbManager.addSaleItem(saleId, itemData);
+    const item = dbManager.addSaleItem(saleId, itemData);
+    // 🔴 CORREÇÃO: Sync imediato após adicionar item
+    syncManager.syncSalesImmediately();
+    return item;
 });
 electron_1.ipcMain.handle('sales:addPayment', async (_, { saleId, paymentData }) => {
-    return dbManager.addSalePayment(saleId, paymentData);
+    const payment = dbManager.addSalePayment(saleId, paymentData);
+    // 🔴 CORREÇÃO: Sync imediato após adicionar pagamento
+    syncManager.syncSalesImmediately();
+    return payment;
 });
 electron_1.ipcMain.handle('sales:list', async (_, filters) => {
     return dbManager.getSales(filters);

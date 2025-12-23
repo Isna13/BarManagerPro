@@ -1,0 +1,26 @@
+{
+  "categories": {
+    "electron": 0,
+    "railway": 0,
+    "error": "Request failed with status code 401"
+  },
+  "suppliers": {
+    "electron": 1,
+    "railway": 0,
+    "error": "Request failed with status code 401"
+  },
+  "products": {
+    "electron": 0,
+    "railway": 0,
+    "error": "Request failed with status code 401"
+  },
+  "syncQueue": {
+    "stats": [
+      {
+        "status": "pending",
+        "cnt": "4"
+      }
+    ],
+    "failed": 0
+  }
+}

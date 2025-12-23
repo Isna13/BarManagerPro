@@ -11,19 +11,31 @@ export class SuppliersService {
     const code = providedCode || `SUP-${Date.now()}`;
     
     try {
-      // 🔴 CORREÇÃO: Verificar duplicidade por ID ou código (idempotência)
+      // 🔴 CORREÇÃO CRÍTICA: Usar UPSERT para garantir que o ID fornecido seja usado
+      // Isso permite que o Electron mantenha consistência de IDs com o servidor
       if (id) {
-        const existingById = await this.prisma.supplier.findUnique({
+        const result = await this.prisma.supplier.upsert({
           where: { id },
-          include: { branch: true },
+          update: {
+            ...data,
+            code,
+            ...(branchId && { branchId }),
+          },
+          create: {
+            id, // Usar o ID fornecido pelo cliente
+            code,
+            ...data,
+            ...(branchId && { branchId }),
+          },
+          include: {
+            branch: true,
+          },
         });
-        if (existingById) {
-          console.log(`⚠️ Fornecedor já existe por ID, retornando existente: ${id}`);
-          return existingById;
-        }
+        console.log(`✅ Supplier upserted com ID: ${id}`);
+        return result;
       }
       
-      // Verificar duplicidade por código
+      // Verificar duplicidade por código (apenas quando não tem ID)
       const existingByCode = await this.prisma.supplier.findFirst({
         where: { code },
       });
@@ -33,7 +45,6 @@ export class SuppliersService {
       
       return await this.prisma.supplier.create({
         data: {
-          ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
           code,
           ...data,
           ...(branchId && { branchId }),
