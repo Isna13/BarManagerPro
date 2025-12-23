@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { 
   Database, CheckCircle, AlertCircle, Settings as SettingsIcon, 
   ShoppingCart, Table, Package, Printer, Shield, HardDrive, 
@@ -42,6 +43,7 @@ interface ConnectedDevice {
 }
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [migrationStatus, setMigrationStatus] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<any>(null);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -607,22 +609,22 @@ export default function SettingsPage() {
       const result = await window.electronAPI?.admin?.resetLocalData?.(userId, 'CONFIRMAR_RESET_LOCAL');
 
       if (result?.success) {
-        const successMsg = `✅ Dados locais zerados com sucesso!\nBackup salvo em: ${result.backupPath || 'N/A'}`;
+        const successMsg = `Dados locais zerados com sucesso! Backup salvo em: ${result.backupPath || 'N/A'}`;
         setResetStatus({ type: 'success', message: successMsg });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
         loadLocalDataCounts();
-        // Alert visual para garantir que o usuário veja
-        setTimeout(() => alert(successMsg), 100);
+        // Toast moderno em vez de alert
+        toast.success(successMsg, 8000);
       } else {
         const errorMsg = result?.error || 'Erro ao zerar dados';
         setResetStatus({ type: 'error', message: errorMsg });
-        alert(`❌ Erro: ${errorMsg}`);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       const errorMsg = error.message || 'Erro ao zerar dados locais';
       setResetStatus({ type: 'error', message: errorMsg });
-      alert(`❌ Erro: ${errorMsg}`);
+      toast.error(errorMsg);
     } finally {
       setResetLoading(false);
     }
@@ -642,21 +644,21 @@ export default function SettingsPage() {
       const result = await window.electronAPI?.admin?.resetServerData?.('CONFIRMAR_RESET_DADOS');
 
       if (result?.success) {
-        const successMsg = '✅ Dados do servidor Railway zerados com sucesso!';
+        const successMsg = 'Dados do servidor Railway zerados com sucesso!';
         setResetStatus({ type: 'success', message: successMsg });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
         loadServerDataCounts();
-        setTimeout(() => alert(successMsg), 100);
+        toast.success(successMsg, 8000);
       } else {
         const errorMsg = result?.error || 'Erro ao zerar dados do servidor';
         setResetStatus({ type: 'error', message: errorMsg });
-        alert(`❌ Erro: ${errorMsg}`);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       const errorMsg = error.message || 'Erro ao zerar dados do servidor';
       setResetStatus({ type: 'error', message: errorMsg });
-      alert(`❌ Erro: ${errorMsg}`);
+      toast.error(errorMsg);
     } finally {
       setResetLoading(false);
     }
@@ -677,20 +679,22 @@ export default function SettingsPage() {
 
       if (result?.success) {
         const commandId = result.commandId ? ` (ID: ${result.commandId})` : '';
-        const successMsg = `✅ ${result.message || 'Comando de reset enfileirado!'}${commandId}\n\n⚠️ O app mobile executará o reset na próxima sincronização.`;
+        const successMsg = `${result.message || 'Comando de reset criado.'}${commandId}`;
         setResetStatus({ type: 'success', message: result.message || 'Comando enfileirado' });
         setShowResetConfirmModal(null);
         setResetConfirmInput('');
-        setTimeout(() => alert(successMsg), 100);
+        // Toast moderno com aviso adicional
+        toast.success(successMsg, 8000);
+        toast.warning('O app mobile executará o reset na próxima sincronização.', 8000);
       } else {
         const errorMsg = result?.message || 'Erro ao enviar comando';
         setResetStatus({ type: 'error', message: errorMsg });
-        alert(`❌ Erro: ${errorMsg}`);
+        toast.error(errorMsg);
       }
     } catch (error: any) {
       const errorMsg = error.message || 'Erro ao resetar mobile';
       setResetStatus({ type: 'error', message: errorMsg });
-      alert(`❌ Erro: ${errorMsg}`);
+      toast.error(errorMsg);
     } finally {
       setResetLoading(false);
     }
