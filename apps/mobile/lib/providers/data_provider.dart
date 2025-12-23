@@ -53,6 +53,58 @@ class DataProvider extends ChangeNotifier {
   double get totalStockValue =>
       _inventory.fold(0.0, (sum, i) => sum + i.stockValue);
 
+  // 🔴 CORREÇÃO: Getter para dívidas agrupadas por cliente
+  /// Retorna dívidas agrupadas por cliente com totais consolidados
+  List<models.CustomerDebtSummary> get debtsByCustomer {
+    final grouped = <String, List<models.Debt>>{};
+    
+    for (final debt in _debts) {
+      final customerId = debt.customerId;
+      grouped.putIfAbsent(customerId, () => []).add(debt);
+    }
+    
+    return grouped.entries.map((entry) {
+      final customerDebts = entry.value;
+      final firstDebt = customerDebts.first;
+      
+      // Calcular totais
+      final totalOriginal = customerDebts.fold<double>(
+        0.0, (sum, d) => sum + d.originalAmount);
+      final totalPaid = customerDebts.fold<double>(
+        0.0, (sum, d) => sum + d.paidAmount);
+      final totalRemaining = customerDebts.fold<double>(
+        0.0, (sum, d) => sum + d.remainingAmount);
+      
+      // Encontrar a data de vencimento mais próxima
+      DateTime? oldestDueDate;
+      for (final d in customerDebts) {
+        if (d.dueDate != null) {
+          if (oldestDueDate == null || d.dueDate!.isBefore(oldestDueDate)) {
+            oldestDueDate = d.dueDate;
+          }
+        }
+      }
+      
+      // Contar pendentes e vencidas
+      final pendingCount = customerDebts.where((d) => d.status == 'pending').length;
+      final overdueCount = customerDebts.where((d) => d.status == 'overdue').length;
+      
+      return models.CustomerDebtSummary(
+        customerId: entry.key,
+        customerName: firstDebt.customerName ?? 'Cliente',
+        totalOriginalAmount: totalOriginal,
+        totalPaidAmount: totalPaid,
+        totalRemainingAmount: totalRemaining,
+        debtCount: customerDebts.length,
+        pendingCount: pendingCount,
+        overdueCount: overdueCount,
+        debts: customerDebts,
+        oldestDueDate: oldestDueDate,
+      );
+    }).toList()
+      ..sort((a, b) => b.totalRemainingAmount.compareTo(a.totalRemainingAmount));
+  }
+
   // Set API Service
   void setApiService(ApiService apiService) {
     _apiService = apiService;

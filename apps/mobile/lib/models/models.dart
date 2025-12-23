@@ -473,6 +473,48 @@ class DebtPayment {
   }
 }
 
+// 🔴 CORREÇÃO: Modelo para dívidas agrupadas por cliente
+/// Representa o resumo consolidado de todas as dívidas de um cliente
+class CustomerDebtSummary {
+  final String customerId;
+  final String customerName;
+  final double totalOriginalAmount;
+  final double totalPaidAmount;
+  final double totalRemainingAmount;
+  final int debtCount;
+  final int pendingCount;
+  final int overdueCount;
+  final List<Debt> debts;
+  final DateTime? oldestDueDate;
+
+  CustomerDebtSummary({
+    required this.customerId,
+    required this.customerName,
+    required this.totalOriginalAmount,
+    required this.totalPaidAmount,
+    required this.totalRemainingAmount,
+    required this.debtCount,
+    required this.pendingCount,
+    required this.overdueCount,
+    required this.debts,
+    this.oldestDueDate,
+  });
+
+  /// Percentual já pago do total original
+  double get paymentProgress =>
+      totalOriginalAmount > 0 ? (totalPaidAmount / totalOriginalAmount) : 0.0;
+
+  /// Se tem alguma dívida vencida
+  bool get hasOverdue => overdueCount > 0;
+
+  /// Status geral (baseado na pior situação)
+  String get overallStatus {
+    if (overdueCount > 0) return 'overdue';
+    if (pendingCount > 0) return 'pending';
+    return 'paid';
+  }
+}
+
 // Inventory Model
 class Inventory {
   final String id;

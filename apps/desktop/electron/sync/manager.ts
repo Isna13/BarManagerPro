@@ -2381,6 +2381,19 @@ export class SyncManager {
               this.dbManager.createSale(saleData, true); // skipSyncQueue = true
               console.log(`➕ Venda criada do servidor: ${item.id} (${item.status}, total: ${item.total})`);
               
+              // 🔴 CORREÇÃO CRÍTICA: Atualizar totais do caixa para vendas sincronizadas
+              // Vendas do Vendas-Mobile devem entrar nos cálculos da Caixa do Electron
+              const currentCashBox = this.dbManager.getCurrentCashBox();
+              if (currentCashBox && serverPaymentMethod && item.total > 0) {
+                // Verificar se a venda foi criada durante este caixa (após abertura)
+                const saleCreatedAt = new Date(item.createdAt || item.created_at || new Date());
+                const cashBoxOpenedAt = new Date(currentCashBox.opened_at);
+                
+                if (saleCreatedAt >= cashBoxOpenedAt) {
+                  this.dbManager.updateCashBoxTotals(currentCashBox.id, item.total, serverPaymentMethod);
+                  console.log(`  💰 Caixa atualizado: +${item.total} (${serverPaymentMethod})`);
+                }
+              }              
               // Sincronizar itens da venda se existirem
               if (item.items && Array.isArray(item.items)) {
                 for (const saleItem of item.items) {

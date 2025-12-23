@@ -228,9 +228,28 @@ class CustomersProvider extends ChangeNotifier {
           points: pointsToAdd,
           reason: 'Pontos de compra',
         );
+        // 🔴 CORREÇÃO: Marcar como sincronizado se sucesso
+        await _db.update(
+          'customers',
+          {'synced': 1},
+          where: 'id = ?',
+          whereArgs: [customerId],
+        );
       } catch (e) {
         debugPrint('Erro ao sincronizar pontos de fidelidade: $e');
-        // Não bloqueia - será sincronizado depois
+        // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização para retry posterior
+        await _db.addToSyncQueue(
+          entityType: 'customer_loyalty',
+          entityId: customerId,
+          action: 'update',
+          data: {
+            'customerId': customerId,
+            'pointsAdded': pointsToAdd,
+            'reason': 'Pontos de compra',
+          },
+          priority: 50, // Prioridade baixa (após vendas)
+        );
+        debugPrint('📤 Pontos adicionados à fila de sync: $pointsToAdd para $customerId');
       }
 
       notifyListeners();

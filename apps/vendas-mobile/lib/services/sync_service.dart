@@ -825,6 +825,25 @@ class SyncService {
           debugPrint('✅ Merge de mesas sincronizado');
         }
         break;
+
+      // 🔴 CORREÇÃO CRÍTICA: Handler para sincronizar pontos de fidelidade
+      case 'customer_loyalty':
+        if (action == 'update') {
+          final customerId = entityId;
+          final pointsAdded = data['pointsAdded'] ?? data['points_added'] ?? 0;
+          final reason = data['reason'] ?? 'Sincronização de pontos';
+          
+          if (pointsAdded > 0 && customerId.isNotEmpty) {
+            debugPrint('🏆 Sincronizando $pointsAdded pontos para cliente $customerId');
+            await _api.addLoyaltyPoints(
+              customerId: customerId,
+              points: pointsAdded,
+              reason: reason,
+            );
+            debugPrint('✅ Pontos de fidelidade sincronizados');
+          }
+        }
+        break;
     }
   }
 
