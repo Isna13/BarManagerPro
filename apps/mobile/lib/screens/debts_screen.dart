@@ -293,7 +293,6 @@ class _DebtsScreenState extends State<DebtsScreen> {
       ),
     );
   }
-  }
 }
 
 class _DebtCard extends StatelessWidget {
