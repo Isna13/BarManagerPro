@@ -873,6 +873,10 @@ class SyncService {
       final currentCashBox = await _api.getCurrentCashBox();
       if (currentCashBox != null) {
         await _mergeCashBox(currentCashBox);
+      } else {
+        // CRÍTICO: Servidor não tem caixa aberto - FECHAR todos os caixas locais abertos
+        debugPrint('🔴 Servidor não tem caixa aberto - fechando caixas locais');
+        await _closeAllLocalOpenCashBoxes();
       }
 
       // Baixar histórico de caixas
@@ -1068,6 +1072,47 @@ class SyncService {
         await _db.update('table_orders', mappedOrder,
             where: 'id = ?', whereArgs: [orderId]);
       }
+    }
+  }
+
+  /// CRÍTICO: Fecha TODOS os caixas locais abertos quando o servidor não tem caixa aberto
+  /// Isso garante que o Mobile nunca exiba um caixa "fantasma"
+  Future<void> _closeAllLocalOpenCashBoxes() async {
+    try {
+      final openCashBoxes = await _db.query(
+        'cash_boxes',
+        where: 'status = ?',
+        whereArgs: ['open'],
+      );
+
+      debugPrint(
+          '🔴 Encontrados ${openCashBoxes.length} caixas locais abertos para fechar');
+
+      for (final cashBox in openCashBoxes) {
+        final cashBoxId = cashBox['id'];
+        final synced = cashBox['synced'] as int? ?? 1;
+
+        // IMPORTANTE: Fechar INDEPENDENTE do status de synced
+        // Se o servidor diz que não há caixa, o servidor é a fonte da verdade
+        // Se havia vendas não sincronizadas, elas já foram perdidas ou sincronizadas
+        debugPrint('🔴 Fechando caixa local: $cashBoxId (synced=$synced)');
+
+        await _db.update(
+          'cash_boxes',
+          {
+            'status': 'closed',
+            'closed_at': DateTime.now().toIso8601String(),
+            'synced':
+                1, // Marcar como sincronizado pois reflete estado do servidor
+          },
+          where: 'id = ?',
+          whereArgs: [cashBoxId],
+        );
+
+        debugPrint('✅ Caixa $cashBoxId fechado localmente');
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao fechar caixas locais: $e');
     }
   }
 
@@ -1404,14 +1449,14 @@ class SyncService {
             message: '🔄 Reset remoto executado. Baixando dados...',
             success: null,
           ));
-          
+
           // IMPORTANTE: Após reset remoto, forçar download imediato dos dados
           // Isso garante que o app não fique com banco vazio
           debugPrint('📥 Iniciando download de dados após reset remoto...');
           try {
             await _downloadServerData();
             debugPrint('✅ Dados baixados com sucesso após reset remoto');
-            
+
             // Notificar UI que os dados foram recarregados e providers devem atualizar
             _syncStatusController.add(SyncStatus(
               isSyncing: false,
@@ -1421,11 +1466,12 @@ class SyncService {
             ));
           } catch (downloadError) {
             debugPrint('⚠️ Erro ao baixar dados após reset: $downloadError');
-            
+
             // Ainda assim notificar que precisa recarregar (tentará usar cache)
             _syncStatusController.add(SyncStatus(
               isSyncing: false,
-              message: '⚠️ Reset executado. Erro ao baixar dados: $downloadError',
+              message:
+                  '⚠️ Reset executado. Erro ao baixar dados: $downloadError',
               success: false,
               requiresReload: true,
             ));

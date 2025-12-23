@@ -186,24 +186,29 @@ class CashBoxProvider extends ChangeNotifier {
         } else {
           // Servidor não tem caixa aberto
           debugPrint('🌐 Servidor não tem caixa aberto');
-          
-          // Se temos caixa local aberto mas servidor não tem, significa que foi fechado
-          // em outro dispositivo (ex: Electron) - precisamos fechar localmente também
-          if (localCashBox != null && localCashBox['synced'] == 1) {
-            debugPrint('⚠️ Caixa local aberto mas servidor fechado - fechando localmente');
-            
-            // Fechar o caixa local
+
+          // CRÍTICO: Se o servidor não tem caixa aberto, o Mobile DEVE refletir isso
+          // O servidor é a ÚNICA fonte da verdade para dados financeiros
+          if (localCashBox != null) {
+            debugPrint(
+                '🔴 CRÍTICO: Fechando caixa local - servidor é a fonte da verdade');
+            debugPrint(
+                '   Caixa local: id=${localCashBox['id']}, synced=${localCashBox['synced']}');
+
+            // Fechar o caixa local INDEPENDENTE do status synced
+            // Se havia vendas não sincronizadas, elas já deveriam ter sido enviadas
+            // Se não foram, o caixa já foi fechado no servidor de qualquer forma
             await _db.update(
               'cash_boxes',
               {
                 'status': 'closed',
                 'closed_at': DateTime.now().toIso8601String(),
-                'synced': 1, // Já está sincronizado com servidor
+                'synced': 1,
               },
               where: 'id = ?',
               whereArgs: [localCashBox['id']],
             );
-            
+
             // Adicionar ao histórico e limpar caixa atual
             _history.insert(0, {
               ...localCashBox,
@@ -212,10 +217,6 @@ class CashBoxProvider extends ChangeNotifier {
             });
             _currentCashBox = null;
             debugPrint('✅ Caixa local fechado para corresponder ao servidor');
-          } else if (localCashBox != null && localCashBox['synced'] == 0) {
-            // Caixa local tem vendas não sincronizadas - manter aberto
-            debugPrint('⚠️ Caixa local tem dados não sincronizados - mantendo aberto');
-            _currentCashBox = localCashBox;
           } else {
             _currentCashBox = null;
           }
