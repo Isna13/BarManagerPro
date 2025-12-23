@@ -2610,7 +2610,16 @@ export class SyncManager {
   private async syncEntityItem(item: SyncItem, data: any): Promise<{ success: boolean; skip?: boolean; reason?: string }> {
     const { entity, operation, entity_id } = item;
     
-    console.log(`📤 Sync ${entity}/${operation}:`, JSON.stringify(data).substring(0, 200));
+    // 🔴 LOG ESTRUTURADO: Registrar todos os detalhes da sincronização
+    const syncLog = {
+      timestamp: new Date().toISOString(),
+      entity,
+      entityId: entity_id,
+      operation,
+      dataSize: JSON.stringify(data).length,
+      dataPreview: JSON.stringify(data).substring(0, 300),
+    };
+    console.log(`📤 [SYNC] ${entity}/${operation}:`, JSON.stringify(syncLog, null, 2));
     
     // Log especial para vendas de mesa
     if (entity === 'sale') {
@@ -3168,15 +3177,36 @@ export class SyncManager {
         // Entidades normais - usar endpoint padrão
         const endpoint = this.getEndpoint(entity, operation);
         
-        if (operation === 'create') {
-          await this.apiClient.post(endpoint, data);
-        } else if (operation === 'update') {
-          await this.apiClient.put(`${endpoint}/${entity_id || ''}`, data);
-        } else if (operation === 'delete') {
-          await this.apiClient.delete(`${endpoint}/${entity_id || ''}`);
-        }
+        // 🔴 LOG ESTRUTURADO: Registrar detalhes da requisição
+        console.log(`📡 [API] ${operation.toUpperCase()} ${endpoint}${entity_id ? '/' + entity_id : ''}`);
+        console.log(`   📦 Payload (${JSON.stringify(data).length} bytes):`, JSON.stringify(data).substring(0, 500));
         
-        return { success: true };
+        try {
+          if (operation === 'create') {
+            const response = await this.apiClient.post(endpoint, data);
+            console.log(`   ✅ Response:`, response.status, response.data?.id || 'OK');
+          } else if (operation === 'update') {
+            const response = await this.apiClient.put(`${endpoint}/${entity_id || ''}`, data);
+            console.log(`   ✅ Response:`, response.status, 'OK');
+          } else if (operation === 'delete') {
+            const response = await this.apiClient.delete(`${endpoint}/${entity_id || ''}`);
+            console.log(`   ✅ Response:`, response.status, 'OK');
+          }
+          return { success: true };
+        } catch (error: any) {
+          // 🔴 LOG ESTRUTURADO: Detalhes completos do erro
+          const errorLog = {
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            message: error.response?.data?.message,
+            error: error.response?.data?.error,
+            code: error.code,
+            endpoint: `${endpoint}${entity_id ? '/' + entity_id : ''}`,
+            operation,
+          };
+          console.error(`   ❌ [API ERROR]:`, JSON.stringify(errorLog, null, 2));
+          throw error;
+        }
     }
   }
 
@@ -3570,25 +3600,29 @@ export class SyncManager {
     }
     else if (entity === 'products' || entity === 'product') {
       data.name = item.name;
-      data.description = item.description || '';
+      // 🔴 CORREÇÃO: Não enviar description se não estiver definida (evitar string vazia)
+      if (item.description) data.description = item.description;
       data.sku = item.sku;
-      data.barcode = item.barcode || '';
+      // 🔴 CORREÇÃO: Não enviar barcode vazio (pode causar conflito unique)
+      if (item.barcode) data.barcode = item.barcode;
       data.categoryId = item.category_id || item.categoryId;
       data.supplierId = item.supplier_id || item.supplierId || null;
       data.unitsPerBox = item.units_per_box || item.unitsPerBox || 1;
-      // Preços - aceitar camelCase ou snake_case, e verificar se já está em centavos
-      const sellPrice = item.sell_price ?? item.sellPrice ?? item.priceUnit ?? 0;
-      const costPrice = item.cost_price ?? item.costPrice ?? item.costUnit ?? 0;
-      // Se o preço for muito pequeno (< 100), provavelmente não está em centavos ainda
-      data.priceUnit = sellPrice >= 100 ? sellPrice : Math.round(sellPrice * 100);
-      data.priceBox = Math.round((data.priceUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
-      data.costUnit = costPrice >= 100 ? costPrice : Math.round(costPrice * 100);
-      data.costBox = Math.round((data.costUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
-      data.minStock = item.low_stock_alert || item.minStock || 0;
+      // Preços - manter valores originais se já estão em centavos
+      // 🔴 CORREÇÃO: Usar priceBox e costBox originais se disponíveis
+      data.priceUnit = item.priceUnit ?? item.price_unit ?? 0;
+      data.priceBox = item.priceBox ?? item.price_box ?? 0;
+      data.costUnit = item.costUnit ?? item.cost_unit ?? 0;
+      data.costBox = item.costBox ?? item.cost_box ?? 0;
+      // 🔴 CORREÇÃO CRÍTICA: Usar lowStockAlert (nome correto do campo no backend)
+      data.lowStockAlert = item.lowStockAlert ?? item.low_stock_alert ?? 10;
       // Converter 0/1 para boolean
       data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
       data.trackInventory = item.track_inventory === 1 || item.track_inventory === true || item.trackInventory === 1 || item.trackInventory === true || true;
       data.isMuntuEligible = item.is_muntu_eligible === 1 || item.is_muntu_eligible === true || item.isMuntuEligible === 1 || item.isMuntuEligible === true || false;
+      // 🔴 CORREÇÃO: Adicionar campos de muntu se existirem
+      if (item.muntuQuantity !== undefined && item.muntuQuantity !== null) data.muntuQuantity = item.muntuQuantity;
+      if (item.muntuPrice !== undefined && item.muntuPrice !== null) data.muntuPrice = item.muntuPrice;
       if (item.id) data.id = item.id;
     }
     else if (entity === 'customers' || entity === 'customer') {
