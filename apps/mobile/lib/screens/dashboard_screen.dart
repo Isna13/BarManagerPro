@@ -17,11 +17,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final currencyFormat =
       NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final numberFormat = NumberFormat('#,##0', 'pt_AO');
+  bool _hasLoadedInitial = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  // CRÍTICO: Forçar reload quando a tela ganhar foco
+  // Isso garante que os dados do Dashboard estejam SEMPRE atualizados com o servidor
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Recarregar dados sempre que a tela ganhar foco (exceto primeira vez)
+    if (_hasLoadedInitial) {
+      _loadData();
+    }
+    _hasLoadedInitial = true;
   }
 
   Future<void> _loadData() async {

@@ -217,11 +217,43 @@ export class CashBoxService {
     });
 
     const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+    
+    // Calcular pagamentos por método (case-insensitive) - CONSISTÊNCIA com getCurrentCashBoxForUser
     const cashPayments = sales.reduce((sum, sale) => {
-      const cashAmount = sale.payments
+      const amount = sale.payments
         .filter(p => (p.method || '').toLowerCase() === 'cash')
         .reduce((s, p) => s + p.amount, 0);
-      return sum + cashAmount;
+      return sum + amount;
+    }, 0);
+
+    const mobileMoneyPayments = sales.reduce((sum, sale) => {
+      const amount = sale.payments
+        .filter(p => {
+          const method = (p.method || '').toLowerCase();
+          return method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile';
+        })
+        .reduce((s, p) => s + p.amount, 0);
+      return sum + amount;
+    }, 0);
+
+    const cardPayments = sales.reduce((sum, sale) => {
+      const amount = sale.payments
+        .filter(p => {
+          const method = (p.method || '').toLowerCase();
+          return method === 'card' || method === 'mixed';
+        })
+        .reduce((s, p) => s + p.amount, 0);
+      return sum + amount;
+    }, 0);
+
+    const debtPayments = sales.reduce((sum, sale) => {
+      const amount = sale.payments
+        .filter(p => {
+          const method = (p.method || '').toLowerCase();
+          return method === 'debt' || method === 'vale';
+        })
+        .reduce((s, p) => s + p.amount, 0);
+      return sum + amount;
     }, 0);
 
     return {
@@ -229,6 +261,10 @@ export class CashBoxService {
       stats: {
         totalSales,
         cashPayments,
+        mobileMoneyPayments,
+        cardPayments,
+        debtPayments,
+        totalCashOut: 0, // Saídas de caixa (não implementado ainda)
         currentAmount: cashBox.openingCash + cashPayments,
         salesCount: sales.length,
       },
@@ -267,11 +303,43 @@ export class CashBoxService {
         });
 
         const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        
+        // Calcular pagamentos por método (case-insensitive) - CONSISTÊNCIA com getCurrentCashBoxForUser
         const cashPayments = sales.reduce((sum, sale) => {
-          const cashAmount = sale.payments
+          const amount = sale.payments
             .filter(p => (p.method || '').toLowerCase() === 'cash')
             .reduce((s, p) => s + p.amount, 0);
-          return sum + cashAmount;
+          return sum + amount;
+        }, 0);
+
+        const mobileMoneyPayments = sales.reduce((sum, sale) => {
+          const amount = sale.payments
+            .filter(p => {
+              const method = (p.method || '').toLowerCase();
+              return method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile';
+            })
+            .reduce((s, p) => s + p.amount, 0);
+          return sum + amount;
+        }, 0);
+
+        const cardPayments = sales.reduce((sum, sale) => {
+          const amount = sale.payments
+            .filter(p => {
+              const method = (p.method || '').toLowerCase();
+              return method === 'card' || method === 'mixed';
+            })
+            .reduce((s, p) => s + p.amount, 0);
+          return sum + amount;
+        }, 0);
+
+        const debtPayments = sales.reduce((sum, sale) => {
+          const amount = sale.payments
+            .filter(p => {
+              const method = (p.method || '').toLowerCase();
+              return method === 'debt' || method === 'vale';
+            })
+            .reduce((s, p) => s + p.amount, 0);
+          return sum + amount;
         }, 0);
 
         return {
@@ -279,6 +347,10 @@ export class CashBoxService {
           stats: {
             totalSales,
             cashPayments,
+            mobileMoneyPayments,
+            cardPayments,
+            debtPayments,
+            totalCashOut: 0, // Saídas de caixa (não implementado ainda)
             currentAmount: cashBox.openingCash + cashPayments,
             salesCount: sales.length,
           },
@@ -395,6 +467,7 @@ export class CashBoxService {
         mobileMoneyPayments,
         cardPayments,
         debtPayments,
+        totalCashOut: 0, // Saídas de caixa (não implementado ainda, mas necessário para consistência)
         currentAmount: cashBox.openingCash + cashPayments,
         salesCount: sales.length,
       },
@@ -484,6 +557,7 @@ export class CashBoxService {
             mobileMoneyPayments,
             cardPayments,
             debtPayments,
+            totalCashOut: 0, // Saídas de caixa (não implementado ainda)
             currentAmount: cashBox.openingCash + cashPayments,
             salesCount: sales.length,
           },

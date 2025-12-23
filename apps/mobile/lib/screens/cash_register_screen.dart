@@ -18,6 +18,7 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
       NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
   final timeFormat = DateFormat('HH:mm');
+  bool _hasLoadedInitial = false;
 
   @override
   void initState() {
@@ -25,6 +26,18 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
     });
+  }
+
+  // CRÍTICO: Forçar reload quando a tela ganhar foco
+  // Isso garante que os dados estejam SEMPRE atualizados com o servidor
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Recarregar dados sempre que a tela ganhar foco (exceto primeira vez)
+    if (_hasLoadedInitial) {
+      _loadData();
+    }
+    _hasLoadedInitial = true;
   }
 
   Future<void> _loadData() async {

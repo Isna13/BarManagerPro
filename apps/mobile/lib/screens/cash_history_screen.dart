@@ -19,6 +19,7 @@ class _CashHistoryScreenState extends State<CashHistoryScreen> {
   final dateFormat = DateFormat('dd/MM/yyyy');
   final timeFormat = DateFormat('HH:mm');
   DateTime? _selectedDate;
+  bool _hasLoadedInitial = false;
 
   @override
   void initState() {
@@ -26,6 +27,18 @@ class _CashHistoryScreenState extends State<CashHistoryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
     });
+  }
+
+  // CRÍTICO: Forçar reload quando a tela ganhar foco
+  // Isso garante que os dados estejam SEMPRE atualizados com o servidor
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Recarregar dados sempre que a tela ganhar foco (exceto primeira vez)
+    if (_hasLoadedInitial) {
+      _loadData();
+    }
+    _hasLoadedInitial = true;
   }
 
   Future<void> _loadData() async {

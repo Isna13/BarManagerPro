@@ -825,6 +825,8 @@ class PurchaseItem {
 }
 
 // Cash Box Model
+// CRÍTICO: Todos os valores financeiros devem vir DIRETAMENTE do servidor (Railway)
+// O app NÃO deve recalcular nenhum total - apenas renderizar os dados do servidor
 class CashBox {
   final String id;
   final String branchId;
@@ -833,8 +835,13 @@ class CashBox {
   final double openingBalance;
   final double? closingBalance;
   final double? totalSales;
-  final double? totalCashIn;
-  final double? totalCashOut;
+  final double? totalCashIn;       // Pagamentos em dinheiro (CASH)
+  final double? totalCashOut;      // Saídas de caixa
+  final double? mobileMoneyPayments; // Orange Money, TeleTaku, etc
+  final double? cardPayments;      // Cartão
+  final double? debtPayments;      // VALE/Dívidas
+  final double? currentAmount;     // Saldo esperado CALCULADO PELO SERVIDOR
+  final int? salesCount;           // Quantidade de vendas
   final String status;
   final DateTime openedAt;
   final DateTime? closedAt;
@@ -850,6 +857,11 @@ class CashBox {
     this.totalSales,
     this.totalCashIn,
     this.totalCashOut,
+    this.mobileMoneyPayments,
+    this.cardPayments,
+    this.debtPayments,
+    this.currentAmount,
+    this.salesCount,
     required this.status,
     required this.openedAt,
     this.closedAt,
@@ -857,10 +869,11 @@ class CashBox {
   });
 
   factory CashBox.fromJson(Map<String, dynamic> json) {
-    // Mapear campos: API usa openingCash/closingCash, modelo espera openingBalance/closingBalance
-    // O backend pode retornar stats como objeto aninhado com totalSales, cashPayments, etc.
+    // CRÍTICO: O backend retorna stats como objeto aninhado com TODOS os valores calculados
+    // O app DEVE usar esses valores diretamente, NÃO recalcular localmente
     final stats = json['stats'] as Map<String, dynamic>?;
 
+    // Valores básicos do caixa
     final openingBalance = (json['opening_balance'] ??
             json['openingBalance'] ??
             json['openingCash'] ??
@@ -869,15 +882,28 @@ class CashBox {
     final closingBalance = json['closing_balance'] ??
         json['closingBalance'] ??
         json['closingCash'];
-    // Ler totalSales do stats se disponível
+    
+    // VALORES DO STATS (fonte da verdade)
+    // totalSales: Total de todas as vendas
     final totalSales =
         stats?['totalSales'] ?? json['total_sales'] ?? json['totalSales'];
-    // totalCashIn usa cashPayments do stats (pagamentos em dinheiro)
+    // cashPayments: Pagamentos em dinheiro (entra no caixa físico)
     final totalCashIn = stats?['cashPayments'] ??
         json['total_cash_in'] ??
         json['totalCashIn'] ??
         json['totalCash'];
+    // totalCashOut: Saídas manuais de caixa
     final totalCashOut = json['total_cash_out'] ?? json['totalCashOut'];
+    // mobileMoneyPayments: Orange Money, TeleTaku, etc
+    final mobileMoneyPayments = stats?['mobileMoneyPayments'];
+    // cardPayments: Pagamentos em cartão
+    final cardPayments = stats?['cardPayments'];
+    // debtPayments: VALE (vendas fiado)
+    final debtPayments = stats?['debtPayments'];
+    // currentAmount: SALDO ESPERADO calculado pelo SERVIDOR (abertura + dinheiro - saídas)
+    final currentAmount = stats?['currentAmount'];
+    // salesCount: Quantidade de vendas
+    final salesCount = stats?['salesCount'];
 
     return CashBox(
       id: json['id'] ?? '',
@@ -894,6 +920,11 @@ class CashBox {
       totalSales: totalSales != null ? totalSales.toDouble() / 100 : null,
       totalCashIn: totalCashIn != null ? totalCashIn.toDouble() / 100 : null,
       totalCashOut: totalCashOut != null ? totalCashOut.toDouble() / 100 : null,
+      mobileMoneyPayments: mobileMoneyPayments != null ? mobileMoneyPayments.toDouble() / 100 : null,
+      cardPayments: cardPayments != null ? cardPayments.toDouble() / 100 : null,
+      debtPayments: debtPayments != null ? debtPayments.toDouble() / 100 : null,
+      currentAmount: currentAmount != null ? currentAmount.toDouble() / 100 : null,
+      salesCount: salesCount,
       status: json['status'] ?? 'open',
       openedAt:
           DateTime.tryParse(json['opened_at'] ?? json['openedAt'] ?? '') ??
@@ -907,11 +938,15 @@ class CashBox {
     );
   }
 
+  // CRÍTICO: O saldo esperado DEVE vir do servidor (currentAmount)
+  // Se não disponível, calcular como fallback (mas isso indica problema de sincronização)
   double get expectedBalance {
-    // Saldo esperado = abertura + entradas em dinheiro - saídas
-    // totalCashIn representa os pagamentos em dinheiro (vendas pagas em cash)
-    // totalSales é o valor total das vendas (pode incluir outros métodos)
-    // Para o saldo do caixa físico, usamos apenas o dinheiro em espécie
+    // PRIORIDADE: Usar currentAmount do servidor (fonte da verdade)
+    if (currentAmount != null) {
+      return currentAmount!;
+    }
+    // FALLBACK: Calcular localmente apenas se servidor não retornou o valor
+    // Isso NÃO deve acontecer em operação normal
     return openingBalance + (totalCashIn ?? 0) - (totalCashOut ?? 0);
   }
 
