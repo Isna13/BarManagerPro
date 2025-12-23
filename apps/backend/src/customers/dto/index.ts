@@ -54,7 +54,11 @@ export class CreateCustomerDto {
 export class UpdateCustomerDto {
   @IsOptional()
   @IsString()
-  name?: string;
+  name?: string;  // Aceitar 'name' do Electron (será convertido para fullName)
+
+  @IsOptional()
+  @IsString()
+  fullName?: string;  // Campo real do Prisma
 
   @IsOptional()
   @IsString()
@@ -85,4 +89,8 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsString()
   notes?: string;
+  
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

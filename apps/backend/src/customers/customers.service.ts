@@ -47,10 +47,11 @@ export class CustomersService {
     });
   }
 
-  async findAll(branchId?: string, search?: string) {
+  async findAll(branchId?: string, search?: string, active?: boolean) {
     const customers = await this.prisma.customer.findMany({
       where: {
         ...(branchId && { branchId }),
+        ...(active !== undefined && { isActive: active }),
         ...(search && {
           OR: [
             { fullName: { contains: search } },
@@ -134,9 +135,36 @@ export class CustomersService {
       throw new NotFoundException('Cliente não encontrado');
     }
 
+    // 🔴 CORREÇÃO CRÍTICA: Mapear campos do DTO para o schema Prisma
+    // O Electron envia 'name' mas o Prisma usa 'fullName'
+    const { name, _deviceId, _timestamp, ...restDto } = updateDto as any;
+    
+    // Campos válidos do model Customer no Prisma
+    const validFields = [
+      'fullName', 'phone', 'email', 'address', 'creditLimit', 
+      'loyaltyPoints', 'notes', 'isActive', 'isBlocked', 'branchId'
+    ];
+    
+    // Construir payload limpo apenas com campos válidos
+    const cleanData: Record<string, any> = {};
+    
+    // Converter name para fullName
+    if (name !== undefined) {
+      cleanData.fullName = name;
+    }
+    
+    // Copiar campos válidos do restDto
+    for (const [key, value] of Object.entries(restDto)) {
+      if (validFields.includes(key) && value !== undefined) {
+        cleanData[key] = value;
+      }
+    }
+    
+    console.log(`📝 Atualizando cliente ${id}:`, JSON.stringify(cleanData));
+
     return this.prisma.customer.update({
       where: { id },
-      data: updateDto,
+      data: cleanData,
     });
   }
 
@@ -147,6 +175,24 @@ export class CustomersService {
         payments: true,
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async remove(id: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
+    // Soft delete - marcar como inativo
+    console.log(`🗑️ Soft delete cliente: ${customer.fullName} (${id})`);
+    
+    return this.prisma.customer.update({
+      where: { id },
+      data: { isActive: false },
     });
   }
 
