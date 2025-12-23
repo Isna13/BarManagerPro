@@ -873,7 +873,11 @@ export class SyncManager {
         
       } catch (error: any) {
         hasFailures = true;
-        const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+        // Garantir que errorMsg é sempre uma string (pode vir como array do backend)
+        let errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+        if (Array.isArray(errorMsg)) {
+          errorMsg = errorMsg.join(', ');
+        }
         console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
         
         // Log de auditoria - erro
@@ -883,7 +887,7 @@ export class SyncManager {
           entityId: item.entity_id,
           direction: 'push',
           status: 'error',
-          errorMessage: errorMsg,
+          errorMessage: String(errorMsg),
         });
         
         // Verificar tipo de erro
@@ -930,9 +934,10 @@ export class SyncManager {
               this.dbManager.markSyncItemCompleted(item.id);
             }
           } catch (error: any) {
-            const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+            let errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+            if (Array.isArray(errorMsg)) errorMsg = errorMsg.join(', ');
             console.error(`❌ Re-sync ${item.entity} falhou:`, errorMsg);
-            this.dbManager.markSyncItemFailed(item.id, errorMsg);
+            this.dbManager.markSyncItemFailed(item.id, String(errorMsg));
           }
         }
       }
@@ -3493,16 +3498,20 @@ export class SyncManager {
     // Clone para não modificar o original
     const data: any = {};
 
+    // Normalizar nome da entidade (singular/plural)
+    const entity = entityName.toLowerCase();
+
     // Mapeamentos específicos por entidade (SQLite -> Backend)
-    if (entityName === 'categories') {
+    if (entity === 'categories' || entity === 'category') {
       data.name = item.name;
-      data.description = item.description;
-      data.parentId = item.parent_id;
-      data.sortOrder = item.sort_order || 0;
-      data.isActive = item.is_active === 1;
+      data.description = item.description || '';
+      data.parentId = item.parent_id || item.parentId || null;
+      data.sortOrder = item.sort_order ?? item.sortOrder ?? 0;
+      // Converter 0/1 para boolean
+      data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
       if (item.id) data.id = item.id;
     }
-    else if (entityName === 'sale') {
+    else if (entity === 'sale' || entity === 'sales') {
       // Venda - mapear campos do desktop para o backend
       data.branchId = item.branchId || item.branch_id || 'main-branch';
       data.type = item.type || 'counter';
@@ -3521,36 +3530,44 @@ export class SyncManager {
       data.paymentMethod = item.paymentMethod ?? item.payment_method;
       if (item.id) data.id = item.id;
     }
-    else if (entityName === 'suppliers') {
+    else if (entity === 'suppliers' || entity === 'supplier') {
       data.name = item.name;
       data.code = item.code;
-      data.contactPerson = item.contact_person;
-      data.phone = item.phone;
-      data.email = item.email;
-      data.address = item.address;
-      data.taxId = item.tax_id;
-      data.paymentTerms = item.payment_terms;
-      data.notes = item.notes;
-      data.isActive = item.is_active === 1;
+      data.contactPerson = item.contact_person || item.contactPerson || '';
+      data.phone = item.phone || '';
+      data.email = item.email || '';
+      data.address = item.address || '';
+      data.taxId = item.tax_id || item.taxId || '';
+      data.paymentTerms = item.payment_terms || item.paymentTerms || '';
+      data.notes = item.notes || '';
+      // Converter 0/1 para boolean
+      data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
       if (item.id) data.id = item.id;
     }
-    else if (entityName === 'products') {
+    else if (entity === 'products' || entity === 'product') {
       data.name = item.name;
-      data.description = item.description;
+      data.description = item.description || '';
       data.sku = item.sku;
-      data.barcode = item.barcode;
-      data.categoryId = item.category_id;
-      data.unitsPerBox = item.units_per_box || 1;
-      data.priceUnit = Math.round((item.sell_price || 0) * 100); // Converter para centavos
-      data.priceBox = Math.round((item.sell_price || 0) * (item.units_per_box || 1) * 100);
-      data.costUnit = Math.round((item.cost_price || 0) * 100);
-      data.costBox = Math.round((item.cost_price || 0) * (item.units_per_box || 1) * 100);
-      data.minStock = item.low_stock_alert || 0;
-      data.isActive = item.is_active === 1;
-      data.trackInventory = true;
+      data.barcode = item.barcode || '';
+      data.categoryId = item.category_id || item.categoryId;
+      data.supplierId = item.supplier_id || item.supplierId || null;
+      data.unitsPerBox = item.units_per_box || item.unitsPerBox || 1;
+      // Preços - aceitar camelCase ou snake_case, e verificar se já está em centavos
+      const sellPrice = item.sell_price ?? item.sellPrice ?? item.priceUnit ?? 0;
+      const costPrice = item.cost_price ?? item.costPrice ?? item.costUnit ?? 0;
+      // Se o preço for muito pequeno (< 100), provavelmente não está em centavos ainda
+      data.priceUnit = sellPrice >= 100 ? sellPrice : Math.round(sellPrice * 100);
+      data.priceBox = Math.round((data.priceUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
+      data.costUnit = costPrice >= 100 ? costPrice : Math.round(costPrice * 100);
+      data.costBox = Math.round((data.costUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
+      data.minStock = item.low_stock_alert || item.minStock || 0;
+      // Converter 0/1 para boolean
+      data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
+      data.trackInventory = item.track_inventory === 1 || item.track_inventory === true || item.trackInventory === 1 || item.trackInventory === true || true;
+      data.isMuntuEligible = item.is_muntu_eligible === 1 || item.is_muntu_eligible === true || item.isMuntuEligible === 1 || item.isMuntuEligible === true || false;
       if (item.id) data.id = item.id;
     }
-    else if (entityName === 'customers' || entityName === 'customer') {
+    else if (entity === 'customers' || entity === 'customer') {
       data.name = item.full_name || item.name || 'Cliente';
       data.fullName = item.full_name || item.name;
       data.phone = item.phone;
@@ -3565,10 +3582,24 @@ export class SyncManager {
     }
     else {
       // Fallback: copiar todos os campos com mapeamento básico
+      // Lista de campos internos que não devem ser enviados ao backend
+      const internalFields = ['synced', 'created_at', 'updated_at', 'createdAt', 'updatedAt', '_deviceId', '_timestamp'];
+      // Lista de campos booleanos conhecidos
+      const booleanFields = ['isActive', 'is_active', 'trackInventory', 'track_inventory', 'isMuntuEligible', 'is_muntu_eligible'];
+      
       for (const [key, value] of Object.entries(item)) {
+        // Ignorar campos internos
+        if (internalFields.includes(key)) continue;
+        
         // Converter snake_case para camelCase
         const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-        data[camelKey] = value;
+        
+        // Converter campos booleanos de 0/1 para true/false
+        if (booleanFields.includes(key) || booleanFields.includes(camelKey)) {
+          data[camelKey] = value === 1 || value === true;
+        } else {
+          data[camelKey] = value;
+        }
       }
     }
 

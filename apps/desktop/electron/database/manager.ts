@@ -4247,12 +4247,19 @@ export class DatabaseManager {
     `).run(id);
   }
 
-  markSyncItemFailed(id: string, error: string) {
+  markSyncItemFailed(id: string | null, error: string | string[]) {
+    // Garantir que id não é null (proteção contra chamadas inválidas)
+    if (!id) {
+      console.warn('⚠️ markSyncItemFailed chamado com id nulo');
+      return;
+    }
+    // Converter array de erros para string
+    const errorStr = Array.isArray(error) ? error.join(', ') : String(error);
     this.db.prepare(`
       UPDATE sync_queue 
       SET status = 'failed', retry_count = retry_count + 1, last_error = ? 
       WHERE id = ?
-    `).run(error, id);
+    `).run(errorStr, id);
   }
 
   /**
