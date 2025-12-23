@@ -149,7 +149,8 @@ class CashBoxProvider extends ChangeNotifier {
                 'total_mobile_money': finalMobile.toInt(),
                 'total_debt': finalDebt.toInt(),
                 // CRÍTICO: total_sales DEVE incluir TODOS os métodos, inclusive VALE/debt
-                'total_sales': (finalCash + finalCard + finalMobile + finalDebt).toInt(),
+                'total_sales':
+                    (finalCash + finalCard + finalMobile + finalDebt).toInt(),
                 'synced': 0,
               };
 

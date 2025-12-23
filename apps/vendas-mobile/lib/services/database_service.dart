@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -513,12 +514,40 @@ class DatabaseService {
     required Map<String, dynamic> data,
     int priority = 10,
   }) async {
+    // 🔴 VALIDAÇÃO CRÍTICA: entityId não pode ser vazio
+    if (entityId.isEmpty) {
+      debugPrint('❌ ERRO CRÍTICO: entityId vazio para $entityType/$action');
+      debugPrint(
+          '   Data: ${data.toString().substring(0, data.toString().length.clamp(0, 200))}');
+      throw ArgumentError('entityId não pode ser vazio para sincronização');
+    }
+
+    // 🔴 VALIDAÇÃO: entityType também é obrigatório
+    if (entityType.isEmpty) {
+      debugPrint('❌ ERRO CRÍTICO: entityType vazio para $entityId/$action');
+      throw ArgumentError('entityType não pode ser vazio para sincronização');
+    }
+
     // Converter data para JSON string válido
     String dataJson;
     try {
       dataJson = jsonEncode(data);
+      if (dataJson == '{}' || dataJson == 'null') {
+        debugPrint(
+            '⚠️ AVISO: data vazio para $entityType/$entityId - pode causar problemas de sync');
+      }
     } catch (e) {
-      dataJson = '{}';
+      debugPrint('❌ ERRO ao serializar data para sync: $e');
+      // Tentar serialização mais segura
+      final sanitizedData = <String, dynamic>{};
+      data.forEach((key, value) {
+        if (value is String || value is num || value is bool || value == null) {
+          sanitizedData[key] = value;
+        } else {
+          sanitizedData[key] = value.toString();
+        }
+      });
+      dataJson = jsonEncode(sanitizedData);
     }
 
     await insert('sync_queue', {
@@ -530,6 +559,9 @@ class DatabaseService {
       'created_at': DateTime.now().toIso8601String(),
       'status': 'pending',
     });
+
+    debugPrint(
+        '📤 Adicionado à fila: $entityType/$entityId ($action) priority=$priority');
   }
 
   Future<List<Map<String, dynamic>>> getPendingSyncItems() async {
@@ -583,7 +615,8 @@ class DatabaseService {
       GROUP BY entity_type
     ''');
     return Map.fromEntries(
-      result.map((r) => MapEntry(r['entity_type'] as String, r['count'] as int)),
+      result
+          .map((r) => MapEntry(r['entity_type'] as String, r['count'] as int)),
     );
   }
 

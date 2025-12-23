@@ -434,6 +434,9 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
   final _customerNameController = TextEditingController();
   String? _selectedCustomerId;
 
+  // 🔴 PROTEÇÃO: Flag para evitar cliques duplos no pagamento
+  bool _isProcessingPayment = false;
+
   @override
   void dispose() {
     _customerNameController.dispose();
@@ -1733,85 +1736,104 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     required int amount,
     required TablesProvider tables,
   }) async {
-    final auth = context.read<AuthProvider>();
-    final cashBox = context.read<CashBoxProvider>();
-    final session = tables.currentSession;
+    // 🔴 PROTEÇÃO: Evitar cliques duplos
+    if (_isProcessingPayment) {
+      debugPrint(
+          '⚠️ [PROTEÇÃO] Pagamento já em processamento, ignorando clique duplo');
+      return;
+    }
 
-    if (session == null) return;
+    setState(() => _isProcessingPayment = true);
 
-    final success = await tables.processPayment(
-      sessionId: session['id'],
-      tableCustomerId: customerId,
-      method: method,
-      amount: amount,
-      processedBy: auth.userId ?? '',
-      isSessionPayment: false,
-    );
+    try {
+      final auth = context.read<AuthProvider>();
+      final cashBox = context.read<CashBoxProvider>();
+      final session = tables.currentSession;
 
-    if (!mounted) return;
-
-    if (success) {
-      // Atualizar totais do caixa
-      if (method == 'cash') {
-        await cashBox.updateCashBoxTotals(cashAmount: amount);
-      } else if (method == 'orange' || method == 'teletaku') {
-        await cashBox.updateCashBoxTotals(mobileMoneyAmount: amount);
-      } else if (method == 'vale') {
-        await cashBox.updateCashBoxTotals(debtAmount: amount);
+      if (session == null) {
+        setState(() => _isProcessingPayment = false);
+        return;
       }
 
-      cashBox.incrementSalesCount();
-
-      // Atribuir pontos de fidelidade (1 ponto a cada 1000 FCFA)
-      // NOTA: amount está em centavos (x100), então dividir por 100000
-      int pointsEarned = 0;
-      if (registeredCustomerId != null && amount >= 100000) {
-        pointsEarned = amount ~/ 100000;
-        final customersProvider = context.read<CustomersProvider>();
-        await customersProvider.addLoyaltyPoints(
-            registeredCustomerId, pointsEarned);
-        debugPrint(
-            '🎯 Pontos de fidelidade adicionados: $pointsEarned para cliente $registeredCustomerId (amount: $amount centavos)');
-      }
-
-      // Mensagem de sucesso com pontos (se cliente cadastrado)
-      if (registeredCustomerId != null && pointsEarned > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Pagamento realizado!',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(
-                          '🎯 +$pointsEarned ponto${pointsEarned > 1 ? 's' : ''} de fidelidade',
-                          style: const TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Pagamento realizado!'),
-              backgroundColor: Colors.green),
-        );
-      }
-    } else if (tables.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
+      final success = await tables.processPayment(
+        sessionId: session['id'],
+        tableCustomerId: customerId,
+        method: method,
+        amount: amount,
+        processedBy: auth.userId ?? '',
+        isSessionPayment: false,
       );
+
+      if (!mounted) return;
+
+      if (success) {
+        // Atualizar totais do caixa
+        if (method == 'cash') {
+          await cashBox.updateCashBoxTotals(cashAmount: amount);
+        } else if (method == 'orange' || method == 'teletaku') {
+          await cashBox.updateCashBoxTotals(mobileMoneyAmount: amount);
+        } else if (method == 'vale') {
+          await cashBox.updateCashBoxTotals(debtAmount: amount);
+        }
+
+        cashBox.incrementSalesCount();
+
+        // Atribuir pontos de fidelidade (1 ponto a cada 1000 FCFA)
+        // NOTA: amount está em centavos (x100), então dividir por 100000
+        int pointsEarned = 0;
+        if (registeredCustomerId != null && amount >= 100000) {
+          pointsEarned = amount ~/ 100000;
+          final customersProvider = context.read<CustomersProvider>();
+          await customersProvider.addLoyaltyPoints(
+              registeredCustomerId, pointsEarned);
+          debugPrint(
+              '🎯 Pontos de fidelidade adicionados: $pointsEarned para cliente $registeredCustomerId (amount: $amount centavos)');
+        }
+
+        // Mensagem de sucesso com pontos (se cliente cadastrado)
+        if (registeredCustomerId != null && pointsEarned > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Pagamento realizado!',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                            '🎯 +$pointsEarned ponto${pointsEarned > 1 ? 's' : ''} de fidelidade',
+                            style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Pagamento realizado!'),
+                backgroundColor: Colors.green),
+          );
+        }
+      } else if (tables.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tables.error!), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      // 🔴 PROTEÇÃO: Sempre liberar o lock, mesmo em caso de erro
+      if (mounted) {
+        setState(() => _isProcessingPayment = false);
+      }
     }
   }
 

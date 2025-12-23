@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto, AddSaleItemDto, ProcessPaymentDto } from './dto';
 import { normalizePaymentMethod, tryNormalizePaymentMethod, isValidPaymentMethod } from '../shared/payment-methods';
@@ -160,6 +160,22 @@ export class SalesService {
       console.error('   Stack:', error.stack);
       console.error('   Code:', error.code);
       console.error('   Meta:', error.meta);
+      
+      // 🔴 CORREÇÃO: Retornar erro adequado para cada tipo de problema
+      if (error.code === 'P2002') {
+        // Unique constraint violation
+        const target = (error.meta?.target as string[])?.join(', ') || 'campo';
+        throw new ConflictException(`Venda duplicada: ${target} já existe`);
+      }
+      if (error.code === 'P2025') {
+        // Record not found (foreign key violation)
+        throw new BadRequestException(`Referência inválida: ${error.meta?.cause || 'registro relacionado não encontrado'}`);
+      }
+      if (error.code === 'P2003') {
+        // Foreign key constraint failed
+        throw new BadRequestException(`Referência inválida: ${error.meta?.field_name || 'chave estrangeira inválida'}`);
+      }
+      
       throw new InternalServerErrorException(`Erro ao criar venda: ${error.message}`);
     }
   }

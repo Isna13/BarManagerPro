@@ -133,7 +133,8 @@ class TablesProvider extends ChangeNotifier {
   Future<void> _recalculateSessionAndCustomersTotals(
     String sessionId, {
     required String now,
-    bool fromServerSync = false, // Se veio de sync do servidor, NÃO marcar para re-sync
+    bool fromServerSync =
+        false, // Se veio de sync do servidor, NÃO marcar para re-sync
   }) async {
     // Recalcular total da sessão
     final sessionSum = await _db.rawQuery(
@@ -1085,7 +1086,48 @@ class TablesProvider extends ChangeNotifier {
 
       // ===== CRIAR REGISTRO DE VENDA PARA SINCRONIZAÇÃO =====
       // Isso garante que a venda de mesa apareça nos relatórios e sincronize com Railway/Electron
-      final saleId = _uuid.v4();
+
+      // 🔴 IDEMPOTÊNCIA: Gerar saleId determinístico baseado nos pedidos pagos
+      // Isso previne duplicação se o pagamento for chamado múltiplas vezes
+      final paidOrderIds = <String>[];
+      if (tableCustomerId != null) {
+        for (final order in _currentOrders) {
+          final orderCustomerId =
+              order['table_customer_id'] ?? order['tableCustomerId'];
+          if (orderCustomerId == tableCustomerId && order['status'] == 'paid') {
+            paidOrderIds.add(order['id'] as String);
+          }
+        }
+      }
+      paidOrderIds.sort(); // Ordenar para garantir hash consistente
+
+      // Gerar saleId determinístico ou usar UUID se não houver pedidos
+      final String saleId;
+      if (paidOrderIds.isNotEmpty) {
+        // Hash dos IDs dos pedidos garante idempotência
+        final idempotencyKey =
+            '${sessionId}_${tableCustomerId}_${paidOrderIds.join('_')}';
+        saleId =
+            'sale_${idempotencyKey.hashCode.toRadixString(16).padLeft(16, '0')}';
+      } else {
+        saleId = _uuid.v4();
+      }
+
+      // 🔴 VERIFICAR SE VENDA JÁ EXISTE (idempotência)
+      final existingSale = await _db.query(
+        'sales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      if (existingSale.isNotEmpty) {
+        debugPrint(
+            '⚠️ [IDEMPOTÊNCIA] Venda já existe: $saleId - ignorando duplicata');
+        _isLoading = false;
+        notifyListeners();
+        return true; // Retornar sucesso pois já foi processado
+      }
+
       final saleNumber =
           'M${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
       final branchId = _currentSession?['branch_id'] ?? 'main-branch';

@@ -15,6 +15,23 @@ class ProductsProvider extends ChangeNotifier {
   String? _error;
   String? _selectedCategoryId;
   String _searchQuery = '';
+  
+  // 🔴 NOVO: Flag para controlar se listener está registrado
+  bool _listenerRegistered = false;
+  
+  /// Construtor: Registrar listener automaticamente
+  ProductsProvider() {
+    // Registrar listener para eventos de sync (atualização em tempo real)
+    _registerSyncListener();
+  }
+  
+  /// Registrar listener interno (chamado no construtor)
+  void _registerSyncListener() {
+    if (_listenerRegistered) return;
+    _sync.addSyncEventListener(_onSyncEvent);
+    _listenerRegistered = true;
+    debugPrint('📡 ProductsProvider: Listener de sync registrado automaticamente');
+  }
 
   List<Map<String, dynamic>> get products => _products;
   List<Map<String, dynamic>> get categories => _categories;
@@ -22,6 +39,45 @@ class ProductsProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   String? get selectedCategoryId => _selectedCategoryId;
+  
+  /// 🔴 NOVO: Callback para eventos de sync
+  void _onSyncEvent(SyncEventType type, dynamic data) {
+    if (type == SyncEventType.productsUpdated || 
+        type == SyncEventType.inventoryUpdated) {
+      debugPrint('🔄 ProductsProvider: Recebido evento $type - recarregando...');
+      // Recarregar produtos/estoque do banco local
+      _reloadFromLocal();
+    }
+  }
+  
+  /// 🔴 NOVO: Recarregar dados do banco local (sem chamar API)
+  Future<void> _reloadFromLocal() async {
+    try {
+      final results = await _db.query(
+        'products',
+        where: 'is_active = ?',
+        whereArgs: [1],
+        orderBy: 'name ASC',
+      );
+      _products = results;
+      
+      // Recarregar estoque
+      await loadInventory();
+      
+      notifyListeners();
+      debugPrint('✅ ProductsProvider: Dados recarregados do banco local');
+    } catch (e) {
+      debugPrint('❌ ProductsProvider: Erro ao recarregar: $e');
+    }
+  }
+  
+  @override
+  void dispose() {
+    if (_listenerRegistered) {
+      _sync.removeSyncEventListener(_onSyncEvent);
+    }
+    super.dispose();
+  }
 
   // Produtos filtrados por categoria e busca
   List<Map<String, dynamic>> get filteredProducts {

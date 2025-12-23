@@ -8,6 +8,19 @@ import 'database_service.dart';
 import '../config/app_config.dart';
 import '../config/payment_methods.dart';
 
+/// Tipos de eventos de sincronização
+enum SyncEventType {
+  inventoryUpdated,
+  productsUpdated,
+  customersUpdated,
+  salesUpdated,
+  cashBoxUpdated,
+  tablesUpdated,
+}
+
+/// Callback para eventos de sincronização
+typedef SyncEventCallback = void Function(SyncEventType type, dynamic data);
+
 class SyncService {
   static final SyncService instance = SyncService._init();
 
@@ -18,16 +31,41 @@ class SyncService {
   bool _isOnline = true;
   Timer? _syncTimer;
   StreamSubscription? _connectivitySubscription;
-  
+
   // 🔴 CORREÇÃO CRÍTICA: Flag para re-sync após sync atual
   // Evita perda de vendas quando sync é ignorado por já estar em andamento
   bool _pendingSyncRequested = false;
-  
+
   // 🔴 CORREÇÃO: Debounce para evitar múltiplas chamadas em sequência rápida
   Timer? _syncDebounceTimer;
+  
+  // 🔴 NOVO: Callbacks para notificar providers sobre atualizações
+  final List<SyncEventCallback> _eventListeners = [];
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
+  
+  /// Registrar listener para eventos de sync
+  void addSyncEventListener(SyncEventCallback callback) {
+    _eventListeners.add(callback);
+  }
+  
+  /// Remover listener
+  void removeSyncEventListener(SyncEventCallback callback) {
+    _eventListeners.remove(callback);
+  }
+  
+  /// Emitir evento para todos os listeners
+  void _emitSyncEvent(SyncEventType type, [dynamic data]) {
+    debugPrint('📢 SyncEvent: $type');
+    for (final listener in _eventListeners) {
+      try {
+        listener(type, data);
+      } catch (e) {
+        debugPrint('⚠️ Erro em SyncEventListener: $e');
+      }
+    }
+  }
 
   SyncService._init();
 
@@ -75,10 +113,10 @@ class SyncService {
   // Chamado após cada venda para garantir que não se perca
   Future<void> syncSalesImmediately() async {
     debugPrint('🔥 syncSalesImmediately() chamado - sync imediato de vendas');
-    
+
     // Cancelar debounce anterior se existir
     _syncDebounceTimer?.cancel();
-    
+
     // Debounce de 500ms para evitar múltiplas chamadas em sequência rápida
     // mas ainda garantir que vendas rápidas sejam sincronizadas
     _syncDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
@@ -156,12 +194,13 @@ class SyncService {
           SyncStatus(isSyncing: false, message: 'Erro: $e', success: false));
     } finally {
       _isSyncing = false;
-      
+
       // 🔴 CORREÇÃO CRÍTICA: Verificar se há sync pendente e executar
       // Isso garante que vendas criadas durante sync não sejam perdidas
       if (_pendingSyncRequested) {
         _pendingSyncRequested = false;
-        debugPrint('🔁 Re-sync solicitado durante sync anterior, executando...');
+        debugPrint(
+            '🔁 Re-sync solicitado durante sync anterior, executando...');
         // Pequeno delay para evitar loop infinito
         Future.delayed(const Duration(milliseconds: 100), () => syncAll());
       }
@@ -174,9 +213,28 @@ class SyncService {
     debugPrint('🔄 Itens pendentes para sincronização: ${pendingItems.length}');
 
     for (final item in pendingItems) {
-      final entityType = item['entity_type'] as String;
-      final entityId = item['entity_id'] as String;
-      final action = item['action'] as String;
+      // 🔴 CORREÇÃO: Null-safe casting para evitar crash
+      final entityType = item['entity_type']?.toString();
+      final entityId = item['entity_id']?.toString();
+      final action = item['action']?.toString();
+
+      // 🔴 VALIDAÇÃO CRÍTICA: Verificar campos obrigatórios
+      if (entityType == null ||
+          entityType.isEmpty ||
+          entityId == null ||
+          entityId.isEmpty ||
+          action == null ||
+          action.isEmpty) {
+        debugPrint('❌ Item de sync inválido - dados incompletos:');
+        debugPrint('   entityType: $entityType');
+        debugPrint('   entityId: $entityId');
+        debugPrint('   action: $action');
+        await _db.markSyncItemFailed(
+          item['id'] as int,
+          'Dados inválidos: entityType=$entityType, entityId=$entityId, action=$action',
+        );
+        continue;
+      }
 
       try {
         debugPrint('📤 Sincronizando: $entityType/$entityId ($action)');
@@ -211,8 +269,22 @@ class SyncService {
         // Buscar dados atuais da entidade local
         final entityData = await _getLocalEntity(entityType, entityId);
         if (entityData == null && action != 'delete') {
-          debugPrint('⚠️ Entidade não encontrada: $entityType/$entityId');
-          await _db.markSyncItemProcessed(item['id'] as int);
+          // 🔴 CORREÇÃO: Tentar usar dados do sync_queue antes de descartar
+          if (syncData != null && syncData.isNotEmpty) {
+            debugPrint(
+                '⚠️ Entidade não encontrada localmente, usando dados do sync_queue: $entityType/$entityId');
+            await _sendToServer(entityType, action, syncData);
+            await _db.markSyncItemProcessed(item['id'] as int);
+            continue;
+          }
+
+          // 🔴 NÃO marcar como processado - deixar para retry ou investigação
+          debugPrint(
+              '❌ Entidade não encontrada e sem dados backup: $entityType/$entityId');
+          await _db.markSyncItemFailed(
+            item['id'] as int,
+            'Entidade não encontrada localmente e sem dados no sync_queue',
+          );
           continue;
         }
 
@@ -876,14 +948,17 @@ class SyncService {
       // Baixar produtos
       final products = await _api.getProducts();
       await _mergeData('products', products);
+      _emitSyncEvent(SyncEventType.productsUpdated, products.length);
 
       // Baixar clientes
       final customers = await _api.getCustomers();
       await _mergeData('customers', customers);
+      _emitSyncEvent(SyncEventType.customersUpdated, customers.length);
 
       // Baixar estoque
       final inventory = await _api.getInventory();
       await _mergeData('inventory', inventory);
+      _emitSyncEvent(SyncEventType.inventoryUpdated, inventory.length);
 
       // Baixar mesas
       debugPrint('🍽️ SyncService: Baixando mesas...');
@@ -891,6 +966,7 @@ class SyncService {
       debugPrint('🍽️ SyncService: Mesas recebidas: ${tables.length}');
       await _mergeData('tables', tables);
       debugPrint('🍽️ SyncService: Mesas mescladas no banco local');
+      _emitSyncEvent(SyncEventType.tablesUpdated, tables.length);
 
       // Baixar mesas com sessões ativas (overview)
       try {
@@ -1435,12 +1511,12 @@ class SyncService {
     debugPrint('📝 Marcando para sync: $entityType/$entityId ($action)');
 
     // 🔴 CORREÇÃO CRÍTICA: Vendas, pagamentos e caixa têm prioridade máxima
-    final isCritical = entityType == 'sales' || 
-                       entityType == 'table_payments' ||
-                       entityType == 'payments' ||
-                       entityType == 'table_orders' ||
-                       entityType == 'cash_boxes';
-    
+    final isCritical = entityType == 'sales' ||
+        entityType == 'table_payments' ||
+        entityType == 'payments' ||
+        entityType == 'table_orders' ||
+        entityType == 'cash_boxes';
+
     await _db.addToSyncQueue(
       entityType: entityType,
       entityId: entityId,

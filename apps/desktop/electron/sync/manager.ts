@@ -878,6 +878,24 @@ export class SyncManager {
         if (Array.isArray(errorMsg)) {
           errorMsg = errorMsg.join(', ');
         }
+        
+        // 🔴 CORREÇÃO: Tratar 409 (duplicata) como sucesso
+        // Isso ocorre quando o item já foi sincronizado anteriormente
+        if (error?.response?.status === 409) {
+          console.log(`✅ Sync ${item.entity} - já existe no servidor (409), marcando como completado`);
+          this.dbManager.markSyncItemCompleted(item.id);
+          this.dbManager.logSyncAudit({
+            action: item.operation,
+            entity: item.entity,
+            entityId: item.entity_id,
+            direction: 'push',
+            status: 'success',
+            details: { itemId: item.id, note: 'Duplicata - já existia no servidor' },
+          });
+          hasFailures = false; // Não é uma falha real
+          continue;
+        }
+        
         console.error(`❌ Erro ao sincronizar ${item.entity}:`, errorMsg);
         
         // Log de auditoria - erro

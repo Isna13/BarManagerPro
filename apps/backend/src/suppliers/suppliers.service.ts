@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSupplierDto, UpdateSupplierDto } from './dto';
 
@@ -9,17 +9,51 @@ export class SuppliersService {
   async create(createDto: CreateSupplierDto) {
     const { branchId, id, code: providedCode, ...data } = createDto;
     const code = providedCode || `SUP-${Date.now()}`;
-    return this.prisma.supplier.create({
-      data: {
-        ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
-        code,
-        ...data,
-        ...(branchId && { branchId }),
-      },
-      include: {
-        branch: true,
-      },
-    });
+    
+    try {
+      // 🔴 CORREÇÃO: Verificar duplicidade por ID ou código (idempotência)
+      if (id) {
+        const existingById = await this.prisma.supplier.findUnique({
+          where: { id },
+          include: { branch: true },
+        });
+        if (existingById) {
+          console.log(`⚠️ Fornecedor já existe por ID, retornando existente: ${id}`);
+          return existingById;
+        }
+      }
+      
+      // Verificar duplicidade por código
+      const existingByCode = await this.prisma.supplier.findFirst({
+        where: { code },
+      });
+      if (existingByCode) {
+        throw new ConflictException(`Fornecedor com código ${code} já existe`);
+      }
+      
+      return await this.prisma.supplier.create({
+        data: {
+          ...(id && { id }), // Usar id fornecido se disponível (para sincronização)
+          code,
+          ...data,
+          ...(branchId && { branchId }),
+        },
+        include: {
+          branch: true,
+        },
+      });
+    } catch (error: any) {
+      if (error instanceof ConflictException) throw error;
+      
+      // 🔴 CORREÇÃO: Tratar erros do Prisma adequadamente
+      if (error.code === 'P2002') {
+        const target = (error.meta?.target as string[])?.join(', ') || 'campo';
+        throw new ConflictException(`Fornecedor duplicado: ${target} já existe`);
+      }
+      
+      console.error('❌ Erro ao criar fornecedor:', error.message);
+      throw new InternalServerErrorException(`Erro ao criar fornecedor: ${error.message}`);
+    }
   }
 
   async findAll(branchId?: string) {
