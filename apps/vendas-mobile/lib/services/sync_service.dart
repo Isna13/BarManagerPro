@@ -248,19 +248,28 @@ class SyncService {
             }
           }
 
-          // Processar pagamento - TODOS os métodos precisam de Payment para sincronização correta
+          // Processar pagamento - APENAS para vendas que NÃO são de mesa
+          // Vendas de mesa já têm TablePayment criado separadamente
+          // Criar Payment aqui causaria DUPLICAÇÃO no faturamento!
           final paymentMethod = data['payment_method'];
+          final saleType = data['type'];
 
           // 🔴 LOG: Debug do método de pagamento
           debugPrint(
               '🔴 [SYNC][PAYMENT] Verificando pagamento para venda ${data['id']}');
           debugPrint('   payment_method: $paymentMethod');
           debugPrint('   payment_status: ${data['payment_status']}');
+          debugPrint('   type: $saleType');
 
-          // Criar payment para TODOS os métodos quando a venda está paga
+          // CRÍTICO: Vendas de mesa (type=table) já têm TablePayment!
+          // Criar Payment aqui duplicaria o valor no faturamento!
+          final isTableSale = saleType == 'table';
+          
+          // Criar payment APENAS para vendas de PDV/balcão (não mesa)
           final shouldCreatePayment = paymentMethod != null &&
               paymentMethod.toString().isNotEmpty &&
-              data['payment_status'] == 'paid';
+              data['payment_status'] == 'paid' &&
+              !isTableSale; // 🚫 NÃO criar Payment para vendas de mesa!
 
           if (shouldCreatePayment) {
             try {
@@ -285,8 +294,13 @@ class SyncService {
               // Mas não bloquear a sincronização - apenas logar
             }
           } else {
-            debugPrint(
-                '⚠️ [SYNC][PAYMENT] Não criou payment: paymentMethod=$paymentMethod, status=${data['payment_status']}');
+            if (isTableSale) {
+              debugPrint(
+                  '🍽️ [SYNC][PAYMENT] Venda de MESA - Payment NÃO criado (já existe TablePayment)');
+            } else {
+              debugPrint(
+                  '⚠️ [SYNC][PAYMENT] Não criou payment: paymentMethod=$paymentMethod, status=${data['payment_status']}');
+            }
           }
 
           // Fechar a venda se está completada
