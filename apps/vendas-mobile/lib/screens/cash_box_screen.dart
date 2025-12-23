@@ -19,6 +19,23 @@ class _CashBoxScreenState extends State<CashBoxScreen> {
   final _openingCashController = TextEditingController();
   final _closingCashController = TextEditingController();
   final _notesController = TextEditingController();
+  bool _hasLoadedInitialData = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Carregar dados do caixa ao entrar na tela (apenas uma vez)
+    if (!_hasLoadedInitialData) {
+      _hasLoadedInitialData = true;
+      // Usar addPostFrameCallback para evitar setState durante build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          debugPrint('📦 CashBoxScreen: Carregando dados do caixa...');
+          context.read<CashBoxProvider>().loadCurrentCashBox();
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {

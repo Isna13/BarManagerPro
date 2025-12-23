@@ -59,12 +59,21 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  /// Escuta eventos de sincronização para recarregar dados após reset remoto
+  /// Escuta eventos de sincronização para recarregar dados após sync
   void _setupSyncListener() {
+    // Escutar SyncService principal - SEMPRE recarregar CashBox após sync bem-sucedido
     _syncSubscription = SyncService.instance.syncStatusStream.listen((status) {
-      if (status.requiresReload && mounted) {
-        debugPrint(
-            '🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
+      if (!mounted) return;
+      
+      // Após qualquer sync bem-sucedido, recarregar CashBox e Dashboard
+      if (status.success == true && !status.isSyncing) {
+        debugPrint('🔄 HomeScreen: SyncService completou, atualizando CashBox...');
+        context.read<CashBoxProvider>().loadCurrentCashBox();
+      }
+      
+      // Se requer reload completo (ex: reset remoto)
+      if (status.requiresReload) {
+        debugPrint('🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
         _loadInitialData().then((_) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -78,13 +87,14 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
-    
+
     // Escutar sync periódico do SyncProvider para atualizar CashBox
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final syncProvider = context.read<sync_prov.SyncProvider>();
       _syncProviderSubscription = syncProvider.onSyncComplete.listen((success) {
         if (success && mounted) {
-          debugPrint('🔄 HomeScreen: Sync periódico completou, atualizando CashBox...');
+          debugPrint(
+              '🔄 HomeScreen: SyncProvider completou, atualizando CashBox...');
           context.read<CashBoxProvider>().loadCurrentCashBox();
         }
       });

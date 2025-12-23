@@ -16,6 +16,23 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  bool _hasLoadedInitialData = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Garantir que Dashboard sempre tenha dados atualizados do caixa
+    if (!_hasLoadedInitialData) {
+      _hasLoadedInitialData = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          debugPrint('📊 DashboardScreen: Carregando dados do caixa...');
+          context.read<CashBoxProvider>().loadCurrentCashBox();
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final padding = context.horizontalPadding;
