@@ -155,6 +155,29 @@ export class ProductsService {
       throw new NotFoundException('Produto não encontrado');
     }
 
+    // Verificar se categoria existe (se fornecida)
+    if (updateDto.categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: updateDto.categoryId },
+      });
+      if (!category) {
+        throw new NotFoundException('Categoria não encontrada');
+      }
+    }
+
+    // Verificar se fornecedor existe (se fornecido)
+    if (updateDto.supplierId) {
+      const supplier = await this.prisma.supplier.findUnique({
+        where: { id: updateDto.supplierId },
+      });
+      if (!supplier) {
+        throw new NotFoundException('Fornecedor não encontrado');
+      }
+    }
+
+    // Separar campos relacionais do resto
+    const { categoryId, supplierId, ...productData } = updateDto;
+
     // Se preço mudou, registrar no histórico
     const priceChanged = 
       (updateDto.priceUnit && updateDto.priceUnit !== product.priceUnit) ||
@@ -162,9 +185,14 @@ export class ProductsService {
 
     const updated = await this.prisma.product.update({
       where: { id },
-      data: updateDto,
+      data: {
+        ...productData,
+        category: categoryId ? { connect: { id: categoryId } } : undefined,
+        supplier: supplierId ? { connect: { id: supplierId } } : undefined,
+      },
       include: {
         category: true,
+        supplier: true,
       },
     });
 
