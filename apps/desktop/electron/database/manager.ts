@@ -4035,7 +4035,9 @@ export class DatabaseManager {
     `).all(cashBox.opened_at, cashBox.closed_at, cashBox.closed_at, cashBox.branch_id);
 
     // Se total_debt não está registrado (caixas antigos), calcular dinamicamente
+    // CRÍTICO: Incluir AMBOS payments E table_payments!
     if (!cashBox.total_debt || cashBox.total_debt === 0) {
+      // Pagamentos normais (Payment via Sales)
       const valeTotal = this.db.prepare(`
         SELECT COALESCE(SUM(s.total), 0) as total_vale
         FROM sales s
@@ -4043,10 +4045,21 @@ export class DatabaseManager {
         WHERE s.created_at >= ?
           AND (? IS NULL OR s.created_at <= ?)
           AND s.branch_id = ?
-          AND (p.method = 'vale' OR p.method = 'debt')
+          AND (LOWER(p.method) = 'vale' OR LOWER(p.method) = 'debt')
       `).get(cashBox.opened_at, cashBox.closed_at, cashBox.closed_at, cashBox.branch_id) as any;
       
-      cashBox.total_debt = valeTotal?.total_vale || 0;
+      // CRÍTICO: Pagamentos de mesas (TablePayment) - não passam pela tabela Payment!
+      const tableValeTotal = this.db.prepare(`
+        SELECT COALESCE(SUM(tp.amount), 0) as total_vale
+        FROM table_payments tp
+        INNER JOIN table_sessions ts ON tp.session_id = ts.id
+        WHERE tp.processed_at >= ?
+          AND (? IS NULL OR tp.processed_at <= ?)
+          AND ts.branch_id = ?
+          AND (LOWER(tp.method) = 'vale' OR LOWER(tp.method) = 'debt')
+      `).get(cashBox.opened_at, cashBox.closed_at, cashBox.closed_at, cashBox.branch_id) as any;
+      
+      cashBox.total_debt = (valeTotal?.total_vale || 0) + (tableValeTotal?.total_vale || 0);
     }
 
     // Calcular métricas de lucro
