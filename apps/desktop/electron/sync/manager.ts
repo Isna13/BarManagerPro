@@ -2392,27 +2392,17 @@ export class SyncManager {
                 }
               }
               
-              // Decrementar estoque para itens da venda
-              if (item.items && Array.isArray(item.items)) {
-                for (const saleItem of item.items) {
-                  try {
-                    const productId = saleItem.productId || saleItem.product_id;
-                    const qty = saleItem.qtyUnits || saleItem.qty_units || 1;
-                    
-                    // Buscar inventory_item e decrementar
-                    const inventoryItem = this.dbManager.getInventoryItemByProductId(productId);
-                    if (inventoryItem) {
-                      const newQty = Math.max(0, (inventoryItem.qty_units || 0) - qty);
-                      this.dbManager.updateInventoryItemByProductId(productId, {
-                        qtyUnits: newQty,
-                      }, true); // skipSyncQueue
-                      console.log(`  📦 Estoque decrementado: ${productId} -${qty} = ${newQty}`);
-                    }
-                  } catch (stockError: any) {
-                    console.error(`  ❌ Erro ao decrementar estoque:`, stockError?.message);
-                  }
-                }
-              }
+              // ⚠️ NÃO decrementar estoque aqui!
+              // O estoque já foi decrementado no dispositivo que criou a venda (Mobile ou outro Desktop)
+              // E o servidor sincroniza o inventário separadamente.
+              // Decrementar aqui causaria DUPLICAÇÃO: estoque cairia 2x para cada venda.
+              
+              // ANTIGO CÓDIGO PROBLEMÁTICO (REMOVIDO):
+              // if (item.items && Array.isArray(item.items)) {
+              //   for (const saleItem of item.items) {
+              //     // decrementava estoque para vendas recebidas do servidor - ERRADO!
+              //   }
+              // }
             } else {
               // Venda já existe - verificar se precisa atualizar
               const existingAny = existing as any;

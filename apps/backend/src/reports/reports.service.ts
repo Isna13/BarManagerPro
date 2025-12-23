@@ -390,6 +390,18 @@ export class ReportsService {
       _count: true,
     });
 
+    // CRÍTICO: Incluir TablePayments que NÃO têm Payment vinculado (vendas de mesa diretas)
+    // Isso garante consistência com cash-box.service.ts
+    const todayTablePayments = await this.prisma.tablePayment.aggregate({
+      where: {
+        ...(branchId && { session: { branchId } }),
+        processedAt: { gte: today, lt: tomorrow },
+        paymentId: null, // Apenas os que NÃO têm Payment vinculado (evita duplicação)
+      },
+      _sum: { amount: true },
+      _count: true,
+    });
+
     // Custos de hoje (compras)
     const todayCosts = await this.prisma.purchase.aggregate({
       where: {
@@ -400,7 +412,8 @@ export class ReportsService {
       _sum: { totalCost: true },
     });
 
-    const todaySalesTotal = todaySales._sum.total || 0;
+    // Total de vendas hoje = vendas diretas + vendas de mesa (sem duplicação)
+    const todaySalesTotal = (todaySales._sum.total || 0) + (todayTablePayments._sum.amount || 0);
     const todaySubtotal = todaySales._sum.subtotal || 0;
     const todayCostsTotal = todayCosts._sum.totalCost || 0;
     const todayProfit = todaySalesTotal - todayCostsTotal;
@@ -419,6 +432,16 @@ export class ReportsService {
       _sum: { total: true },
     });
 
+    // TablePayments semanais (sem Payment vinculado)
+    const weekTablePayments = await this.prisma.tablePayment.aggregate({
+      where: {
+        ...(branchId && { session: { branchId } }),
+        processedAt: { gte: weekStart },
+        paymentId: null,
+      },
+      _sum: { amount: true },
+    });
+
     // Faturamento mensal - usar closedAt ou createdAt
     const monthRevenue = await this.prisma.sale.aggregate({
       where: {
@@ -430,6 +453,16 @@ export class ReportsService {
         ],
       },
       _sum: { total: true },
+    });
+
+    // TablePayments mensais (sem Payment vinculado)
+    const monthTablePayments = await this.prisma.tablePayment.aggregate({
+      where: {
+        ...(branchId && { session: { branchId } }),
+        processedAt: { gte: monthStart },
+        paymentId: null,
+      },
+      _sum: { amount: true },
     });
 
     // Dívidas pendentes
@@ -483,9 +516,9 @@ export class ReportsService {
       todaySales: todaySalesTotal,
       todayProfit,
       todayMargin,
-      todaySalesCount: todaySales._count,
-      weekRevenue: weekRevenue._sum.total || 0,
-      monthRevenue: monthRevenue._sum.total || 0,
+      todaySalesCount: todaySales._count + (todayTablePayments._count || 0),
+      weekRevenue: (weekRevenue._sum.total || 0) + (weekTablePayments._sum.amount || 0),
+      monthRevenue: (monthRevenue._sum.total || 0) + (monthTablePayments._sum.amount || 0),
       totalHistoricSales: totalHistoricSales._sum.total || 0,
       totalHistoricSalesCount: totalHistoricSales._count,
       pendingDebts: debts._sum.balance || 0,

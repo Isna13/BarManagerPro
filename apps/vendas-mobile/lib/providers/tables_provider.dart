@@ -133,6 +133,7 @@ class TablesProvider extends ChangeNotifier {
   Future<void> _recalculateSessionAndCustomersTotals(
     String sessionId, {
     required String now,
+    bool fromServerSync = false, // Se veio de sync do servidor, NÃO marcar para re-sync
   }) async {
     // Recalcular total da sessão
     final sessionSum = await _db.rawQuery(
@@ -142,12 +143,15 @@ class TablesProvider extends ChangeNotifier {
     final totalAmount =
         sessionSum.isNotEmpty ? _asInt(sessionSum.first['total_amount']) : 0;
 
+    // Se veio de sync do servidor, NÃO marcar synced=0 para evitar loop de re-sync
+    final syncedValue = fromServerSync ? 1 : 0;
+
     await _db.update(
       'table_sessions',
       {
         'total_amount': totalAmount,
         'updated_at': now,
-        'synced': 0,
+        'synced': syncedValue,
       },
       where: 'id = ?',
       whereArgs: [sessionId],
@@ -161,7 +165,7 @@ class TablesProvider extends ChangeNotifier {
         'subtotal': 0,
         'total': 0,
         'updated_at': now,
-        'synced': 0,
+        'synced': syncedValue,
       },
       where: 'session_id = ?',
       whereArgs: [sessionId],
@@ -184,7 +188,7 @@ class TablesProvider extends ChangeNotifier {
           'subtotal': customerTotal,
           'total': customerTotal,
           'updated_at': now,
-          'synced': 0,
+          'synced': syncedValue,
         },
         where: 'id = ?',
         whereArgs: [tableCustomerId],

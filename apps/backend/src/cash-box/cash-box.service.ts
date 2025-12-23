@@ -216,15 +216,18 @@ export class CashBoxService {
       },
     });
 
-    // CRÍTICO: Buscar também pagamentos de mesas (TablePayment) que NÃO passam pela tabela Payment
+    // CRÍTICO: Buscar apenas pagamentos de mesas (TablePayment) que NÃO têm Payment vinculado
+    // Se paymentId != null, significa que já existe um Payment contabilizado na Sale
+    // Isso evita duplicação: Sale.total + TablePayment.amount
     const tablePayments = await this.prisma.tablePayment.findMany({
       where: {
         processedAt: { gte: cashBox.openedAt },
         session: { branchId: cashBox.branchId },
+        paymentId: null, // ⚠️ APENAS pagamentos de mesa SEM Payment vinculado
       },
     });
 
-    // Combinar totais de vendas diretas + pagamentos de mesas
+    // Combinar totais de vendas diretas + pagamentos de mesas (sem duplicação)
     const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
     const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
     const totalSales = directTotalSales + tableTotalSales;
@@ -317,10 +320,11 @@ export class CashBoxService {
           openedAt: { gte: cashBox.openedAt },
         };
         
-        // Query para TablePayments (pagamentos de mesas)
+        // Query para TablePayments - APENAS os que NÃO têm Payment vinculado (evita duplicação)
         const tablePaymentsQuery: any = {
           processedAt: { gte: cashBox.openedAt },
           session: { branchId: cashBox.branchId },
+          paymentId: null, // ⚠️ CRÍTICO: Evita contar TablePayment que já tem Payment
         };
         
         if (cashBox.closedAt) {
@@ -478,12 +482,13 @@ export class CashBoxService {
       },
     });
 
-    // CRÍTICO: Buscar também pagamentos de mesas (TablePayment)
-    // Estes são pagamentos feitos diretamente nas mesas e não passam pela tabela Sale/Payment
+    // CRÍTICO: Buscar apenas pagamentos de mesas (TablePayment) que NÃO têm Payment vinculado
+    // Se paymentId != null, significa que já existe um Payment contabilizado na Sale
     const tablePayments = await this.prisma.tablePayment.findMany({
       where: {
         processedAt: { gte: cashBox.openedAt },
         session: { branchId: cashBox.branchId },
+        paymentId: null, // ⚠️ CRÍTICO: Evita contar TablePayment que já tem Payment
       },
     });
 
@@ -585,10 +590,11 @@ export class CashBoxService {
           openedAt: { gte: cashBox.openedAt },
         };
         
-        // Query para TablePayments (pagamentos de mesas)
+        // Query para TablePayments - APENAS os que NÃO têm Payment vinculado (evita duplicação)
         const tablePaymentsQuery: any = {
           processedAt: { gte: cashBox.openedAt },
           session: { branchId: cashBox.branchId },
+          paymentId: null, // ⚠️ CRÍTICO: Evita contar TablePayment que já tem Payment
         };
         
         // Se o caixa está fechado, limitar até a data de fechamento
