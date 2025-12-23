@@ -5616,10 +5616,8 @@ export class DatabaseManager {
     // Calcular total dos pedidos PENDENTES (não usar customer.total que inclui pagos)
     const pendingTotal = orders.reduce((sum, o) => sum + (o.total || 0), 0);
 
-    // Gerar número de venda único
-    const lastSale: any = this.db.prepare('SELECT sale_number FROM sales ORDER BY created_at DESC LIMIT 1').get();
-    const lastNumber = lastSale?.sale_number ? parseInt(lastSale.sale_number.split('-')[1]) : 0;
-    const saleNumber = `SALE-${String(lastNumber + 1).padStart(6, '0')}`;
+    // Gerar número de venda único - usar MAX para evitar duplicação após sync
+    const saleNumber = this.generateUniqueSaleNumber();
 
     // Criar venda (SALE) - usar pendingTotal em vez de customer.total
     const saleId = this.generateUUID();
@@ -5874,10 +5872,8 @@ export class DatabaseManager {
     // Calcular total dos pedidos
     const totalOrders = orders.reduce((sum, o) => sum + (o.total || 0), 0);
 
-    // Gerar número de venda único
-    const lastSale: any = this.db.prepare('SELECT sale_number FROM sales ORDER BY created_at DESC LIMIT 1').get();
-    const lastNumber = lastSale?.sale_number ? parseInt(lastSale.sale_number.split('-')[1]) : 0;
-    const saleNumber = `SALE-${String(lastNumber + 1).padStart(6, '0')}`;
+    // Gerar número de venda único - usar MAX para evitar duplicação após sync
+    const saleNumber = this.generateUniqueSaleNumber();
 
     // Verificar se há cliente único cadastrado na mesa
     const customers = this.db.prepare(`
@@ -6804,6 +6800,32 @@ export class DatabaseManager {
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
     });
+  }
+
+  /**
+   * Gera um número de venda único (SALE-XXXXXX)
+   * Usa MAX para extrair o maior número existente, evitando duplicação após sync
+   */
+  private generateUniqueSaleNumber(): string {
+    // Buscar TODOS os sale_numbers e encontrar o maior número
+    const allSales: any[] = this.db.prepare(
+      "SELECT sale_number FROM sales WHERE sale_number LIKE 'SALE-%'"
+    ).all();
+    
+    let maxNumber = 0;
+    for (const sale of allSales) {
+      if (sale.sale_number) {
+        const match = sale.sale_number.match(/SALE-(\d+)/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNumber) {
+            maxNumber = num;
+          }
+        }
+      }
+    }
+    
+    return `SALE-${String(maxNumber + 1).padStart(6, '0')}`;
   }
 
   private generateSequentialNumber(lastNumber: string | null | undefined, prefix: string): string {
