@@ -504,7 +504,9 @@ class CashBoxProvider extends ChangeNotifier {
       _currentCashBox!['total_debt'] = currentDebt;
     }
 
-    _currentCashBox!['total_sales'] = currentCash + currentCard + currentMobile;
+    // CRÍTICO: Total de vendas inclui TODOS os métodos de pagamento, inclusive VALE
+    // Vale é uma venda real, apenas com forma de pagamento diferida
+    _currentCashBox!['total_sales'] = currentCash + currentCard + currentMobile + currentDebt;
     _currentCashBox!['synced'] = 0;
 
     debugPrint(
