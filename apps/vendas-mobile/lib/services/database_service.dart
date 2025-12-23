@@ -335,6 +335,8 @@ class DatabaseService {
     ''');
 
     // Tabela de fila de sincronização
+    // 🔴 CORREÇÃO CRÍTICA: max_attempts aumentado de 3 para 10
+    // Vendas não podem ser perdidas por falhas temporárias de rede
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sync_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -344,7 +346,7 @@ class DatabaseService {
         data TEXT NOT NULL,
         priority INTEGER DEFAULT 10,
         attempts INTEGER DEFAULT 0,
-        max_attempts INTEGER DEFAULT 3,
+        max_attempts INTEGER DEFAULT 10,
         last_error TEXT,
         created_at TEXT,
         processed_at TEXT,
@@ -552,13 +554,46 @@ class DatabaseService {
   }
 
   Future<void> markSyncItemFailed(int id, String error) async {
+    // 🔴 CORREÇÃO: max_attempts aumentado para 10, vendas nunca são abandonadas
     await rawUpdate('''
       UPDATE sync_queue 
       SET attempts = attempts + 1, 
           last_error = ?,
-          status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END
+          status = CASE WHEN attempts >= 10 THEN 'failed' ELSE 'pending' END
       WHERE id = ?
     ''', [error, id]);
+  }
+
+  /// 🔴 CORREÇÃO CRÍTICA: Reprocessar vendas que falharam
+  /// Vendas são muito importantes para serem abandonadas
+  Future<void> retryFailedSalesSync() async {
+    await rawUpdate('''
+      UPDATE sync_queue 
+      SET status = 'pending', attempts = 0 
+      WHERE status = 'failed' AND entity_type = 'sales'
+    ''');
+  }
+
+  /// Obter contagem de itens pendentes por tipo
+  Future<Map<String, int>> getPendingSyncCounts() async {
+    final result = await rawQuery('''
+      SELECT entity_type, COUNT(*) as count 
+      FROM sync_queue 
+      WHERE status = 'pending' 
+      GROUP BY entity_type
+    ''');
+    return Map.fromEntries(
+      result.map((r) => MapEntry(r['entity_type'] as String, r['count'] as int)),
+    );
+  }
+
+  /// Obter vendas não sincronizadas (crítico!)
+  Future<List<Map<String, dynamic>>> getUnsyncedSales() async {
+    return await query(
+      'sales',
+      where: 'synced = 0',
+      orderBy: 'created_at ASC',
+    );
   }
 
   // Métodos adicionais para sincronização

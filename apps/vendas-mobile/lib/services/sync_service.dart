@@ -18,6 +18,13 @@ class SyncService {
   bool _isOnline = true;
   Timer? _syncTimer;
   StreamSubscription? _connectivitySubscription;
+  
+  // 🔴 CORREÇÃO CRÍTICA: Flag para re-sync após sync atual
+  // Evita perda de vendas quando sync é ignorado por já estar em andamento
+  bool _pendingSyncRequested = false;
+  
+  // 🔴 CORREÇÃO: Debounce para evitar múltiplas chamadas em sequência rápida
+  Timer? _syncDebounceTimer;
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
@@ -56,6 +63,7 @@ class SyncService {
 
   void dispose() {
     _syncTimer?.cancel();
+    _syncDebounceTimer?.cancel();
     _connectivitySubscription?.cancel();
     _syncStatusController.close();
   }
@@ -63,10 +71,33 @@ class SyncService {
   bool get isOnline => _isOnline;
   bool get isSyncing => _isSyncing;
 
+  // 🔴 CORREÇÃO CRÍTICA: Método para sync imediato de vendas (prioridade máxima)
+  // Chamado após cada venda para garantir que não se perca
+  Future<void> syncSalesImmediately() async {
+    debugPrint('🔥 syncSalesImmediately() chamado - sync imediato de vendas');
+    
+    // Cancelar debounce anterior se existir
+    _syncDebounceTimer?.cancel();
+    
+    // Debounce de 500ms para evitar múltiplas chamadas em sequência rápida
+    // mas ainda garantir que vendas rápidas sejam sincronizadas
+    _syncDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (_isSyncing) {
+        // Se já está sincronizando, marcar para re-sync
+        _pendingSyncRequested = true;
+        debugPrint('⏳ Sync em andamento, re-sync agendado para após conclusão');
+      } else {
+        await syncAll();
+      }
+    });
+  }
+
   // Sincronizar tudo
   Future<void> syncAll() async {
     if (_isSyncing) {
-      debugPrint('⚠️ Sincronização já em andamento, ignorando...');
+      // 🔴 CORREÇÃO: Não ignorar, marcar para re-sync
+      _pendingSyncRequested = true;
+      debugPrint('⚠️ Sincronização já em andamento, re-sync agendado');
       return;
     }
     if (!_isOnline) {
@@ -125,6 +156,15 @@ class SyncService {
           SyncStatus(isSyncing: false, message: 'Erro: $e', success: false));
     } finally {
       _isSyncing = false;
+      
+      // 🔴 CORREÇÃO CRÍTICA: Verificar se há sync pendente e executar
+      // Isso garante que vendas criadas durante sync não sejam perdidas
+      if (_pendingSyncRequested) {
+        _pendingSyncRequested = false;
+        debugPrint('🔁 Re-sync solicitado durante sync anterior, executando...');
+        // Pequeno delay para evitar loop infinito
+        Future.delayed(const Duration(milliseconds: 100), () => syncAll());
+      }
     }
   }
 
@@ -264,7 +304,7 @@ class SyncService {
           // CRÍTICO: Vendas de mesa (type=table) já têm TablePayment!
           // Criar Payment aqui duplicaria o valor no faturamento!
           final isTableSale = saleType == 'table';
-          
+
           // Criar payment APENAS para vendas de PDV/balcão (não mesa)
           final shouldCreatePayment = paymentMethod != null &&
               paymentMethod.toString().isNotEmpty &&
@@ -1394,18 +1434,30 @@ class SyncService {
   }) async {
     debugPrint('📝 Marcando para sync: $entityType/$entityId ($action)');
 
+    // 🔴 CORREÇÃO CRÍTICA: Vendas, pagamentos e caixa têm prioridade máxima
+    final isCritical = entityType == 'sales' || 
+                       entityType == 'table_payments' ||
+                       entityType == 'payments' ||
+                       entityType == 'table_orders' ||
+                       entityType == 'cash_boxes';
+    
     await _db.addToSyncQueue(
       entityType: entityType,
       entityId: entityId,
       action: action,
       data: data ?? {},
+      priority: isCritical ? 1 : 10, // Prioridade 1 para críticos
     );
 
     // Tentar sincronizar imediatamente se online
     if (_isOnline) {
       debugPrint('🌐 Online - iniciando sincronização imediata');
-      // Usar Future.delayed para não bloquear a UI
-      Future.delayed(const Duration(milliseconds: 500), () => syncAll());
+      // 🔴 CORREÇÃO: Usar método com debounce para vendas
+      if (isCritical) {
+        syncSalesImmediately();
+      } else {
+        Future.delayed(const Duration(milliseconds: 500), () => syncAll());
+      }
     } else {
       debugPrint(
           '📴 Offline - item ficará na fila para sincronização posterior');

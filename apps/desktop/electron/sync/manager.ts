@@ -57,6 +57,13 @@ export class SyncManager {
   private _coldStartDetected: boolean = false;
   private _consecutiveFailures: number = 0;
   private _lastSuccessfulRequest: Date | null = null;
+  
+  // 🔴 CORREÇÃO CRÍTICA: Mutex para evitar sincronizações simultâneas
+  private _isSyncing: boolean = false;
+  // Flag para re-sync após sync atual (vendas rápidas em sequência)
+  private _pendingSyncRequested: boolean = false;
+  // Debounce timer para vendas rápidas
+  private _syncDebounceTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private dbManager: DatabaseManager,
@@ -662,10 +669,38 @@ export class SyncManager {
     }, RAILWAY_FREE_CONFIG.SYNC_INTERVAL_MS);
   }
 
+  /**
+   * 🔴 CORREÇÃO CRÍTICA: Sync imediato para vendas
+   * Garante que vendas rápidas em sequência não sejam perdidas
+   * Usa debounce de 500ms para agrupar vendas muito rápidas
+   */
+  syncSalesImmediately() {
+    console.log('🔥 syncSalesImmediately() chamado - sync imediato de vendas');
+    
+    // Cancelar debounce anterior se existir
+    if (this._syncDebounceTimer) {
+      clearTimeout(this._syncDebounceTimer);
+    }
+    
+    // Debounce de 500ms para evitar múltiplas chamadas em sequência rápida
+    this._syncDebounceTimer = setTimeout(() => {
+      if (this._isSyncing) {
+        // Se já está sincronizando, marcar para re-sync
+        this._pendingSyncRequested = true;
+        console.log('⏳ Sync em andamento, re-sync agendado para após conclusão');
+      } else {
+        this.syncNow();
+      }
+    }, 500);
+  }
+
   async stop() {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+    if (this._syncDebounceTimer) {
+      clearTimeout(this._syncDebounceTimer);
     }
     this.stopConnectionMonitor();
     this.isRunning = false;
@@ -673,6 +708,13 @@ export class SyncManager {
   }
 
   async syncNow() {
+    // 🔴 CORREÇÃO CRÍTICA: Mutex para evitar race conditions
+    if (this._isSyncing) {
+      console.log('⚠️ Sincronização já em andamento, agendando re-sync');
+      this._pendingSyncRequested = true;
+      return;
+    }
+    
     if (!this.token) {
       console.warn('⚠️ Token não disponível, sincronização ignorada');
       return;
@@ -705,6 +747,9 @@ export class SyncManager {
     }
 
     try {
+      // 🔴 CORREÇÃO: Marcar sync como em andamento
+      this._isSyncing = true;
+      
       this.emit('sync:started');
       
       // Verificar se Railway está vazio e banco local tem dados
@@ -766,6 +811,17 @@ export class SyncManager {
       }
       
       this.emit('sync:error', error?.message || 'Erro desconhecido na sincronização');
+    } finally {
+      // 🔴 CORREÇÃO CRÍTICA: Sempre liberar mutex e verificar re-sync pendente
+      this._isSyncing = false;
+      
+      // Se há sync pendente (vendas rápidas em sequência), executar
+      if (this._pendingSyncRequested) {
+        this._pendingSyncRequested = false;
+        console.log('🔁 Re-sync solicitado durante sync anterior, executando...');
+        // Pequeno delay para evitar loop infinito
+        setTimeout(() => this.syncNow(), 100);
+      }
     }
   }
 
@@ -855,7 +911,8 @@ export class SyncManager {
     // Se houve falhas, tentar re-sincronizar itens falhados
     // (útil quando dependências foram sincronizadas nesta rodada)
     if (hasFailures) {
-      const retried = this.dbManager.retryFailedSyncItems(5); // max 5 tentativas
+      // 🔴 CORREÇÃO: Aumentado para 10 tentativas - vendas não podem ser perdidas
+      const retried = this.dbManager.retryFailedSyncItems(10);
       if (retried > 0) {
         console.log(`🔄 Re-tentando ${retried} itens que podem ter sido desbloqueados por dependências...`);
         // Fazer uma segunda passada imediata

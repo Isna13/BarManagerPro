@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../services/database_service.dart';
+import '../services/sync_service.dart';
 import '../config/payment_methods.dart';
 
 class CartItem {
@@ -280,6 +281,10 @@ class CartProvider extends ChangeNotifier {
         action: 'INSERT',
         data: sale,
       );
+
+      // 🔴 CORREÇÃO CRÍTICA: Sincronizar venda imediatamente
+      // Garante que vendas rápidas em sequência não sejam perdidas
+      SyncService.instance.syncSalesImmediately();
 
       // Limpar carrinho
       clear();
