@@ -924,11 +924,15 @@ export class SyncManager {
           console.log('🔴 Erro de conexão ao sincronizar item:', error.code);
           console.log('📦 Item será mantido na fila para próxima tentativa');
           this.dbManager.markSyncItemFailed(item.id, `Erro de conexão: ${error.code}`);
-          // Não parar sincronização, apenas marcar como falho para retry
-          break; // Parar loop atual, mas não stop() completo
+          // 🔴 ISOLAMENTO: Erro de conexão para em vez de continuar
+          // porque se não há rede, não adianta tentar outros itens
+          break;
         } else {
-          console.error('⚠️ Erro desconhecido:', error);
+          // 🔴 ISOLAMENTO POR ENTIDADE: Erros pontuais NÃO param o loop
+          // O item é marcado como falho e o próximo é processado
+          console.log(`⚠️ Erro em ${item.entity}/${item.entity_id}, continuando com próximos itens...`);
           this.dbManager.markSyncItemFailed(item.id, errorMsg);
+          // NÃO TEM BREAK - continua processando outros itens
         }
       }
     }
