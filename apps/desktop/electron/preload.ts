@@ -23,6 +23,7 @@ const api = {
     search: (query: string) => ipcRenderer.invoke('products:search', query),
     create: (productData: any) => ipcRenderer.invoke('products:create', productData),
     update: (id: string, data: any) => ipcRenderer.invoke('products:update', { id, data }),
+    delete: (id: string) => ipcRenderer.invoke('products:delete', id),
     getById: (id: string) => ipcRenderer.invoke('products:getById', id),
   },
   

@@ -204,6 +204,10 @@ ipcMain.handle('products:update', async (_, { id, data }) => {
   return dbManager.updateProduct(id, data);
 });
 
+ipcMain.handle('products:delete', async (_, id) => {
+  return dbManager.deleteProduct(id);
+});
+
 ipcMain.handle('products:getById', async (_, id) => {
   return dbManager.getProductById(id);
 });

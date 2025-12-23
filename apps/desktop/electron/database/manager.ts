@@ -1447,6 +1447,20 @@ export class DatabaseManager {
     return this.db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   }
 
+  deleteProduct(id: string) {
+    // Soft delete - apenas marca como inativo
+    const stmt = this.db.prepare(`
+      UPDATE products 
+      SET is_active = 0, synced = 0, updated_at = datetime('now')
+      WHERE id = ?
+    `);
+    stmt.run(id);
+    
+    // Adiciona à fila de sincronização
+    this.addToSyncQueue('delete', 'product', id, { id });
+    return { success: true, id };
+  }
+
   // ============================================
   // Categories
   // ============================================
