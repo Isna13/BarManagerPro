@@ -693,7 +693,8 @@ export default function TablesPage() {
       const amountCents = Math.round(paymentAmount * 100);
       
       if (paymentType === 'customer' && selectedCustomer) {
-        await electronAPI.tablePayments.processCustomer({
+        // 🔴 CORREÇÃO CRÍTICA: Capturar saleId retornado para vincular à dívida
+        const paymentResult = await electronAPI.tablePayments.processCustomer({
           sessionId: selectedSession.id,
           tableCustomerId: selectedCustomer.id,
           method: paymentMethod,
@@ -701,16 +702,19 @@ export default function TablesPage() {
           processedBy: userId,
         });
         
-        // Se for Vale e tiver cliente cadastrado, criar débito
+        // Se for Vale e tiver cliente cadastrado, criar débito COM saleId
+        // O saleId é essencial para evitar duplicação no backend
+        // (backend verifica existingDebt por saleId antes de criar nova dívida)
         if (paymentMethod === 'vale' && selectedCustomer.customer_id) {
           const debtCreated = await electronAPI?.debts?.create?.({
             customerId: selectedCustomer.customer_id,
+            saleId: paymentResult?.saleId, // ✅ VINCULADO - previne duplicação no Railway
             branchId,
             amount: amountCents,
             notes: `Vale da mesa ${selectedSession.table_number} - ${selectedCustomer.customer_name}`,
             createdBy: userId,
           });
-          console.log('✅ Vale individual criado:', debtCreated);
+          console.log('✅ Vale individual criado:', debtCreated, 'vinculado à venda:', paymentResult?.saleId);
         }
         
         const successMsg = paymentMethod === 'vale' 
@@ -718,7 +722,8 @@ export default function TablesPage() {
           : `Pagamento individual de ${formatCurrency(amountCents)} recebido!`;
         toast?.success(successMsg);
       } else if (paymentType === 'session') {
-        await electronAPI.tablePayments.processSession({
+        // 🔴 CORREÇÃO CRÍTICA: Capturar saleId retornado para vincular às dívidas
+        const sessionPaymentResult = await electronAPI.tablePayments.processSession({
           sessionId: selectedSession.id,
           method: paymentMethod,
           amount: amountCents,
@@ -726,6 +731,7 @@ export default function TablesPage() {
         });
         
         // Se for Vale, criar débitos proporcionalmente para cada cliente cadastrado
+        // O saleId é essencial para evitar duplicação no backend
         if (paymentMethod === 'vale') {
           const registeredCustomers = selectedSession.customers.filter(c => c.customer_id);
           let totalCredit = 0;
@@ -746,7 +752,7 @@ export default function TablesPage() {
             }
           }
           
-          // Distribuir dívida proporcionalmente
+          // Distribuir dívida proporcionalmente - COM saleId para evitar duplicação
           const createdDebts = [];
           for (const customer of customerCredits) {
             const proportion = customer.available / totalCredit;
@@ -754,6 +760,7 @@ export default function TablesPage() {
             
             const debtCreated = await electronAPI?.debts?.create?.({
               customerId: customer.id,
+              saleId: sessionPaymentResult?.saleId, // ✅ VINCULADO - previne duplicação no Railway
               branchId,
               amount: debtAmount,
               notes: `Vale compartilhado - Mesa ${selectedSession.table_number} - ${customer.name} (${Math.round(proportion * 100)}%)`,
@@ -762,7 +769,7 @@ export default function TablesPage() {
             createdDebts.push({ customer: customer.name, debt: debtCreated });
           }
           
-          console.log('✅ Vales conjuntos criados:', createdDebts);
+          console.log('✅ Vales conjuntos criados:', createdDebts, 'vinculados à venda:', sessionPaymentResult?.saleId);
           toast?.success(`💳 Vale conjunto criado! Distribuído entre ${customerCredits.length} cliente(s) cadastrado(s). Verifique na aba "Gestão de Dívidas (Vales)".`);
         } else {
           toast?.success(`✅ Pagamento conjunto de ${formatCurrency(amountCents)} recebido! Os pontos foram distribuídos entre os clientes cadastrados.`);

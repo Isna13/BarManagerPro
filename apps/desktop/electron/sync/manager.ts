@@ -2971,8 +2971,27 @@ export class SyncManager {
         return { skip: true, success: false, reason: 'Operação de inventário não suportada' };
         
       case 'customer_loyalty':
-        // Fidelidade - não existe endpoint separado
-        return { skip: true, success: false, reason: 'Lealdade gerenciada via customer' };
+        // 🔴 CORREÇÃO CRÍTICA: Sincronizar pontos de fidelidade via endpoint dedicado
+        // O endpoint POST /loyalty/points/add existe no backend e deve ser usado
+        if (operation === 'update' && data.pointsAdded > 0) {
+          try {
+            await this.apiClient.post('/loyalty/points/add', {
+              customerId: entity_id,
+              points: data.pointsAdded,
+              reason: data.reason || `Sincronização de pontos de fidelidade`,
+            });
+            console.log(`✅ Pontos de fidelidade sincronizados: ${data.pointsAdded} pontos para cliente ${entity_id}`);
+            return { success: true };
+          } catch (loyaltyError: any) {
+            // Se cliente não encontrado, não é erro crítico
+            if (loyaltyError.response?.status === 404) {
+              console.warn(`⚠️ Cliente ${entity_id} não encontrado no servidor para sincronizar pontos`);
+              return { skip: true, success: false, reason: 'Cliente não encontrado no servidor' };
+            }
+            throw loyaltyError;
+          }
+        }
+        return { skip: true, success: false, reason: 'Nenhum ponto para sincronizar' };
         
       case 'purchase_item':
         // Itens de compra devem ser adicionados via POST /purchases/:purchaseId/items
