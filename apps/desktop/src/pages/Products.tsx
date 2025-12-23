@@ -206,12 +206,17 @@ export default function Products() {
     if (!confirmDelete) return;
 
     try {
-      await window.electronAPI.products.update(confirmDelete.id, { isActive: false });
-      toast.success('Produto desativado!');
+      // 🔴 CORREÇÃO: Usar método delete em vez de update para garantir sync correto
+      const result = await window.electronAPI.products.delete(confirmDelete.id);
+      if (result.success) {
+        toast.success(`Produto "${result.name || ''}" desativado e sincronização agendada!`);
+      } else {
+        toast.warning('Produto desativado localmente');
+      }
       loadProducts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao desativar produto:', error);
-      toast.error('Erro ao desativar produto');
+      toast.error(`Erro ao desativar produto: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setConfirmDelete(null);
     }

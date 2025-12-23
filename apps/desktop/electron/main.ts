@@ -665,6 +665,16 @@ ipcMain.handle('sync:getQueueStats', async () => {
   return dbManager.getSyncQueueStats();
 });
 
+// 🔍 Obter relatório de saúde da sincronização
+ipcMain.handle('sync:getHealthReport', async () => {
+  return dbManager.getSyncHealthReport();
+});
+
+// 🔍 Obter validação de sincronização de produtos
+ipcMain.handle('sync:getProductValidation', async () => {
+  return dbManager.getProductSyncValidation();
+});
+
 // Verifica se banco local está vazio
 ipcMain.handle('sync:isLocalDatabaseEmpty', async () => {
   return syncManager.isLocalDatabaseEmpty();

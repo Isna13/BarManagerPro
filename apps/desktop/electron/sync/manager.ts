@@ -855,6 +855,12 @@ export class SyncManager {
         
         if (syncResult.success) {
           this.dbManager.markSyncItemCompleted(item.id);
+          
+          // 🔴 CORREÇÃO CRÍTICA: Marcar entidade como sincronizada
+          if (item.entity === 'product' && item.entity_id) {
+            this.dbManager.markProductSynced(item.entity_id);
+          }
+          
           // Log de auditoria - sucesso
           this.dbManager.logSyncAudit({
             action: item.operation,

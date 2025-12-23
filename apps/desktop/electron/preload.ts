@@ -192,6 +192,8 @@ const api = {
     tryReauthenticate: () => ipcRenderer.invoke('sync:tryReauthenticate'),
     queueFullResync: () => ipcRenderer.invoke('sync:queueFullResync'),
     getQueueStats: () => ipcRenderer.invoke('sync:getQueueStats'),
+    getHealthReport: () => ipcRenderer.invoke('sync:getHealthReport'),
+    getProductValidation: () => ipcRenderer.invoke('sync:getProductValidation'),
     
     // Listeners
     onSyncStart: (callback: () => void) => {

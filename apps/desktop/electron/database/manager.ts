@@ -1438,7 +1438,8 @@ export class DatabaseManager {
 
     stmt.run(...values);
     if (!skipSyncQueue) {
-      this.addToSyncQueue('update', 'product', id, productData);
+      // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
+      this.addToSyncQueue('update', 'product', id, { id, ...productData });
     }
     return { id, ...productData };
   }
@@ -1448,6 +1449,14 @@ export class DatabaseManager {
   }
 
   deleteProduct(id: string) {
+    // Buscar produto antes de deletar para ter os dados completos
+    const product = this.db.prepare('SELECT * FROM products WHERE id = ?').get(id) as any;
+    
+    if (!product) {
+      console.warn(`⚠️ Produto ${id} não encontrado para exclusão`);
+      return { success: false, id, error: 'Produto não encontrado' };
+    }
+    
     // Soft delete - apenas marca como inativo
     const stmt = this.db.prepare(`
       UPDATE products 
@@ -1456,9 +1465,19 @@ export class DatabaseManager {
     `);
     stmt.run(id);
     
-    // Adiciona à fila de sincronização
-    this.addToSyncQueue('delete', 'product', id, { id });
-    return { success: true, id };
+    // Log de auditoria local
+    console.log(`🗑️ Produto deletado: ${product.name} (${id})`);
+    
+    // Adiciona à fila de sincronização com dados completos
+    this.addToSyncQueue('delete', 'product', id, {
+      id,
+      sku: product.sku,
+      name: product.name,
+      isActive: false,
+      _deletedAt: new Date().toISOString(),
+    });
+    
+    return { success: true, id, name: product.name };
   }
 
   // ============================================
@@ -1545,8 +1564,9 @@ export class DatabaseManager {
     stmt.run(...values);
     
     // Só adiciona à fila se não vier do servidor
+    // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
     if (!skipSyncQueue && categoryData.synced !== 1) {
-      this.addToSyncQueue('update', 'category', id, categoryData);
+      this.addToSyncQueue('update', 'category', id, { id, ...categoryData });
     }
     return { id, ...categoryData };
   }
@@ -1559,9 +1579,18 @@ export class DatabaseManager {
       throw new Error('Não é possível deletar categoria com produtos associados');
     }
 
+    // Buscar categoria antes de deletar
+    const category = this.db.prepare('SELECT * FROM categories WHERE id = ?').get(id) as any;
+
     this.db.prepare('DELETE FROM categories WHERE id = ?').run(id);
-    this.addToSyncQueue('delete', 'category', id, {});
-    return { success: true };
+    
+    // 🔴 CORREÇÃO: Incluir dados completos para sincronização
+    this.addToSyncQueue('delete', 'category', id, {
+      id,
+      name: category?.name,
+      isActive: false,
+    });
+    return { success: true, id, name: category?.name };
   }
 
   // ============================================
@@ -1659,17 +1688,28 @@ export class DatabaseManager {
     
     stmt.run(...values);
     
+    // 🔴 CORREÇÃO: Incluir o ID nos dados para sincronização
     if (!skipSyncQueue) {
-      this.addToSyncQueue('update', 'supplier', id, supplierData);
+      this.addToSyncQueue('update', 'supplier', id, { id, ...supplierData });
     }
     return this.db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id);
   }
 
   deleteSupplier(id: string) {
+    // Buscar fornecedor antes de deletar
+    const supplier = this.db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id) as any;
+    
     // Soft delete
     this.db.prepare('UPDATE suppliers SET is_active = 0, synced = 0, updated_at = datetime(\'now\') WHERE id = ?').run(id);
-    this.addToSyncQueue('delete', 'supplier', id, {});
-    return { success: true };
+    
+    // 🔴 CORREÇÃO: Incluir dados completos para sincronização
+    this.addToSyncQueue('delete', 'supplier', id, {
+      id,
+      code: supplier?.code,
+      name: supplier?.name,
+      isActive: false,
+    });
+    return { success: true, id, name: supplier?.name };
   }
 
   // ============================================
@@ -7297,6 +7337,133 @@ export class DatabaseManager {
     
     console.log(`\n📋 Total de itens na fila: ${totalAdded}`);
     return { total: totalAdded, byEntity };
+  }
+
+  /**
+   * 🔍 VALIDAÇÃO PÓS-SYNC: Compara produtos locais com Railway
+   * Retorna lista de inconsistências encontradas
+   */
+  getProductSyncValidation(): {
+    localOnly: any[];
+    mismatch: any[];
+    totalLocal: number;
+    lastCheck: string;
+  } {
+    // Buscar produtos locais ativos
+    const localProducts = this.db.prepare(`
+      SELECT id, sku, name, price_unit, is_active, synced, last_sync
+      FROM products 
+      WHERE is_active = 1
+      ORDER BY name
+    `).all() as any[];
+    
+    // Verificar quais NÃO foram sincronizados
+    const localOnly = localProducts.filter(p => !p.synced || p.synced === 0);
+    
+    // Verificar itens na fila pendentes para produtos
+    const pendingProductSync = this.db.prepare(`
+      SELECT entity_id, operation, status, last_error, retry_count, created_at
+      FROM sync_queue 
+      WHERE entity = 'product' AND status IN ('pending', 'failed')
+      ORDER BY created_at DESC
+    `).all() as any[];
+    
+    return {
+      localOnly,
+      mismatch: pendingProductSync,
+      totalLocal: localProducts.length,
+      lastCheck: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * 🔍 Marca um produto como sincronizado após confirmação do servidor
+   */
+  markProductSynced(id: string, serverTimestamp?: string) {
+    this.db.prepare(`
+      UPDATE products 
+      SET synced = 1, last_sync = ? 
+      WHERE id = ?
+    `).run(serverTimestamp || new Date().toISOString(), id);
+  }
+
+  /**
+   * 🔍 Marca um produto como falha de sincronização
+   */
+  markProductSyncFailed(id: string, error: string) {
+    this.db.prepare(`
+      UPDATE products 
+      SET synced = 0, sync_error = ? 
+      WHERE id = ?
+    `).run(error, id);
+  }
+
+  /**
+   * 📊 Retorna resumo do estado de sincronização de todas as entidades
+   */
+  getSyncHealthReport(): {
+    products: { total: number; synced: number; pending: number; failed: number };
+    categories: { total: number; synced: number; pending: number; failed: number };
+    suppliers: { total: number; synced: number; pending: number; failed: number };
+    queue: { pending: number; failed: number; completed: number };
+    lastSync: string | null;
+  } {
+    // Produtos
+    const productStats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN synced = 1 THEN 1 ELSE 0 END) as synced
+      FROM products WHERE is_active = 1
+    `).get() as any;
+    
+    // Categorias
+    const categoryStats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN synced = 1 THEN 1 ELSE 0 END) as synced
+      FROM categories WHERE is_active = 1
+    `).get() as any;
+    
+    // Fornecedores
+    const supplierStats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN synced = 1 THEN 1 ELSE 0 END) as synced
+      FROM suppliers WHERE is_active = 1
+    `).get() as any;
+    
+    // Fila
+    const queueStats = this.getSyncQueueStats();
+    
+    // Última sincronização
+    const lastSync = this.getSetting('last_sync_date');
+    
+    return {
+      products: {
+        total: productStats?.total || 0,
+        synced: productStats?.synced || 0,
+        pending: (productStats?.total || 0) - (productStats?.synced || 0),
+        failed: queueStats.byEntity.find((e: any) => e.entity === 'product' && e.status === 'failed')?.count || 0,
+      },
+      categories: {
+        total: categoryStats?.total || 0,
+        synced: categoryStats?.synced || 0,
+        pending: (categoryStats?.total || 0) - (categoryStats?.synced || 0),
+        failed: queueStats.byEntity.find((e: any) => e.entity === 'category' && e.status === 'failed')?.count || 0,
+      },
+      suppliers: {
+        total: supplierStats?.total || 0,
+        synced: supplierStats?.synced || 0,
+        pending: (supplierStats?.total || 0) - (supplierStats?.synced || 0),
+        failed: queueStats.byEntity.find((e: any) => e.entity === 'supplier' && e.status === 'failed')?.count || 0,
+      },
+      queue: {
+        pending: queueStats.pending,
+        failed: queueStats.failed,
+        completed: queueStats.completed,
+      },
+      lastSync,
+    };
   }
 
   /**
