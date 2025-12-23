@@ -110,6 +110,33 @@ export class SuppliersService {
     });
   }
 
+  async delete(id: string) {
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException('Fornecedor não encontrado');
+    }
+
+    // Verificar se há produtos ou compras associadas
+    const productsCount = await this.prisma.product.count({
+      where: { supplierId: id },
+    });
+    
+    if (productsCount > 0) {
+      // Desassociar produtos do fornecedor antes de deletar
+      await this.prisma.product.updateMany({
+        where: { supplierId: id },
+        data: { supplierId: null },
+      });
+    }
+
+    return this.prisma.supplier.delete({
+      where: { id },
+    });
+  }
+
   async getPurchases(id: string) {
     return this.prisma.purchase.findMany({
       where: { supplierId: id },
