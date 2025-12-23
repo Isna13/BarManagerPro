@@ -14,8 +14,23 @@ export class SuppliersController {
   }
 
   @Get()
-  findAll(@Query('branchId') branchId?: string) {
-    return this.suppliersService.findAll(branchId);
+  findAll(
+    @Query('branchId') branchId?: string,
+    @Query('active') active?: string,
+    @Query('includeInactive') includeInactive?: string
+  ) {
+    // 🔴 CORREÇÃO: Por padrão, retornar apenas fornecedores ativos
+    let activeFilter: boolean | undefined;
+    
+    if (includeInactive === 'true') {
+      activeFilter = undefined; // Retornar todos
+    } else if (active === 'false') {
+      activeFilter = false; // Explicitamente pediu inativos
+    } else {
+      activeFilter = true; // Padrão: apenas ativos
+    }
+    
+    return this.suppliersService.findAll(branchId, activeFilter);
   }
 
   @Get(':id')

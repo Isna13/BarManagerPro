@@ -67,9 +67,12 @@ export class SuppliersService {
     }
   }
 
-  async findAll(branchId?: string) {
+  async findAll(branchId?: string, active?: boolean) {
     return this.prisma.supplier.findMany({
-      where: branchId ? { branchId } : undefined,
+      where: {
+        ...(branchId && { branchId }),
+        ...(active !== undefined && { isActive: active }),
+      },
       include: {
         branch: true,
       },

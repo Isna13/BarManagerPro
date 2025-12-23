@@ -17,10 +17,27 @@ export class ProductsController {
   findAll(
     @Query('categoryId') categoryId?: string,
     @Query('search') search?: string,
-    @Query('active') active?: string
+    @Query('active') active?: string,
+    @Query('includeInactive') includeInactive?: string
   ) {
-    // Só passa active se explicitamente definido como 'true' ou 'false'
-    const activeFilter = active === 'true' ? true : active === 'false' ? false : undefined;
+    // 🔴 CORREÇÃO CRÍTICA: Por padrão, retornar apenas produtos ativos
+    // - Sem parâmetros: isActive = true (padrão seguro)
+    // - active=true: isActive = true
+    // - active=false: isActive = false (para ver produtos deletados)
+    // - includeInactive=true: sem filtro de isActive (para admin/sync)
+    let activeFilter: boolean | undefined;
+    
+    if (includeInactive === 'true') {
+      // Retornar todos os produtos (ativos e inativos)
+      activeFilter = undefined;
+    } else if (active === 'false') {
+      // Explicitamente pediu apenas inativos
+      activeFilter = false;
+    } else {
+      // Padrão: apenas produtos ativos
+      activeFilter = true;
+    }
+    
     return this.productsService.findAll(categoryId, search, activeFilter);
   }
 

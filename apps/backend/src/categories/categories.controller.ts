@@ -16,11 +16,23 @@ export class CategoriesController {
   @Get()
   findAll(
     @Query('parentId') parentId?: string,
-    @Query('active') active?: string
+    @Query('active') active?: string,
+    @Query('includeInactive') includeInactive?: string
   ) {
+    // 🔴 CORREÇÃO: Por padrão, retornar apenas categorias ativas
+    let activeFilter: boolean | undefined;
+    
+    if (includeInactive === 'true') {
+      activeFilter = undefined; // Retornar todas
+    } else if (active === 'false') {
+      activeFilter = false; // Explicitamente pediu inativos
+    } else {
+      activeFilter = true; // Padrão: apenas ativas
+    }
+    
     return this.categoriesService.findAll(
       parentId === 'null' ? null : parentId,
-      active !== undefined ? active === 'true' : undefined
+      activeFilter
     );
   }
 
