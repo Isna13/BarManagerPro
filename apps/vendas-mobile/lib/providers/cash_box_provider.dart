@@ -148,12 +148,13 @@ class CashBoxProvider extends ChangeNotifier {
                 'total_card': finalCard.toInt(),
                 'total_mobile_money': finalMobile.toInt(),
                 'total_debt': finalDebt.toInt(),
-                'total_sales': (finalCash + finalCard + finalMobile).toInt(),
+                // CRÍTICO: total_sales DEVE incluir TODOS os métodos, inclusive VALE/debt
+                'total_sales': (finalCash + finalCard + finalMobile + finalDebt).toInt(),
                 'synced': 0,
               };
 
               debugPrint(
-                  '📦 Totais mesclados: cash=$finalCash, mobile=$finalMobile');
+                  '📦 Totais mesclados: cash=$finalCash, mobile=$finalMobile, debt=$finalDebt');
             } else {
               // Caixa local está sincronizado - usar valores do servidor (mais recentes)
               debugPrint('✅ Caixa sincronizado - usando valores do servidor');
@@ -506,7 +507,8 @@ class CashBoxProvider extends ChangeNotifier {
 
     // CRÍTICO: Total de vendas inclui TODOS os métodos de pagamento, inclusive VALE
     // Vale é uma venda real, apenas com forma de pagamento diferida
-    _currentCashBox!['total_sales'] = currentCash + currentCard + currentMobile + currentDebt;
+    _currentCashBox!['total_sales'] =
+        currentCash + currentCard + currentMobile + currentDebt;
     _currentCashBox!['synced'] = 0;
 
     debugPrint(

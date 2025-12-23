@@ -835,13 +835,13 @@ class CashBox {
   final double openingBalance;
   final double? closingBalance;
   final double? totalSales;
-  final double? totalCashIn;       // Pagamentos em dinheiro (CASH)
-  final double? totalCashOut;      // Saídas de caixa
+  final double? totalCashIn; // Pagamentos em dinheiro (CASH)
+  final double? totalCashOut; // Saídas de caixa
   final double? mobileMoneyPayments; // Orange Money, TeleTaku, etc
-  final double? cardPayments;      // Cartão
-  final double? debtPayments;      // VALE/Dívidas
-  final double? currentAmount;     // Saldo esperado CALCULADO PELO SERVIDOR
-  final int? salesCount;           // Quantidade de vendas
+  final double? cardPayments; // Cartão
+  final double? debtPayments; // VALE/Dívidas
+  final double? currentAmount; // Saldo esperado CALCULADO PELO SERVIDOR
+  final int? salesCount; // Quantidade de vendas
   final String status;
   final DateTime openedAt;
   final DateTime? closedAt;
@@ -882,7 +882,7 @@ class CashBox {
     final closingBalance = json['closing_balance'] ??
         json['closingBalance'] ??
         json['closingCash'];
-    
+
     // VALORES DO STATS (fonte da verdade)
     // totalSales: Total de todas as vendas
     final totalSales =
@@ -920,10 +920,13 @@ class CashBox {
       totalSales: totalSales != null ? totalSales.toDouble() / 100 : null,
       totalCashIn: totalCashIn != null ? totalCashIn.toDouble() / 100 : null,
       totalCashOut: totalCashOut != null ? totalCashOut.toDouble() / 100 : null,
-      mobileMoneyPayments: mobileMoneyPayments != null ? mobileMoneyPayments.toDouble() / 100 : null,
+      mobileMoneyPayments: mobileMoneyPayments != null
+          ? mobileMoneyPayments.toDouble() / 100
+          : null,
       cardPayments: cardPayments != null ? cardPayments.toDouble() / 100 : null,
       debtPayments: debtPayments != null ? debtPayments.toDouble() / 100 : null,
-      currentAmount: currentAmount != null ? currentAmount.toDouble() / 100 : null,
+      currentAmount:
+          currentAmount != null ? currentAmount.toDouble() / 100 : null,
       salesCount: salesCount,
       status: json['status'] ?? 'open',
       openedAt:

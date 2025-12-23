@@ -216,17 +216,28 @@ export class CashBoxService {
       },
     });
 
-    const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+    // CRÍTICO: Buscar também pagamentos de mesas (TablePayment) que NÃO passam pela tabela Payment
+    const tablePayments = await this.prisma.tablePayment.findMany({
+      where: {
+        processedAt: { gte: cashBox.openedAt },
+        session: { branchId: cashBox.branchId },
+      },
+    });
+
+    // Combinar totais de vendas diretas + pagamentos de mesas
+    const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+    const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
+    const totalSales = directTotalSales + tableTotalSales;
     
     // Calcular pagamentos por método (case-insensitive) - CONSISTÊNCIA com getCurrentCashBoxForUser
-    const cashPayments = sales.reduce((sum, sale) => {
+    let cashPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => (p.method || '').toLowerCase() === 'cash')
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
 
-    const mobileMoneyPayments = sales.reduce((sum, sale) => {
+    let mobileMoneyPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => {
           const method = (p.method || '').toLowerCase();
@@ -236,7 +247,7 @@ export class CashBoxService {
       return sum + amount;
     }, 0);
 
-    const cardPayments = sales.reduce((sum, sale) => {
+    let cardPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => {
           const method = (p.method || '').toLowerCase();
@@ -246,7 +257,7 @@ export class CashBoxService {
       return sum + amount;
     }, 0);
 
-    const debtPayments = sales.reduce((sum, sale) => {
+    let debtPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => {
           const method = (p.method || '').toLowerCase();
@@ -255,6 +266,20 @@ export class CashBoxService {
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
+
+    // CRÍTICO: Adicionar pagamentos de mesas aos totais por método
+    for (const tp of tablePayments) {
+      const method = (tp.method || '').toLowerCase();
+      if (method === 'cash') {
+        cashPayments += tp.amount;
+      } else if (method === 'vale' || method === 'debt') {
+        debtPayments += tp.amount;
+      } else if (method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile') {
+        mobileMoneyPayments += tp.amount;
+      } else if (method === 'card' || method === 'mixed') {
+        cardPayments += tp.amount;
+      }
+    }
 
     return {
       ...cashBox,
@@ -266,7 +291,7 @@ export class CashBoxService {
         debtPayments,
         totalCashOut: 0, // Saídas de caixa (não implementado ainda)
         currentAmount: cashBox.openingCash + cashPayments,
-        salesCount: sales.length,
+        salesCount: sales.length + tablePayments.length,
       },
     };
   }
@@ -290,8 +315,18 @@ export class CashBoxService {
           openedAt: { gte: cashBox.openedAt },
         };
         
+        // Query para TablePayments (pagamentos de mesas)
+        const tablePaymentsQuery: any = {
+          processedAt: { gte: cashBox.openedAt },
+          session: { branchId: cashBox.branchId },
+        };
+        
         if (cashBox.closedAt) {
           salesQuery.openedAt = {
+            gte: cashBox.openedAt,
+            lte: cashBox.closedAt,
+          };
+          tablePaymentsQuery.processedAt = {
             gte: cashBox.openedAt,
             lte: cashBox.closedAt,
           };
@@ -302,17 +337,25 @@ export class CashBoxService {
           include: { payments: true },
         });
 
-        const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        // CRÍTICO: Buscar também pagamentos de mesas (TablePayment)
+        const tablePayments = await this.prisma.tablePayment.findMany({
+          where: tablePaymentsQuery,
+        });
+
+        // Combinar totais de vendas diretas + pagamentos de mesas
+        const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
+        const totalSales = directTotalSales + tableTotalSales;
         
         // Calcular pagamentos por método (case-insensitive) - CONSISTÊNCIA com getCurrentCashBoxForUser
-        const cashPayments = sales.reduce((sum, sale) => {
+        let cashPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => (p.method || '').toLowerCase() === 'cash')
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
 
-        const mobileMoneyPayments = sales.reduce((sum, sale) => {
+        let mobileMoneyPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => {
               const method = (p.method || '').toLowerCase();
@@ -322,7 +365,7 @@ export class CashBoxService {
           return sum + amount;
         }, 0);
 
-        const cardPayments = sales.reduce((sum, sale) => {
+        let cardPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => {
               const method = (p.method || '').toLowerCase();
@@ -332,7 +375,7 @@ export class CashBoxService {
           return sum + amount;
         }, 0);
 
-        const debtPayments = sales.reduce((sum, sale) => {
+        let debtPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => {
               const method = (p.method || '').toLowerCase();
@@ -341,6 +384,20 @@ export class CashBoxService {
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
+
+        // CRÍTICO: Adicionar pagamentos de mesas aos totais por método
+        for (const tp of tablePayments) {
+          const method = (tp.method || '').toLowerCase();
+          if (method === 'cash') {
+            cashPayments += tp.amount;
+          } else if (method === 'vale' || method === 'debt') {
+            debtPayments += tp.amount;
+          } else if (method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile') {
+            mobileMoneyPayments += tp.amount;
+          } else if (method === 'card' || method === 'mixed') {
+            cardPayments += tp.amount;
+          }
+        }
 
         return {
           ...cashBox,
@@ -352,7 +409,7 @@ export class CashBoxService {
             debtPayments,
             totalCashOut: 0, // Saídas de caixa (não implementado ainda)
             currentAmount: cashBox.openingCash + cashPayments,
-            salesCount: sales.length,
+            salesCount: sales.length + tablePayments.length,
           },
         };
       })
@@ -408,7 +465,7 @@ export class CashBoxService {
       return null;
     }
 
-    // Buscar vendas do período
+    // Buscar vendas do período (vendas diretas)
     const sales = await this.prisma.sale.findMany({
       where: {
         branchId: cashBox.branchId,
@@ -419,17 +476,33 @@ export class CashBoxService {
       },
     });
 
-    const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+    // CRÍTICO: Buscar também pagamentos de mesas (TablePayment)
+    // Estes são pagamentos feitos diretamente nas mesas e não passam pela tabela Sale/Payment
+    const tablePayments = await this.prisma.tablePayment.findMany({
+      where: {
+        processedAt: { gte: cashBox.openedAt },
+        session: { branchId: cashBox.branchId },
+      },
+    });
+
+    // Totais de vendas diretas
+    const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
     
-    // Calcular pagamentos por método (case-insensitive)
-    const cashPayments = sales.reduce((sum, sale) => {
+    // Totais de mesas (TablePayment)
+    const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
+    
+    // Total geral
+    const totalSales = directTotalSales + tableTotalSales;
+    
+    // Calcular pagamentos por método - VENDAS DIRETAS
+    let cashPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => (p.method || '').toLowerCase() === 'cash')
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
 
-    const mobileMoneyPayments = sales.reduce((sum, sale) => {
+    let mobileMoneyPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => {
           const method = (p.method || '').toLowerCase();
@@ -439,7 +512,7 @@ export class CashBoxService {
       return sum + amount;
     }, 0);
 
-    const cardPayments = sales.reduce((sum, sale) => {
+    let cardPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => {
           const method = (p.method || '').toLowerCase();
@@ -449,7 +522,7 @@ export class CashBoxService {
       return sum + amount;
     }, 0);
 
-    const debtPayments = sales.reduce((sum, sale) => {
+    let debtPayments = sales.reduce((sum, sale) => {
       const amount = sale.payments
         .filter(p => {
           const method = (p.method || '').toLowerCase();
@@ -458,6 +531,20 @@ export class CashBoxService {
         .reduce((s, p) => s + p.amount, 0);
       return sum + amount;
     }, 0);
+    
+    // CRÍTICO: Adicionar pagamentos de mesas aos totais por método
+    for (const tp of tablePayments) {
+      const method = (tp.method || '').toLowerCase();
+      if (method === 'cash') {
+        cashPayments += tp.amount;
+      } else if (method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile') {
+        mobileMoneyPayments += tp.amount;
+      } else if (method === 'card' || method === 'mixed') {
+        cardPayments += tp.amount;
+      } else if (method === 'debt' || method === 'vale') {
+        debtPayments += tp.amount;
+      }
+    }
 
     return {
       ...cashBox,
@@ -469,7 +556,7 @@ export class CashBoxService {
         debtPayments,
         totalCashOut: 0, // Saídas de caixa (não implementado ainda, mas necessário para consistência)
         currentAmount: cashBox.openingCash + cashPayments,
-        salesCount: sales.length,
+        salesCount: sales.length + tablePayments.length,
       },
     };
   }
@@ -496,9 +583,19 @@ export class CashBoxService {
           openedAt: { gte: cashBox.openedAt },
         };
         
+        // Query para TablePayments (pagamentos de mesas)
+        const tablePaymentsQuery: any = {
+          processedAt: { gte: cashBox.openedAt },
+          session: { branchId: cashBox.branchId },
+        };
+        
         // Se o caixa está fechado, limitar até a data de fechamento
         if (cashBox.closedAt) {
           salesQuery.openedAt = {
+            gte: cashBox.openedAt,
+            lte: cashBox.closedAt,
+          };
+          tablePaymentsQuery.processedAt = {
             gte: cashBox.openedAt,
             lte: cashBox.closedAt,
           };
@@ -509,17 +606,25 @@ export class CashBoxService {
           include: { payments: true },
         });
 
-        const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        // CRÍTICO: Buscar também pagamentos de mesas (TablePayment)
+        const tablePayments = await this.prisma.tablePayment.findMany({
+          where: tablePaymentsQuery,
+        });
+
+        // Combinar totais de vendas diretas + pagamentos de mesas
+        const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+        const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
+        const totalSales = directTotalSales + tableTotalSales;
         
         // Calcular pagamentos por método (case-insensitive)
-        const cashPayments = sales.reduce((sum, sale) => {
+        let cashPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => (p.method || '').toLowerCase() === 'cash')
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
 
-        const mobileMoneyPayments = sales.reduce((sum, sale) => {
+        let mobileMoneyPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => {
               const method = (p.method || '').toLowerCase();
@@ -529,7 +634,7 @@ export class CashBoxService {
           return sum + amount;
         }, 0);
 
-        const cardPayments = sales.reduce((sum, sale) => {
+        let cardPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => {
               const method = (p.method || '').toLowerCase();
@@ -539,7 +644,7 @@ export class CashBoxService {
           return sum + amount;
         }, 0);
 
-        const debtPayments = sales.reduce((sum, sale) => {
+        let debtPayments = sales.reduce((sum, sale) => {
           const amount = sale.payments
             .filter(p => {
               const method = (p.method || '').toLowerCase();
@@ -548,6 +653,20 @@ export class CashBoxService {
             .reduce((s, p) => s + p.amount, 0);
           return sum + amount;
         }, 0);
+
+        // CRÍTICO: Adicionar pagamentos de mesas aos totais por método
+        for (const tp of tablePayments) {
+          const method = (tp.method || '').toLowerCase();
+          if (method === 'cash') {
+            cashPayments += tp.amount;
+          } else if (method === 'vale' || method === 'debt') {
+            debtPayments += tp.amount;
+          } else if (method === 'orange' || method === 'orange_money' || method === 'teletaku' || method === 'mobile') {
+            mobileMoneyPayments += tp.amount;
+          } else if (method === 'card' || method === 'mixed') {
+            cardPayments += tp.amount;
+          }
+        }
 
         return {
           ...cashBox,
@@ -559,7 +678,7 @@ export class CashBoxService {
             debtPayments,
             totalCashOut: 0, // Saídas de caixa (não implementado ainda)
             currentAmount: cashBox.openingCash + cashPayments,
-            salesCount: sales.length,
+            salesCount: sales.length + tablePayments.length,
           },
         };
       })
