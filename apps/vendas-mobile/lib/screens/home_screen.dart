@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/cash_box_provider.dart';
 import '../providers/products_provider.dart';
 import '../providers/tables_provider.dart';
+import '../providers/sync_provider.dart' as sync_prov;
 import '../services/sync_service.dart';
 import 'dashboard_screen.dart';
 import 'cash_box_screen.dart';
@@ -24,6 +25,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   StreamSubscription<SyncStatus>? _syncSubscription;
+  StreamSubscription<bool>? _syncProviderSubscription;
 
   final List<Widget> _screens = [
     const DashboardScreen(),
@@ -53,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _syncSubscription?.cancel();
+    _syncProviderSubscription?.cancel();
     super.dispose();
   }
 
@@ -60,18 +63,31 @@ class _HomeScreenState extends State<HomeScreen> {
   void _setupSyncListener() {
     _syncSubscription = SyncService.instance.syncStatusStream.listen((status) {
       if (status.requiresReload && mounted) {
-        debugPrint('🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
+        debugPrint(
+            '🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
         _loadInitialData().then((_) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(status.message),
-                backgroundColor: status.success == true ? Colors.green : Colors.orange,
+                backgroundColor:
+                    status.success == true ? Colors.green : Colors.orange,
               ),
             );
           }
         });
       }
+    });
+    
+    // Escutar sync periódico do SyncProvider para atualizar CashBox
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final syncProvider = context.read<sync_prov.SyncProvider>();
+      _syncProviderSubscription = syncProvider.onSyncComplete.listen((success) {
+        if (success && mounted) {
+          debugPrint('🔄 HomeScreen: Sync periódico completou, atualizando CashBox...');
+          context.read<CashBoxProvider>().loadCurrentCashBox();
+        }
+      });
     });
   }
 

@@ -17,6 +17,10 @@ class SyncProvider extends ChangeNotifier {
   int _pendingChanges = 0;
   Timer? _autoSyncTimer;
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  
+  // Stream controller para notificar quando sync completa
+  final _syncCompleteController = StreamController<bool>.broadcast();
+  Stream<bool> get onSyncComplete => _syncCompleteController.stream;
 
   // Getters
   SyncStatus get status => _status;
@@ -110,11 +114,16 @@ class SyncProvider extends ChangeNotifier {
       _status = SyncStatus.success;
       _lastSyncTime = DateTime.now();
       await _updatePendingCount();
+      
+      // Notificar que sync completou (para atualizar CashBox, etc)
+      _syncCompleteController.add(true);
+      
       notifyListeners();
       return true;
     } catch (e) {
       _status = SyncStatus.error;
       _lastError = e.toString();
+      _syncCompleteController.add(false);
       notifyListeners();
       return false;
     }
@@ -225,6 +234,20 @@ class SyncProvider extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('Aviso: Não foi possível buscar overview das mesas: $e');
+      }
+      
+      // Sincronizar caixa atual do servidor
+      try {
+        final currentCashBox = await _api.getCurrentCashBox();
+        if (currentCashBox != null) {
+          await _upsertCashBox(currentCashBox);
+          debugPrint('✅ Caixa atual sincronizado: ${currentCashBox['id']}');
+        } else {
+          // Servidor não tem caixa aberto - fechar caixas locais que estão abertos
+          await _closeLocalOpenCashBoxes();
+        }
+      } catch (e) {
+        debugPrint('Aviso: Não foi possível sincronizar caixa: $e');
       }
     } catch (e) {
       debugPrint('Erro ao baixar dados: $e');
@@ -545,10 +568,95 @@ class SyncProvider extends ChangeNotifier {
     await _updatePendingCount();
   }
 
+  /// Insere ou atualiza caixa do servidor
+  Future<void> _upsertCashBox(Map<String, dynamic> serverCashBox) async {
+    final id = serverCashBox['id']?.toString();
+    if (id == null) return;
+
+    // Mapear campos do servidor para formato local
+    final stats = serverCashBox['stats'] as Map<String, dynamic>? ?? {};
+    
+    final mappedData = {
+      'id': id,
+      'box_number': serverCashBox['boxNumber'] ?? serverCashBox['box_number'],
+      'branch_id': serverCashBox['branchId'] ?? serverCashBox['branch_id'],
+      'opened_by': serverCashBox['openedBy'] ?? serverCashBox['opened_by'],
+      'closed_by': serverCashBox['closedBy'] ?? serverCashBox['closed_by'],
+      'status': serverCashBox['status'] ?? 'open',
+      'opening_cash': serverCashBox['openingCash'] ?? serverCashBox['opening_cash'] ?? 0,
+      'total_sales': stats['totalSales'] ?? serverCashBox['totalSales'] ?? serverCashBox['total_sales'] ?? 0,
+      'total_cash': stats['cashPayments'] ?? serverCashBox['totalCash'] ?? serverCashBox['total_cash'] ?? 0,
+      'total_card': stats['cardPayments'] ?? serverCashBox['totalCard'] ?? serverCashBox['total_card'] ?? 0,
+      'total_mobile_money': stats['mobileMoneyPayments'] ?? serverCashBox['totalMobileMoney'] ?? serverCashBox['total_mobile_money'] ?? 0,
+      'total_debt': stats['debtPayments'] ?? serverCashBox['totalDebt'] ?? serverCashBox['total_debt'] ?? 0,
+      'closing_cash': serverCashBox['closingCash'] ?? serverCashBox['closing_cash'],
+      'difference': serverCashBox['difference'],
+      'notes': serverCashBox['notes'],
+      'opened_at': serverCashBox['openedAt'] ?? serverCashBox['opened_at'],
+      'closed_at': serverCashBox['closedAt'] ?? serverCashBox['closed_at'],
+      'synced': 1,
+    };
+
+    try {
+      final existing = await _db.query('cash_boxes', where: 'id = ?', whereArgs: [id]);
+      
+      if (existing.isEmpty) {
+        // Inserir novo caixa
+        await _db.insert('cash_boxes', mappedData);
+        debugPrint('✅ Caixa inserido: $id');
+      } else {
+        // Verificar se tem mudanças locais
+        final localSynced = existing.first['synced'] as int? ?? 1;
+        if (localSynced == 1) {
+          // Pode atualizar
+          await _db.update('cash_boxes', mappedData, where: 'id = ?', whereArgs: [id]);
+          debugPrint('✅ Caixa atualizado: $id');
+        } else {
+          debugPrint('⏳ Caixa tem mudanças locais, mantendo versão local: $id');
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao upsert caixa: $e');
+    }
+  }
+
+  /// Fecha caixas locais que estão abertos mas não existem no servidor
+  Future<void> _closeLocalOpenCashBoxes() async {
+    try {
+      final openCashBoxes = await _db.query(
+        'cash_boxes',
+        where: 'status = ?',
+        whereArgs: ['open'],
+      );
+
+      for (final cashBox in openCashBoxes) {
+        final synced = cashBox['synced'] as int? ?? 1;
+        
+        // Só fechar se já estava sincronizado (não tem vendas locais pendentes)
+        if (synced == 1) {
+          await _db.update(
+            'cash_boxes',
+            {
+              'status': 'closed',
+              'closed_at': DateTime.now().toIso8601String(),
+              'synced': 1,
+            },
+            where: 'id = ?',
+            whereArgs: [cashBox['id']],
+          );
+          debugPrint('⚠️ Caixa local fechado (servidor não tem): ${cashBox['id']}');
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao fechar caixas locais: $e');
+    }
+  }
+
   @override
   void dispose() {
     _autoSyncTimer?.cancel();
     _connectivitySubscription?.cancel();
+    _syncCompleteController.close();
     super.dispose();
   }
 }

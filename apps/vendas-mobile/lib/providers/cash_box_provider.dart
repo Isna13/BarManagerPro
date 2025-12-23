@@ -186,7 +186,39 @@ class CashBoxProvider extends ChangeNotifier {
         } else {
           // Servidor não tem caixa aberto
           debugPrint('🌐 Servidor não tem caixa aberto');
-          _currentCashBox = localCashBox;
+          
+          // Se temos caixa local aberto mas servidor não tem, significa que foi fechado
+          // em outro dispositivo (ex: Electron) - precisamos fechar localmente também
+          if (localCashBox != null && localCashBox['synced'] == 1) {
+            debugPrint('⚠️ Caixa local aberto mas servidor fechado - fechando localmente');
+            
+            // Fechar o caixa local
+            await _db.update(
+              'cash_boxes',
+              {
+                'status': 'closed',
+                'closed_at': DateTime.now().toIso8601String(),
+                'synced': 1, // Já está sincronizado com servidor
+              },
+              where: 'id = ?',
+              whereArgs: [localCashBox['id']],
+            );
+            
+            // Adicionar ao histórico e limpar caixa atual
+            _history.insert(0, {
+              ...localCashBox,
+              'status': 'closed',
+              'closed_at': DateTime.now().toIso8601String(),
+            });
+            _currentCashBox = null;
+            debugPrint('✅ Caixa local fechado para corresponder ao servidor');
+          } else if (localCashBox != null && localCashBox['synced'] == 0) {
+            // Caixa local tem vendas não sincronizadas - manter aberto
+            debugPrint('⚠️ Caixa local tem dados não sincronizados - mantendo aberto');
+            _currentCashBox = localCashBox;
+          } else {
+            _currentCashBox = null;
+          }
         }
       } else {
         // Offline: usar banco local
