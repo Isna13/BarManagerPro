@@ -516,10 +516,16 @@ export class CashBoxService {
     }
 
     // Buscar pagamentos das vendas durante o período do caixa
+    // CRÍTICO: Excluir pagamentos VALE pois já são representados pelos Debts
+    // Isso evita duplicação de movimentações no app do proprietário
     const payments = await this.prisma.payment.findMany({
       where: {
         createdAt: { gte: targetCashBox.openedAt },
         sale: { branchId: targetCashBox.branchId },
+        // Excluir VALE - já representados pelos Debts
+        NOT: {
+          method: { in: ['VALE', 'vale', 'Vale'] },
+        },
       },
       include: {
         sale: {
