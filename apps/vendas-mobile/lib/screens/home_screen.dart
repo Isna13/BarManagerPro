@@ -61,19 +61,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Escuta eventos de sincronização para recarregar dados após sync
   void _setupSyncListener() {
-    // Escutar SyncService principal - SEMPRE recarregar CashBox após sync bem-sucedido
+    // Escutar SyncService principal - SEMPRE recarregar dados após sync bem-sucedido
     _syncSubscription = SyncService.instance.syncStatusStream.listen((status) {
       if (!mounted) return;
-      
-      // Após qualquer sync bem-sucedido, recarregar CashBox e Dashboard
+
+      // Após qualquer sync bem-sucedido, recarregar CashBox, Estoque e Dashboard
       if (status.success == true && !status.isSyncing) {
-        debugPrint('🔄 HomeScreen: SyncService completou, atualizando CashBox...');
+        debugPrint(
+            '🔄 HomeScreen: SyncService completou, atualizando dados...');
+        final auth = context.read<AuthProvider>();
+        final branchId = auth.branchId;
+
+        // CRÍTICO: Atualizar CashBox
         context.read<CashBoxProvider>().loadCurrentCashBox();
+
+        // CRÍTICO: Atualizar Estoque/Inventário (corrige bug de estoque não atualizar)
+        context.read<ProductsProvider>().loadInventory(branchId: branchId);
+
+        debugPrint('✅ CashBox e Inventário atualizados após sync');
       }
-      
+
       // Se requer reload completo (ex: reset remoto)
       if (status.requiresReload) {
-        debugPrint('🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
+        debugPrint(
+            '🔄 HomeScreen: Recebido sinal de reload, recarregando providers...');
         _loadInitialData().then((_) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -88,14 +99,20 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    // Escutar sync periódico do SyncProvider para atualizar CashBox
+    // Escutar sync periódico do SyncProvider para atualizar CashBox e Estoque
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final syncProvider = context.read<sync_prov.SyncProvider>();
       _syncProviderSubscription = syncProvider.onSyncComplete.listen((success) {
         if (success && mounted) {
           debugPrint(
-              '🔄 HomeScreen: SyncProvider completou, atualizando CashBox...');
+              '🔄 HomeScreen: SyncProvider completou, atualizando dados...');
+          final auth = context.read<AuthProvider>();
+          final branchId = auth.branchId;
+
           context.read<CashBoxProvider>().loadCurrentCashBox();
+          context.read<ProductsProvider>().loadInventory(branchId: branchId);
+
+          debugPrint('✅ CashBox e Inventário atualizados após SyncProvider');
         }
       });
     });
