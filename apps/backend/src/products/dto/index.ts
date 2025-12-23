@@ -9,6 +9,10 @@ export class CreateProductDto {
   @IsString()
   categoryId?: string;
 
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
+
   @IsString()
   name: string;
 
@@ -101,6 +105,10 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
 
   @IsOptional()
   @IsString()

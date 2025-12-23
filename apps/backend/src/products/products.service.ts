@@ -24,7 +24,18 @@ export class ProductsService {
       }
     }
 
-    const { categoryId, id, ...productData } = createDto;
+    // Verificar se fornecedor existe (se fornecido)
+    if (createDto.supplierId) {
+      const supplier = await this.prisma.supplier.findUnique({
+        where: { id: createDto.supplierId },
+      });
+
+      if (!supplier) {
+        throw new NotFoundException('Fornecedor não encontrado');
+      }
+    }
+
+    const { categoryId, supplierId, id, ...productData } = createDto;
 
     // Se tem ID, usar upsert para sincronização
     if (id) {
@@ -38,13 +49,16 @@ export class ProductsService {
           unitsPerBox: createDto.unitsPerBox || 1,
           priceUnit: createDto.priceUnit || 0,
           category: categoryId ? { connect: { id: categoryId } } : undefined,
+          supplier: supplierId ? { connect: { id: supplierId } } : undefined,
         },
         update: {
           ...productData,
           category: categoryId ? { connect: { id: categoryId } } : undefined,
+          supplier: supplierId ? { connect: { id: supplierId } } : undefined,
         },
         include: {
           category: true,
+          supplier: true,
         },
       });
       return product;
@@ -68,9 +82,11 @@ export class ProductsService {
         unitsPerBox: createDto.unitsPerBox || 1,
         priceUnit: createDto.priceUnit || 0,
         category: categoryId ? { connect: { id: categoryId } } : undefined,
+        supplier: supplierId ? { connect: { id: supplierId } } : undefined,
       },
       include: {
         category: true,
+        supplier: true,
       },
     });
 
