@@ -717,6 +717,29 @@ export default function TablesPage() {
           console.log('✅ Vale individual criado:', debtCreated, 'vinculado à venda:', paymentResult?.saleId);
         }
         
+        // 🔴 CORREÇÃO CRÍTICA: Adicionar pontos de fidelidade para cliente cadastrado
+        // Mesma lógica do PDV - 1 ponto a cada 1.000 FCFA (100.000 centavos)
+        // Vale não dá pontos (pagamento não efetivo)
+        if (selectedCustomer.customer_id && paymentMethod !== 'vale' && amountCents >= 100000) {
+          try {
+            // @ts-ignore
+            const loyaltyResult = await window.electronAPI?.loyalty?.addPoints?.(
+              selectedCustomer.customer_id,
+              amountCents,
+              paymentResult?.saleId
+            );
+            
+            if (loyaltyResult && loyaltyResult.pointsAdded > 0) {
+              toast?.success(
+                `🎉 +${loyaltyResult.pointsAdded} ponto${loyaltyResult.pointsAdded > 1 ? 's' : ''} de fidelidade para ${selectedCustomer.customer_name}! Total: ${loyaltyResult.totalPoints}`
+              );
+            }
+          } catch (error) {
+            console.error('Erro ao adicionar pontos de fidelidade:', error);
+            // Não bloqueia o pagamento se falhar
+          }
+        }
+        
         const successMsg = paymentMethod === 'vale' 
           ? `💳 Vale criado com sucesso para ${selectedCustomer.customer_name}! Valor: ${formatCurrency(amountCents)}. Verifique na aba "Gestão de Dívidas (Vales)".`
           : `Pagamento individual de ${formatCurrency(amountCents)} recebido!`;
@@ -772,7 +795,47 @@ export default function TablesPage() {
           console.log('✅ Vales conjuntos criados:', createdDebts, 'vinculados à venda:', sessionPaymentResult?.saleId);
           toast?.success(`💳 Vale conjunto criado! Distribuído entre ${customerCredits.length} cliente(s) cadastrado(s). Verifique na aba "Gestão de Dívidas (Vales)".`);
         } else {
-          toast?.success(`✅ Pagamento conjunto de ${formatCurrency(amountCents)} recebido! Os pontos foram distribuídos entre os clientes cadastrados.`);
+          // 🔴 CORREÇÃO CRÍTICA: Adicionar pontos de fidelidade para clientes cadastrados
+          // Pagamento efetivo (não Vale) - distribuir pontos proporcionalmente
+          const registeredCustomers = selectedSession.customers.filter(c => c.customer_id);
+          
+          if (registeredCustomers.length > 0 && amountCents >= 100000) {
+            // Calcular total consumido por clientes cadastrados
+            let totalRegistered = 0;
+            for (const customer of registeredCustomers) {
+              totalRegistered += customer.total || 0;
+            }
+            
+            // Distribuir pontos proporcionalmente ao consumo de cada cliente
+            for (const customer of registeredCustomers) {
+              const customerTotal = customer.total || 0;
+              // Proporcionalizar o valor pago pelo consumo do cliente
+              const customerShare = totalRegistered > 0 
+                ? Math.round((customerTotal / totalRegistered) * amountCents)
+                : Math.round(amountCents / registeredCustomers.length);
+              
+              if (customerShare >= 100000) { // Mínimo 1.000 FCFA = 100.000 centavos
+                try {
+                  // @ts-ignore
+                  const loyaltyResult = await window.electronAPI?.loyalty?.addPoints?.(
+                    customer.customer_id,
+                    customerShare,
+                    sessionPaymentResult?.saleId
+                  );
+                  
+                  if (loyaltyResult && loyaltyResult.pointsAdded > 0) {
+                    toast?.success(
+                      `🎉 +${loyaltyResult.pointsAdded} ponto${loyaltyResult.pointsAdded > 1 ? 's' : ''} para ${customer.customer_name}! Total: ${loyaltyResult.totalPoints}`
+                    );
+                  }
+                } catch (error) {
+                  console.error(`Erro ao adicionar pontos para ${customer.customer_name}:`, error);
+                }
+              }
+            }
+          }
+          
+          toast?.success(`✅ Pagamento conjunto de ${formatCurrency(amountCents)} recebido!`);
         }
       }
       

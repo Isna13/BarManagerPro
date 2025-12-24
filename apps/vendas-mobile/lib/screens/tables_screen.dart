@@ -1779,13 +1779,16 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
         cashBox.incrementSalesCount();
 
         // Atribuir pontos de fidelidade (1 ponto a cada 1000 FCFA)
-        // NOTA: amount está em centavos (x100), então dividir por 100000
+        // 🔴 CORREÇÃO: Passar amount (valor em centavos) diretamente
+        // O método addLoyaltyPoints calcula internamente: amount ~/ 100000
+        // 🔴 REGRA: Vale (crédito) não dá pontos - apenas pagamentos efetivos
         int pointsEarned = 0;
-        if (registeredCustomerId != null && amount >= 100000) {
-          pointsEarned = amount ~/ 100000;
+        if (registeredCustomerId != null && amount >= 100000 && method != 'vale') {
           final customersProvider = context.read<CustomersProvider>();
-          await customersProvider.addLoyaltyPoints(
-              registeredCustomerId, pointsEarned);
+          // 🔴 FIX: Passar amount (centavos), não o valor já dividido!
+          final result = await customersProvider.addLoyaltyPoints(
+              registeredCustomerId, amount);
+          pointsEarned = result?['added'] ?? 0;
           debugPrint(
               '🎯 Pontos de fidelidade adicionados: $pointsEarned para cliente $registeredCustomerId (amount: $amount centavos)');
         }
