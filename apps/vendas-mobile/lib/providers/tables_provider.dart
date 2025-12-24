@@ -1192,13 +1192,13 @@ class TablesProvider extends ChangeNotifier {
         final isMuntu = order['is_muntu'] ?? order['isMuntu'] ?? 0;
         final unitPrice = order['unit_price'] ?? order['unitPrice'] ?? 0;
         final total = order['total'] ?? 0;
-        
+
         // 🔴 VALIDAÇÃO: Não inserir item sem product_id
         if (productId == null) {
           debugPrint('⚠️ [ERRO] Pedido sem product_id: $order');
           continue;
         }
-        
+
         await _db.insert('sale_items', {
           'id': _uuid.v4(),
           'sale_id': saleId,
@@ -1210,7 +1210,8 @@ class TablesProvider extends ChangeNotifier {
           'created_at': now,
           'synced': 0,
         });
-        debugPrint('   ✅ Item adicionado: productId=$productId, qty=$qtyUnits, total=$total');
+        debugPrint(
+            '   ✅ Item adicionado: productId=$productId, qty=$qtyUnits, total=$total');
       }
 
       // Marcar venda para sincronização

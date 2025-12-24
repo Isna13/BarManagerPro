@@ -716,14 +716,12 @@ export class CashBoxService {
       return [];
     }
 
-    // Buscar pagamentos das vendas durante o período do caixa
+    // 1. Buscar pagamentos das vendas de BALCÃO (PDV) durante o período do caixa
     // CRÍTICO: Excluir pagamentos VALE pois já são representados pelos Debts
-    // Isso evita duplicação de movimentações no app do proprietário
     const payments = await this.prisma.payment.findMany({
       where: {
         createdAt: { gte: targetCashBox.openedAt },
         sale: { branchId: targetCashBox.branchId },
-        // Excluir VALE - já representados pelos Debts
         NOT: {
           method: { in: ['VALE', 'vale', 'Vale'] },
         },
@@ -732,6 +730,7 @@ export class CashBoxService {
         sale: {
           select: {
             saleNumber: true,
+            type: true,
             customer: { select: { fullName: true } },
             cashier: { select: { fullName: true } },
           },
@@ -741,8 +740,33 @@ export class CashBoxService {
       take: limit,
     });
 
-    // Buscar dívidas (vendas com Vale) criadas durante o período do caixa
-    // Usar OR para buscar dívidas com branchId direto OU via sale.branchId (algumas dívidas podem não ter branchId preenchido)
+    // 2. 🔴 CORREÇÃO CRÍTICA: Buscar pagamentos de MESA (TablePayment)
+    // Vendas de mesa usam TablePayment ao invés de Payment
+    const tablePayments = await this.prisma.tablePayment.findMany({
+      where: {
+        createdAt: { gte: targetCashBox.openedAt },
+        session: {
+          table: { branchId: targetCashBox.branchId },
+        },
+      },
+      include: {
+        session: {
+          select: {
+            table: { select: { number: true } },
+          },
+        },
+        tableCustomer: {
+          select: {
+            customerName: true,
+            customer: { select: { fullName: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    // 3. Buscar dívidas (vendas com Vale) criadas durante o período do caixa
     const debts = await this.prisma.debt.findMany({
       where: {
         createdAt: { gte: targetCashBox.openedAt },
@@ -764,11 +788,9 @@ export class CashBoxService {
       take: limit,
     });
 
-    // Mapear pagamentos para o formato esperado pelo mobile
+    // Mapear pagamentos de balcão (PDV)
     const paymentMovements = payments.map(payment => {
       const method = (payment.method || '').toLowerCase();
-      // CASH = entrada de dinheiro na caixa
-      // Outros métodos (vale, orange_money, teletaku) = pagamento digital, não entra no caixa físico
       const isCashPayment = method === 'cash';
       
       return {
@@ -784,10 +806,33 @@ export class CashBoxService {
         userId: null,
         userName: payment.sale?.cashier?.fullName || null,
         createdAt: payment.createdAt,
+        saleType: payment.sale?.type || 'counter',
       };
     });
 
-    // Mapear dívidas (Vale) para o formato esperado pelo mobile
+    // 🔴 CORREÇÃO: Mapear pagamentos de MESA
+    const tablePaymentMovements = tablePayments.map(tp => {
+      const method = (tp.method || '').toLowerCase();
+      const isCashPayment = method === 'cash';
+      const customerName = tp.tableCustomer?.customer?.fullName || tp.tableCustomer?.customerName || 'Cliente';
+      const tableNumber = tp.session?.table?.number || '?';
+      
+      return {
+        id: tp.id,
+        cashBoxId: targetCashBox!.id,
+        movementType: isCashPayment ? 'cash_in' : method,
+        amount: tp.amount,
+        description: `Mesa ${tableNumber} - ${customerName}`,
+        referenceType: 'table_payment',
+        referenceId: tp.sessionId,
+        userId: null,
+        userName: null,
+        createdAt: tp.createdAt,
+        saleType: 'table',
+      };
+    });
+
+    // Mapear dívidas (Vale)
     const debtMovements = debts.map(debt => ({
       id: debt.id,
       cashBoxId: targetCashBox!.id,
@@ -801,12 +846,15 @@ export class CashBoxService {
       userId: null,
       userName: debt.sale?.cashier?.fullName || null,
       createdAt: debt.createdAt,
+      saleType: 'counter',
     }));
 
-    // Combinar e ordenar por data (mais recentes primeiro)
-    const allMovements = [...paymentMovements, ...debtMovements]
+    // 🔴 CORREÇÃO: Combinar TODOS os tipos de movimentação
+    const allMovements = [...paymentMovements, ...tablePaymentMovements, ...debtMovements]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, limit);
+
+    console.log(`[CashBox] getMovements: ${paymentMovements.length} PDV, ${tablePaymentMovements.length} Mesas, ${debtMovements.length} Vale = ${allMovements.length} total`);
 
     return allMovements;
   }

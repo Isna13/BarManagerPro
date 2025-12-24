@@ -68,13 +68,23 @@ export class CustomersService {
           where: { status: 'closed' },
           select: { total: true },
         },
+        // 🔴 CORREÇÃO: Incluir vendas de MESA via TableCustomer
+        tableCustomers: {
+          where: { paymentStatus: 'paid' },
+          select: { total: true },
+        },
       },
       orderBy: { fullName: 'asc' },
     });
 
     // Calcular campos derivados para cada cliente
     return customers.map(customer => {
-      const totalPurchases = customer.sales.reduce((sum, sale) => sum + sale.total, 0);
+      // Vendas de balcão (PDV)
+      const counterSales = customer.sales.reduce((sum, sale) => sum + sale.total, 0);
+      // 🔴 CORREÇÃO: Vendas de mesa
+      const tableSales = customer.tableCustomers.reduce((sum, tc) => sum + tc.total, 0);
+      // Total de compras = balcão + mesa
+      const totalPurchases = counterSales + tableSales;
       const currentDebt = customer.debts.reduce((sum, debt) => sum + debt.balance, 0);
 
       return {
