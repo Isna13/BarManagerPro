@@ -54,17 +54,32 @@ export declare class DatabaseManager {
     createProduct(productData: any, skipSyncQueue?: boolean): any;
     updateProduct(id: string, productData: any, skipSyncQueue?: boolean): any;
     getProductById(id: string): any;
+    deleteProduct(id: string): {
+        success: boolean;
+        id: string;
+        error: string;
+        name?: undefined;
+    } | {
+        success: boolean;
+        id: string;
+        name: any;
+        error?: undefined;
+    };
     getCategories(filters?: any): any;
     createCategory(categoryData: any, skipSyncQueue?: boolean): any;
     updateCategory(id: string, categoryData: any, skipSyncQueue?: boolean): any;
     deleteCategory(id: string): {
         success: boolean;
+        id: string;
+        name: any;
     };
     getSuppliers(): any;
     createSupplier(supplierData: any, skipSyncQueue?: boolean): any;
     updateSupplier(id: string, supplierData: any, skipSyncQueue?: boolean): any;
     deleteSupplier(id: string): {
         success: boolean;
+        id: string;
+        name: any;
     };
     getPurchases(filters?: any): any;
     getPurchaseById(id: string): any;
@@ -853,6 +868,53 @@ export declare class DatabaseManager {
     queueFullResync(): {
         total: number;
         byEntity: Record<string, number>;
+    };
+    /**
+     * 🔍 VALIDAÇÃO PÓS-SYNC: Compara produtos locais com Railway
+     * Retorna lista de inconsistências encontradas
+     */
+    getProductSyncValidation(): {
+        localOnly: any[];
+        mismatch: any[];
+        totalLocal: number;
+        lastCheck: string;
+    };
+    /**
+     * 🔍 Marca um produto como sincronizado após confirmação do servidor
+     */
+    markProductSynced(id: string, serverTimestamp?: string): void;
+    /**
+     * 🔍 Marca um produto como falha de sincronização
+     */
+    markProductSyncFailed(id: string, error: string): void;
+    /**
+     * 📊 Retorna resumo do estado de sincronização de todas as entidades
+     */
+    getSyncHealthReport(): {
+        products: {
+            total: number;
+            synced: number;
+            pending: number;
+            failed: number;
+        };
+        categories: {
+            total: number;
+            synced: number;
+            pending: number;
+            failed: number;
+        };
+        suppliers: {
+            total: number;
+            synced: number;
+            pending: number;
+            failed: number;
+        };
+        queue: {
+            pending: number;
+            failed: number;
+            completed: number;
+        };
+        lastSync: string | null;
     };
     /**
      * Retorna estatísticas da fila de sincronização

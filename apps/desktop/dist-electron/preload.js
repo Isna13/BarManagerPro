@@ -22,6 +22,7 @@ const api = {
         search: (query) => electron_1.ipcRenderer.invoke('products:search', query),
         create: (productData) => electron_1.ipcRenderer.invoke('products:create', productData),
         update: (id, data) => electron_1.ipcRenderer.invoke('products:update', { id, data }),
+        delete: (id) => electron_1.ipcRenderer.invoke('products:delete', id),
         getById: (id) => electron_1.ipcRenderer.invoke('products:getById', id),
     },
     // Categories
@@ -158,6 +159,8 @@ const api = {
         tryReauthenticate: () => electron_1.ipcRenderer.invoke('sync:tryReauthenticate'),
         queueFullResync: () => electron_1.ipcRenderer.invoke('sync:queueFullResync'),
         getQueueStats: () => electron_1.ipcRenderer.invoke('sync:getQueueStats'),
+        getHealthReport: () => electron_1.ipcRenderer.invoke('sync:getHealthReport'),
+        getProductValidation: () => electron_1.ipcRenderer.invoke('sync:getProductValidation'),
         // Listeners
         onSyncStart: (callback) => {
             electron_1.ipcRenderer.on('sync:started', callback);

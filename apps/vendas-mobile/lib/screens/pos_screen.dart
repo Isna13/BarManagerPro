@@ -3040,18 +3040,19 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
   Future<void> _processSale(String paymentMethod) async {
     // 🔴 CORREÇÃO CRÍTICA: Evitar vendas duplicadas em cliques rápidos
     if (_isProcessingSale) {
-      debugPrint('⚠️ [PROTEÇÃO] Venda já em processamento, ignorando clique duplicado');
+      debugPrint(
+          '⚠️ [PROTEÇÃO] Venda já em processamento, ignorando clique duplicado');
       return;
     }
-    
+
     // Validar carrinho antes de qualquer operação
     if (_cart.isEmpty) {
       debugPrint('⚠️ [PROTEÇÃO] Carrinho vazio, ignorando venda');
       return;
     }
-    
+
     setState(() => _isProcessingSale = true);
-    
+
     final auth = context.read<AuthProvider>();
     final cashBox = context.read<CashBoxProvider>();
     final customersProvider = context.read<CustomersProvider>();
@@ -3113,17 +3114,19 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       };
 
       // Preparar itens da venda
-      final saleItems = cartItems.map((item) => {
-        'id': _uuid.v4(),
-        'sale_id': saleId,
-        'product_id': item['productId'],
-        'qty_units': item['quantity'],
-        'unit_price': item['unitPrice'],
-        'total': item['total'],
-        'is_muntu': item['isMuntu'] == true ? 1 : 0,
-        'created_at': now,
-        'synced': 0,
-      }).toList();
+      final saleItems = cartItems
+          .map((item) => {
+                'id': _uuid.v4(),
+                'sale_id': saleId,
+                'product_id': item['productId'],
+                'qty_units': item['quantity'],
+                'unit_price': item['unitPrice'],
+                'total': item['total'],
+                'is_muntu': item['isMuntu'] == true ? 1 : 0,
+                'created_at': now,
+                'synced': 0,
+              })
+          .toList();
 
       // 🔴 Criar venda atomicamente (transacional) - inclui adição à fila de sync
       await db.createSaleAtomically(

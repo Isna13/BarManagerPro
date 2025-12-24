@@ -9,12 +9,16 @@ class SyncProvider with ChangeNotifier {
   Timer? _autoSyncTimer;
   final ApiService _apiService = ApiService();
 
+  // Stream controller para notificar quando sync completa
+  final _syncCompleteController = StreamController<bool>.broadcast();
+  Stream<bool> get onSyncComplete => _syncCompleteController.stream;
+
   bool get isSyncing => _isSyncing;
   int get pendingItems => _pendingItems;
   DateTime? get lastSync => _lastSync;
 
   SyncProvider() {
-    // Iniciar sincronização automática a cada 5 minutos
+    // Iniciar sincronização automática a cada 2 minutos
     _startAutoSync();
   }
 
@@ -47,8 +51,13 @@ class SyncProvider with ChangeNotifier {
 
       _pendingItems = 0;
       _lastSync = DateTime.now();
+      
+      // Notificar que sync completou com sucesso
+      debugPrint('🔄 SyncProvider: Sync completo, notificando listeners...');
+      _syncCompleteController.add(true);
     } catch (e) {
       debugPrint('Erro na sincronização: $e');
+      _syncCompleteController.add(false);
     } finally {
       _isSyncing = false;
       notifyListeners();
@@ -63,6 +72,7 @@ class SyncProvider with ChangeNotifier {
   @override
   void dispose() {
     _autoSyncTimer?.cancel();
+    _syncCompleteController.close();
     super.dispose();
   }
 }

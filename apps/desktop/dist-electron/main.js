@@ -214,6 +214,9 @@ electron_1.ipcMain.handle('products:create', async (_, productData) => {
 electron_1.ipcMain.handle('products:update', async (_, { id, data }) => {
     return dbManager.updateProduct(id, data);
 });
+electron_1.ipcMain.handle('products:delete', async (_, id) => {
+    return dbManager.deleteProduct(id);
+});
 electron_1.ipcMain.handle('products:getById', async (_, id) => {
     return dbManager.getProductById(id);
 });
@@ -570,6 +573,14 @@ electron_1.ipcMain.handle('sync:queueFullResync', async () => {
 // Obter estatísticas da fila de sincronização
 electron_1.ipcMain.handle('sync:getQueueStats', async () => {
     return dbManager.getSyncQueueStats();
+});
+// 🔍 Obter relatório de saúde da sincronização
+electron_1.ipcMain.handle('sync:getHealthReport', async () => {
+    return dbManager.getSyncHealthReport();
+});
+// 🔍 Obter validação de sincronização de produtos
+electron_1.ipcMain.handle('sync:getProductValidation', async () => {
+    return dbManager.getProductSyncValidation();
 });
 // Verifica se banco local está vazio
 electron_1.ipcMain.handle('sync:isLocalDatabaseEmpty', async () => {

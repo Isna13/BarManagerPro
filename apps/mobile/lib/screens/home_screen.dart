@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/data_provider.dart';
+import '../providers/sync_provider.dart';
 import '../widgets/modern_nav_bar.dart';
 import 'dashboard_screen.dart';
 import 'sales_screen.dart';
@@ -25,6 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  StreamSubscription<bool>? _syncSubscription;
 
   final List<Widget> _mainScreens = [
     const DashboardScreen(),
@@ -46,6 +49,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadInitialData();
+    _setupSyncListener();
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Escuta o stream do SyncProvider para atualizar todos os dados
+  void _setupSyncListener() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final syncProvider = context.read<SyncProvider>();
+      _syncSubscription = syncProvider.onSyncComplete.listen((success) async {
+        if (success && mounted) {
+          debugPrint('🔄 HomeScreen: Sync completou, atualizando DataProvider...');
+          final dataProvider = context.read<DataProvider>();
+          await dataProvider.refreshAll();
+          debugPrint('✅ HomeScreen: Todos os dados atualizados após sync!');
+        }
+      });
+    });
   }
 
   Future<void> _loadInitialData() async {

@@ -57,6 +57,7 @@ class BarManagerApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => SyncProvider()),
         ChangeNotifierProxyProvider<AuthProvider, DataProvider>(
           create: (_) => DataProvider(),
           update: (_, auth, data) {

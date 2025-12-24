@@ -57,24 +57,24 @@ class DataProvider extends ChangeNotifier {
   /// Retorna dívidas agrupadas por cliente com totais consolidados
   List<models.CustomerDebtSummary> get debtsByCustomer {
     final grouped = <String, List<models.Debt>>{};
-    
+
     for (final debt in _debts) {
       final customerId = debt.customerId;
       grouped.putIfAbsent(customerId, () => []).add(debt);
     }
-    
+
     return grouped.entries.map((entry) {
       final customerDebts = entry.value;
       final firstDebt = customerDebts.first;
-      
+
       // Calcular totais
-      final totalOriginal = customerDebts.fold<double>(
-        0.0, (sum, d) => sum + d.originalAmount);
-      final totalPaid = customerDebts.fold<double>(
-        0.0, (sum, d) => sum + d.paidAmount);
-      final totalRemaining = customerDebts.fold<double>(
-        0.0, (sum, d) => sum + d.remainingAmount);
-      
+      final totalOriginal =
+          customerDebts.fold<double>(0.0, (sum, d) => sum + d.originalAmount);
+      final totalPaid =
+          customerDebts.fold<double>(0.0, (sum, d) => sum + d.paidAmount);
+      final totalRemaining =
+          customerDebts.fold<double>(0.0, (sum, d) => sum + d.remainingAmount);
+
       // Encontrar a data de vencimento mais próxima
       DateTime? oldestDueDate;
       for (final d in customerDebts) {
@@ -84,11 +84,13 @@ class DataProvider extends ChangeNotifier {
           }
         }
       }
-      
+
       // Contar pendentes e vencidas
-      final pendingCount = customerDebts.where((d) => d.status == 'pending').length;
-      final overdueCount = customerDebts.where((d) => d.status == 'overdue').length;
-      
+      final pendingCount =
+          customerDebts.where((d) => d.status == 'pending').length;
+      final overdueCount =
+          customerDebts.where((d) => d.status == 'overdue').length;
+
       return models.CustomerDebtSummary(
         customerId: entry.key,
         customerName: firstDebt.customerName ?? 'Cliente',
@@ -102,7 +104,8 @@ class DataProvider extends ChangeNotifier {
         oldestDueDate: oldestDueDate,
       );
     }).toList()
-      ..sort((a, b) => b.totalRemainingAmount.compareTo(a.totalRemainingAmount));
+      ..sort(
+          (a, b) => b.totalRemainingAmount.compareTo(a.totalRemainingAmount));
   }
 
   // Set API Service

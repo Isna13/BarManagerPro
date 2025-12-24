@@ -1783,7 +1783,9 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
         // O método addLoyaltyPoints calcula internamente: amount ~/ 100000
         // 🔴 REGRA: Vale (crédito) não dá pontos - apenas pagamentos efetivos
         int pointsEarned = 0;
-        if (registeredCustomerId != null && amount >= 100000 && method != 'vale') {
+        if (registeredCustomerId != null &&
+            amount >= 100000 &&
+            method != 'vale') {
           final customersProvider = context.read<CustomersProvider>();
           // 🔴 FIX: Passar amount (centavos), não o valor já dividido!
           final result = await customersProvider.addLoyaltyPoints(

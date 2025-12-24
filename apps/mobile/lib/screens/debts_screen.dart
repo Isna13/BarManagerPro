@@ -159,7 +159,8 @@ class _DebtsScreenState extends State<DebtsScreen> {
                       ],
                     ),
                     selected: _groupByCustomer,
-                    onSelected: (_) => setState(() => _groupByCustomer = !_groupByCustomer),
+                    onSelected: (_) =>
+                        setState(() => _groupByCustomer = !_groupByCustomer),
                     selectedColor: AppTheme.primaryColor.withOpacity(0.2),
                     checkmarkColor: AppTheme.primaryColor,
                   ),
@@ -185,7 +186,8 @@ class _DebtsScreenState extends State<DebtsScreen> {
     // Aplicar filtro de busca
     if (_searchQuery.isNotEmpty) {
       grouped = grouped
-          .where((g) => g.customerName.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .where((g) =>
+              g.customerName.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
     }
 
@@ -194,7 +196,8 @@ class _DebtsScreenState extends State<DebtsScreen> {
       grouped = grouped.where((g) {
         if (_selectedFilter == 'pending') return g.pendingCount > 0;
         if (_selectedFilter == 'overdue') return g.overdueCount > 0;
-        if (_selectedFilter == 'paid') return g.pendingCount == 0 && g.overdueCount == 0;
+        if (_selectedFilter == 'paid')
+          return g.pendingCount == 0 && g.overdueCount == 0;
         return true;
       }).toList();
     }
@@ -616,10 +619,13 @@ class _CustomerDebtCard extends StatelessWidget {
                     child: Center(
                       child: Text(
                         summary.customerName[0].toUpperCase(),
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              color: hasOverdue ? Colors.orange : AppTheme.dangerColor,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: hasOverdue
+                                      ? Colors.orange
+                                      : AppTheme.dangerColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
                       ),
                     ),
                   ),
@@ -630,9 +636,10 @@ class _CustomerDebtCard extends StatelessWidget {
                       children: [
                         Text(
                           summary.customerName,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                         const SizedBox(height: 4),
                         Row(
@@ -648,7 +655,10 @@ class _CustomerDebtCard extends StatelessWidget {
                               ),
                               child: Text(
                                 '${summary.debtCount} dívida${summary.debtCount > 1 ? 's' : ''}',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
                                       color: AppTheme.primaryColor,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -667,7 +677,10 @@ class _CustomerDebtCard extends StatelessWidget {
                                 ),
                                 child: Text(
                                   '${summary.overdueCount} vencida${summary.overdueCount > 1 ? 's' : ''}',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
                                         color: Colors.orange,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -683,10 +696,13 @@ class _CustomerDebtCard extends StatelessWidget {
                     children: [
                       Text(
                         currencyFormat.format(summary.totalRemainingAmount),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: isPaid ? AppTheme.accentColor : AppTheme.dangerColor,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: isPaid
+                                      ? AppTheme.accentColor
+                                      : AppTheme.dangerColor,
+                                ),
                       ),
                       Text(
                         'restante',
@@ -799,7 +815,10 @@ class _CustomerDebtsSheet extends StatelessWidget {
                       child: Center(
                         child: Text(
                           summary.customerName[0].toUpperCase(),
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -813,14 +832,20 @@ class _CustomerDebtsSheet extends StatelessWidget {
                         children: [
                           Text(
                             summary.customerName,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
                           Text(
                             '${summary.debtCount} dívida${summary.debtCount > 1 ? 's' : ''} • ${summary.overdueCount} vencida${summary.overdueCount > 1 ? 's' : ''}',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
                                   color: Colors.white70,
                                 ),
                           ),
@@ -843,7 +868,8 @@ class _CustomerDebtsSheet extends StatelessWidget {
                     ),
                     _SummaryItem(
                       label: 'Restante',
-                      value: currencyFormat.format(summary.totalRemainingAmount),
+                      value:
+                          currencyFormat.format(summary.totalRemainingAmount),
                       highlight: true,
                     ),
                   ],
@@ -887,7 +913,8 @@ class _CustomerDebtsSheet extends StatelessWidget {
           const SizedBox(height: AppTheme.spacingSM),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMD),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppTheme.spacingMD),
               itemCount: summary.debts.length,
               itemBuilder: (context, index) {
                 final debt = summary.debts[index];
@@ -903,7 +930,8 @@ class _CustomerDebtsSheet extends StatelessWidget {
                     border: isOverdue
                         ? Border.all(color: Colors.orange.shade300)
                         : isPaid
-                            ? Border.all(color: AppTheme.accentColor.withOpacity(0.5))
+                            ? Border.all(
+                                color: AppTheme.accentColor.withOpacity(0.5))
                             : null,
                   ),
                   child: Column(
@@ -928,14 +956,20 @@ class _CustomerDebtsSheet extends StatelessWidget {
                           Expanded(
                             child: Text(
                               'Dívida de ${dateFormat.format(debt.createdAt)}',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w500,
                                   ),
                             ),
                           ),
                           Text(
                             currencyFormat.format(debt.originalAmount),
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
@@ -945,9 +979,12 @@ class _CustomerDebtsSheet extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           'Vencimento: ${dateFormat.format(debt.dueDate!)}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: isOverdue ? Colors.orange : AppTheme.textSecondary,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: isOverdue
+                                        ? Colors.orange
+                                        : AppTheme.textSecondary,
+                                  ),
                         ),
                       ],
                       if (debt.paidAmount > 0) ...[
@@ -959,11 +996,14 @@ class _CustomerDebtsSheet extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(2),
                                 child: LinearProgressIndicator(
                                   value: debt.originalAmount > 0
-                                      ? (debt.paidAmount / debt.originalAmount).clamp(0.0, 1.0)
+                                      ? (debt.paidAmount / debt.originalAmount)
+                                          .clamp(0.0, 1.0)
                                       : 0,
                                   backgroundColor: Colors.grey.shade200,
                                   valueColor: AlwaysStoppedAnimation(
-                                    isPaid ? AppTheme.accentColor : AppTheme.primaryColor,
+                                    isPaid
+                                        ? AppTheme.accentColor
+                                        : AppTheme.primaryColor,
                                   ),
                                   minHeight: 4,
                                 ),
@@ -972,7 +1012,10 @@ class _CustomerDebtsSheet extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text(
                               'Pago: ${currencyFormat.format(debt.paidAmount)}',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
                                     color: AppTheme.accentColor,
                                   ),
                             ),
@@ -991,11 +1034,15 @@ class _CustomerDebtsSheet extends StatelessWidget {
                                   const SizedBox(width: 4),
                                   Text(
                                     '${dateFormat.format(p.paidAt)}: ',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
                                   ),
                                   Text(
                                     currencyFormat.format(p.amount),
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
                                           color: AppTheme.accentColor,
                                           fontWeight: FontWeight.w500,
                                         ),

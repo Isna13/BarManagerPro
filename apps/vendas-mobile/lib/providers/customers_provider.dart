@@ -249,7 +249,8 @@ class CustomersProvider extends ChangeNotifier {
           },
           priority: 50, // Prioridade baixa (após vendas)
         );
-        debugPrint('📤 Pontos adicionados à fila de sync: $pointsToAdd para $customerId');
+        debugPrint(
+            '📤 Pontos adicionados à fila de sync: $pointsToAdd para $customerId');
       }
 
       notifyListeners();

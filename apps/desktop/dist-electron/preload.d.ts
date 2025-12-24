@@ -15,6 +15,7 @@ declare const api: {
         search: (query: string) => Promise<any>;
         create: (productData: any) => Promise<any>;
         update: (id: string, data: any) => Promise<any>;
+        delete: (id: string) => Promise<any>;
         getById: (id: string) => Promise<any>;
     };
     categories: {
@@ -134,6 +135,8 @@ declare const api: {
         tryReauthenticate: () => Promise<any>;
         queueFullResync: () => Promise<any>;
         getQueueStats: () => Promise<any>;
+        getHealthReport: () => Promise<any>;
+        getProductValidation: () => Promise<any>;
         onSyncStart: (callback: () => void) => () => Electron.IpcRenderer;
         onSyncProgress: (callback: (data: any) => void) => () => Electron.IpcRenderer;
         onSyncComplete: (callback: (data: any) => void) => () => Electron.IpcRenderer;

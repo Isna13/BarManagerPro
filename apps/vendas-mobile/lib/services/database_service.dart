@@ -516,15 +516,17 @@ class DatabaseService {
     final db = await database;
     await db.transaction((txn) async {
       // 1. Inserir venda
-      await txn.insert('sales', saleData, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('sales', saleData,
+          conflictAlgorithm: ConflictAlgorithm.replace);
       debugPrint('💾 [TX] Venda inserida: ${saleData['id']}');
-      
+
       // 2. Inserir todos os itens
       for (final item in saleItems) {
-        await txn.insert('sale_items', item, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('sale_items', item,
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
       debugPrint('💾 [TX] ${saleItems.length} itens inseridos');
-      
+
       // 3. Adicionar à fila de sync (prioridade máxima)
       final syncQueueData = {
         'entity_type': 'sales',
@@ -535,10 +537,11 @@ class DatabaseService {
         'created_at': DateTime.now().toIso8601String(),
         'status': 'pending',
       };
-      await txn.insert('sync_queue', syncQueueData, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('sync_queue', syncQueueData,
+          conflictAlgorithm: ConflictAlgorithm.replace);
       debugPrint('💾 [TX] Venda adicionada à fila de sync');
     });
-    
+
     debugPrint('✅ Venda criada atomicamente: ${saleData['id']}');
   }
 

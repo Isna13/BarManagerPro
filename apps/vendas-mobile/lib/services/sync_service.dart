@@ -829,7 +829,8 @@ class SyncService {
       // 🔴 CORREÇÃO CRÍTICA: Handler para sincronizar pontos de fidelidade
       case 'customer_loyalty':
         if (action == 'update') {
-          final customerId = (data['customerId'] ?? data['customer_id'] ?? '').toString();
+          final customerId =
+              (data['customerId'] ?? data['customer_id'] ?? '').toString();
           final pointsAdded = data['pointsAdded'] ?? data['points_added'] ?? 0;
           final reason = data['reason'] ?? 'Sincronização de pontos';
 
