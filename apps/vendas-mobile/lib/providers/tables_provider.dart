@@ -895,7 +895,7 @@ class TablesProvider extends ChangeNotifier {
     try {
       final now = DateTime.now().toIso8601String();
       final paymentId = _uuid.v4();
-      
+
       // 🔴 CORREÇÃO CRÍTICA: Armazenar os pedidos que serão pagos NESTA transação
       // Isso é usado depois para criar os itens da venda corretamente
       List<Map<String, dynamic>> ordersBeingPaidNow = [];
@@ -1030,7 +1030,7 @@ class TablesProvider extends ChangeNotifier {
           if (amount >= pendingAmount && pendingOrders.isNotEmpty) {
             // 🔴 CORREÇÃO: Armazenar os pedidos que estão sendo pagos AGORA
             ordersBeingPaidNow = List.from(pendingOrders);
-            
+
             for (final order in pendingOrders) {
               order['status'] = 'paid';
               // Atualizar no banco local também
@@ -1042,7 +1042,8 @@ class TablesProvider extends ChangeNotifier {
               );
             }
             debugPrint('✅ ${pendingOrders.length} pedidos marcados como pagos');
-            debugPrint('📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
+            debugPrint(
+                '📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
           }
 
           // Verificar se TODOS os pedidos estão pagos para atualizar status do cliente
@@ -1098,11 +1099,11 @@ class TablesProvider extends ChangeNotifier {
       // 🔴 CORREÇÃO CRÍTICA: Usar UUID único para cada pagamento
       // O problema anterior era que o hash baseado em pedidos 'paid' causava colisões
       // quando múltiplos pagamentos eram feitos para o mesmo cliente.
-      // 
+      //
       // Agora usamos UUID + timestamp para garantir unicidade ABSOLUTA de cada venda.
       // A idempotência é garantida pelo lock _isLoading no início do método.
       final String saleId = _uuid.v4();
-      
+
       // 🔴 LOG: Identificar vendas para debug
       debugPrint('═══════════════════════════════════════════════════════');
       debugPrint('🔴 [MESAS][SALE_ID] Gerando nova venda');
@@ -1181,20 +1182,35 @@ class TablesProvider extends ChangeNotifier {
       // 🔴 CORREÇÃO CRÍTICA: Criar itens da venda usando apenas os pedidos pagos NESTA transação
       // Antes usava 'o['status'] == 'paid'' que pegava TODOS os pedidos já pagos (de transações anteriores)
       // Agora usa ordersBeingPaidNow que contém apenas os pedidos desta transação específica
-      debugPrint('📦 Criando ${ordersBeingPaidNow.length} itens da venda $saleId');
-      
+      debugPrint(
+          '📦 Criando ${ordersBeingPaidNow.length} itens da venda $saleId');
+
       for (final order in ordersBeingPaidNow) {
+        // 🔴 CORREÇÃO: Suportar ambos formatos de campo (snake_case e camelCase)
+        final productId = order['product_id'] ?? order['productId'];
+        final qtyUnits = order['qty_units'] ?? order['qtyUnits'] ?? 1;
+        final isMuntu = order['is_muntu'] ?? order['isMuntu'] ?? 0;
+        final unitPrice = order['unit_price'] ?? order['unitPrice'] ?? 0;
+        final total = order['total'] ?? 0;
+        
+        // 🔴 VALIDAÇÃO: Não inserir item sem product_id
+        if (productId == null) {
+          debugPrint('⚠️ [ERRO] Pedido sem product_id: $order');
+          continue;
+        }
+        
         await _db.insert('sale_items', {
           'id': _uuid.v4(),
           'sale_id': saleId,
-          'product_id': order['product_id'],
-          'qty_units': order['qty_units'] ?? 1,
-          'is_muntu': order['is_muntu'] ?? 0,
-          'unit_price': order['unit_price'] ?? 0,
-          'total': order['total'] ?? 0,
+          'product_id': productId,
+          'qty_units': qtyUnits,
+          'is_muntu': isMuntu,
+          'unit_price': unitPrice,
+          'total': total,
           'created_at': now,
           'synced': 0,
         });
+        debugPrint('   ✅ Item adicionado: productId=$productId, qty=$qtyUnits, total=$total');
       }
 
       // Marcar venda para sincronização
