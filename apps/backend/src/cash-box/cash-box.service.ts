@@ -219,7 +219,7 @@ export class CashBoxService {
     // CRÍTICO: Buscar apenas pagamentos de mesas (TablePayment) que NÃO têm Payment vinculado
     // Se paymentId != null, significa que já existe um Payment contabilizado na Sale
     // Isso evita duplicação: Sale.total + TablePayment.amount
-    // CORREÇÃO: Excluir VALE pois já está contabilizado na Sale com paymentMethod='VALE'
+    // Excluir VALE pois será buscado separadamente (Vale não conta como venda, é crédito)
     const tablePayments = await this.prisma.tablePayment.findMany({
       where: {
         processedAt: { gte: cashBox.openedAt },
@@ -230,6 +230,17 @@ export class CashBoxService {
         },
       },
     });
+
+    // Buscar VALE de mesas separadamente para contabilizar em debtPayments
+    const tableValePayments = await this.prisma.tablePayment.findMany({
+      where: {
+        processedAt: { gte: cashBox.openedAt },
+        session: { branchId: cashBox.branchId },
+        paymentId: null,
+        method: { in: ['VALE', 'vale', 'Vale'] },
+      },
+    });
+    const tableValeTotal = tableValePayments.reduce((sum, tp) => sum + tp.amount, 0);
 
     // Combinar totais de vendas diretas + pagamentos de mesas (sem duplicação)
     const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
@@ -287,6 +298,9 @@ export class CashBoxService {
         cardPayments += tp.amount;
       }
     }
+
+    // Adicionar Vale de mesas ao debtPayments
+    debtPayments += tableValeTotal;
 
     return {
       ...cashBox,
@@ -356,6 +370,19 @@ export class CashBoxService {
           where: tablePaymentsQuery,
         });
 
+        // Buscar VALE de mesas separadamente para contabilizar em debtPayments
+        // (VALE não cria Sale quando é de mesa, então precisa ser buscado separadamente)
+        const tableValeQuery1 = {
+          processedAt: tablePaymentsQuery.processedAt,
+          session: tablePaymentsQuery.session,
+          paymentId: null,
+          method: { in: ['VALE', 'vale', 'Vale'] },
+        };
+        const tableValePayments1 = await this.prisma.tablePayment.findMany({
+          where: tableValeQuery1,
+        });
+        const tableValeTotal1 = tableValePayments1.reduce((sum, tp) => sum + tp.amount, 0);
+
         // Combinar totais de vendas diretas + pagamentos de mesas
         const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
         const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
@@ -412,6 +439,9 @@ export class CashBoxService {
             cardPayments += tp.amount;
           }
         }
+
+        // Adicionar VALE de mesas ao debtPayments
+        debtPayments += tableValeTotal1;
 
         return {
           ...cashBox,
@@ -504,6 +534,18 @@ export class CashBoxService {
       },
     });
 
+    // Buscar VALE de mesas separadamente para contabilizar em debtPayments
+    // (VALE não cria Sale quando é de mesa, então precisa ser buscado separadamente)
+    const tableValePayments2 = await this.prisma.tablePayment.findMany({
+      where: {
+        processedAt: { gte: cashBox.openedAt },
+        session: { branchId: cashBox.branchId },
+        paymentId: null,
+        method: { in: ['VALE', 'vale', 'Vale'] },
+      },
+    });
+    const tableValeTotal2 = tableValePayments2.reduce((sum, tp) => sum + tp.amount, 0);
+
     // Totais de vendas diretas
     const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
     
@@ -564,6 +606,9 @@ export class CashBoxService {
         debtPayments += tp.amount;
       }
     }
+
+    // Adicionar VALE de mesas ao debtPayments
+    debtPayments += tableValeTotal2;
 
     return {
       ...cashBox,
@@ -635,6 +680,19 @@ export class CashBoxService {
           where: tablePaymentsQuery,
         });
 
+        // Buscar VALE de mesas separadamente para contabilizar em debtPayments
+        // (VALE não cria Sale quando é de mesa, então precisa ser buscado separadamente)
+        const tableValeQuery3 = {
+          processedAt: tablePaymentsQuery.processedAt,
+          session: tablePaymentsQuery.session,
+          paymentId: null,
+          method: { in: ['VALE', 'vale', 'Vale'] },
+        };
+        const tableValePayments3 = await this.prisma.tablePayment.findMany({
+          where: tableValeQuery3,
+        });
+        const tableValeTotal3 = tableValePayments3.reduce((sum, tp) => sum + tp.amount, 0);
+
         // Combinar totais de vendas diretas + pagamentos de mesas
         const directTotalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
         const tableTotalSales = tablePayments.reduce((sum, tp) => sum + tp.amount, 0);
@@ -691,6 +749,9 @@ export class CashBoxService {
             cardPayments += tp.amount;
           }
         }
+
+        // Adicionar VALE de mesas ao debtPayments
+        debtPayments += tableValeTotal3;
 
         return {
           ...cashBox,
