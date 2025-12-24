@@ -315,12 +315,18 @@ export default function POS() {
       // Gerar número da venda
       const saleNumber = `SALE-${Date.now()}`;
       
+      // 🔴 CORREÇÃO: Incluir paymentMethod na criação da venda
+      // Isso permite que o backend crie Debt automaticamente para vendas VALE
+      // (mesma lógica usada pelo Mobile e Tables)
       const saleData = {
         saleNumber,
         branchId: 'main-branch', // ID da filial (offline)
         cashierId: 'offline-admin', // ID do caixa
         customerId: selectedCustomer?.id || null, // Cliente selecionado
         type: 'counter', // Tipo de venda
+        paymentMethod: selectedPaymentMethod, // ✅ Método de pagamento incluído
+        total: totalCents, // Total em centavos
+        status: 'completed', // Venda já fechada
       };
 
       // @ts-ignore - Criar a venda
@@ -355,25 +361,21 @@ export default function POS() {
         await window.electronAPI?.sales?.addItem?.(sale.id, itemData);
       }
 
-      // Se for Vale, criar dívida
+      // ═══════════════════════════════════════════════════════════════════
+      // 🚫 REMOVIDO: Criação manual de Debt aqui foi removida!
+      // 
+      // MOTIVO: Agora que paymentMethod está incluído na criação da venda,
+      // o backend cria o Debt automaticamente quando sincroniza a Sale.
+      // Criar aqui também causaria duplicação.
+      //
+      // Ver correção aplicada em saleData acima: paymentMethod: selectedPaymentMethod
+      // ═══════════════════════════════════════════════════════════════════
       if (selectedPaymentMethod === 'vale' && selectedCustomer) {
-        try {
-          // @ts-ignore
-          await window.electronAPI?.debts?.create?.({
-            customerId: selectedCustomer.id,
-            saleId: sale.id,
-            branchId: 'main-branch',
-            amount: totalCents,
-            notes: `Vale referente à venda ${saleNumber}`,
-            createdBy: 'offline-admin'
-          });
-
-          toast.success(`✅ Vale criado com sucesso para ${selectedCustomer.name}`, 4000);
-        } catch (debtError) {
-          console.error('Erro ao criar dívida:', debtError);
-          toast.error('Erro ao criar Vale: ' + (debtError as Error).message);
-          return;
-        }
+        console.log('💳 [VALE] Venda criada com paymentMethod=VALE - Debt será criado automaticamente pelo backend');
+        console.log('   Cliente:', selectedCustomer.id, selectedCustomer.name);
+        console.log('   Valor:', totalCents);
+        console.log('   SaleId:', sale.id);
+        toast.success(`✅ Vale registrado para ${selectedCustomer.name}! Será sincronizado automaticamente.`, 4000);
       }
 
       // Registrar pagamento

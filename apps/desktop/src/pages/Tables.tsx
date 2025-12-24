@@ -702,19 +702,26 @@ export default function TablesPage() {
           processedBy: userId,
         });
         
-        // Se for Vale e tiver cliente cadastrado, criar débito COM saleId
-        // O saleId é essencial para evitar duplicação no backend
-        // (backend verifica existingDebt por saleId antes de criar nova dívida)
+        // ═══════════════════════════════════════════════════════════════════
+        // 🚫 REMOVIDO: Criação de Debt aqui causava DUPLICAÇÃO!
+        // 
+        // CAUSA RAIZ DO BUG:
+        // 1. processTableCustomerPayment() cria Sale com paymentMethod='VALE'
+        // 2. Sale é sincronizada → Backend cria Debt automaticamente (ID_BACKEND)
+        // 3. Este código criava Debt localmente (ID_LOCAL) com mesmo saleId
+        // 4. Quando Electron baixava debts do servidor, recebia ID_BACKEND
+        // 5. Como ID_BACKEND != ID_LOCAL, Electron criava NOVO registro
+        // 6. RESULTADO: 2 debts aparecendo para a mesma venda
+        //
+        // SOLUÇÃO: O backend já cria o Debt automaticamente em sales.service.ts
+        // quando sincroniza uma Sale com paymentMethod='VALE'. Não precisamos
+        // (e não devemos!) criar aqui também.
+        // ═══════════════════════════════════════════════════════════════════
         if (paymentMethod === 'vale' && selectedCustomer.customer_id) {
-          const debtCreated = await electronAPI?.debts?.create?.({
-            customerId: selectedCustomer.customer_id,
-            saleId: paymentResult?.saleId, // ✅ VINCULADO - previne duplicação no Railway
-            branchId,
-            amount: amountCents,
-            notes: `Vale da mesa ${selectedSession.table_number} - ${selectedCustomer.customer_name}`,
-            createdBy: userId,
-          });
-          console.log('✅ Vale individual criado:', debtCreated, 'vinculado à venda:', paymentResult?.saleId);
+          console.log('💳 [VALE] Venda criada com paymentMethod=VALE - Debt será criado automaticamente pelo backend');
+          console.log('   Cliente:', selectedCustomer.customer_id, selectedCustomer.customer_name);
+          console.log('   Valor:', amountCents);
+          console.log('   SaleId:', paymentResult?.saleId);
         }
         
         // 🔴 CORREÇÃO CRÍTICA: Adicionar pontos de fidelidade para cliente cadastrado
@@ -753,47 +760,26 @@ export default function TablesPage() {
           processedBy: userId,
         });
         
-        // Se for Vale, criar débitos proporcionalmente para cada cliente cadastrado
-        // O saleId é essencial para evitar duplicação no backend
+        // ═══════════════════════════════════════════════════════════════════
+        // 🚫 REMOVIDO: Criação de Debts aqui causava DUPLICAÇÃO!
+        // 
+        // MESMA CORREÇÃO do pagamento individual - Ver comentário acima.
+        // O backend já cria o Debt automaticamente quando sincroniza a Sale
+        // com paymentMethod='VALE'. Criar aqui causava duplicação.
+        //
+        // Para vale conjunto, o backend ainda cria apenas UMA dívida
+        // (vinculada à venda). Se precisar de distribuição proporcional
+        // entre clientes, isso deve ser tratado de outra forma no futuro.
+        // ═══════════════════════════════════════════════════════════════════
         if (paymentMethod === 'vale') {
           const registeredCustomers = selectedSession.customers.filter(c => c.customer_id);
-          let totalCredit = 0;
-          const customerCredits: Array<{id: string, name: string, available: number}> = [];
+          console.log('💳 [VALE CONJUNTO] Venda criada com paymentMethod=VALE');
+          console.log('   Clientes cadastrados:', registeredCustomers.map(c => c.customer_name).join(', '));
+          console.log('   Valor total:', amountCents);
+          console.log('   SaleId:', sessionPaymentResult?.saleId);
+          console.log('   Debt será criado automaticamente pelo backend');
           
-          // Calcular crédito disponível de cada cliente (considerando vales pendentes desta mesa)
-          for (const customer of registeredCustomers) {
-            const creditInfo = customersCreditInfo.get(customer.customer_id!);
-            if (creditInfo) {
-              const customerPendingDebts = tablePendingDebts[customer.customer_id!] || 0;
-              const available = creditInfo.creditLimit - creditInfo.currentDebt - customerPendingDebts;
-              totalCredit += available;
-              customerCredits.push({
-                id: customer.customer_id!,
-                name: customer.customer_name,
-                available
-              });
-            }
-          }
-          
-          // Distribuir dívida proporcionalmente - COM saleId para evitar duplicação
-          const createdDebts = [];
-          for (const customer of customerCredits) {
-            const proportion = customer.available / totalCredit;
-            const debtAmount = Math.round(amountCents * proportion);
-            
-            const debtCreated = await electronAPI?.debts?.create?.({
-              customerId: customer.id,
-              saleId: sessionPaymentResult?.saleId, // ✅ VINCULADO - previne duplicação no Railway
-              branchId,
-              amount: debtAmount,
-              notes: `Vale compartilhado - Mesa ${selectedSession.table_number} - ${customer.name} (${Math.round(proportion * 100)}%)`,
-              createdBy: userId,
-            });
-            createdDebts.push({ customer: customer.name, debt: debtCreated });
-          }
-          
-          console.log('✅ Vales conjuntos criados:', createdDebts, 'vinculados à venda:', sessionPaymentResult?.saleId);
-          toast?.success(`💳 Vale conjunto criado! Distribuído entre ${customerCredits.length} cliente(s) cadastrado(s). Verifique na aba "Gestão de Dívidas (Vales)".`);
+          toast?.success(`💳 Vale criado! Valor: ${formatCurrency(amountCents)}. A dívida será registrada para o cliente principal da sessão.`);
         } else {
           // 🔴 CORREÇÃO CRÍTICA: Adicionar pontos de fidelidade para clientes cadastrados
           // Pagamento efetivo (não Vale) - distribuir pontos proporcionalmente

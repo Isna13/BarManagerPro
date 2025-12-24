@@ -3147,14 +3147,26 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       } else if (paymentMethod == 'vale' || paymentMethod == 'debt') {
         await cashBox.updateCashBoxTotals(debtAmount: saleTotal);
 
-        // Se é Vale, atualizar dívida do cliente
+        // ═══════════════════════════════════════════════════════════════════
+        // 🚫 REMOVIDO: Chamada a updateCustomerDebt causava DUPLICAÇÃO!
+        //
+        // CAUSA RAIZ DO BUG:
+        // 1. createSaleAtomically() cria Sale com payment_method='vale'
+        // 2. Sale é sincronizada → Backend cria Debt automaticamente
+        // 3. updateCustomerDebt() chamava _api.createDebt() → Backend criava OUTRO Debt
+        // 4. RESULTADO: 2 debts para a mesma venda
+        //
+        // SOLUÇÃO: O backend já cria o Debt em sales.service.ts quando recebe
+        // uma Sale com paymentMethod='VALE'. Não devemos criar aqui também.
+        //
+        // O currentDebt do cliente será atualizado quando sincronizar.
+        // ═══════════════════════════════════════════════════════════════════
         if (paymentMethod == 'vale' && customerId != null) {
-          await customersProvider.updateCustomerDebt(
-            customerId,
-            saleTotal,
-            saleId: saleId,
-            branchId: branchId,
-          );
+          debugPrint('💳 [VALE] Venda com payment_method=vale');
+          debugPrint('   Debt será criado automaticamente pelo backend');
+          debugPrint('   Cliente: $customerId');
+          debugPrint('   Valor: $saleTotal');
+          debugPrint('   SaleId: $saleId');
         }
       }
 
