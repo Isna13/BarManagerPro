@@ -31,6 +31,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
   bool _showValeConfirmModal = false;
   Map<String, dynamic>? _valeConfirmData;
 
+  // 🔴 CORREÇÃO CRÍTICA: Lock para evitar vendas duplicadas em cliques rápidos
+  bool _isProcessingSale = false;
+
   @override
   void initState() {
     super.initState();
@@ -3035,6 +3038,20 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _processSale(String paymentMethod) async {
+    // 🔴 CORREÇÃO CRÍTICA: Evitar vendas duplicadas em cliques rápidos
+    if (_isProcessingSale) {
+      debugPrint('⚠️ [PROTEÇÃO] Venda já em processamento, ignorando clique duplicado');
+      return;
+    }
+    
+    // Validar carrinho antes de qualquer operação
+    if (_cart.isEmpty) {
+      debugPrint('⚠️ [PROTEÇÃO] Carrinho vazio, ignorando venda');
+      return;
+    }
+    
+    setState(() => _isProcessingSale = true);
+    
     final auth = context.read<AuthProvider>();
     final cashBox = context.read<CashBoxProvider>();
     final customersProvider = context.read<CustomersProvider>();
@@ -3075,8 +3092,9 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
           auth.branchId ??
           'main-branch';
 
-      // Criar venda
-      await db.insert('sales', {
+      // 🔴 CORREÇÃO CRÍTICA: Criar venda de forma ATÔMICA (transacional)
+      // Isso garante que venda + itens são salvos juntos ou nenhum é salvo
+      final saleData = {
         'id': saleId,
         'sale_number': saleNumber,
         'branch_id': branchId,
@@ -3092,22 +3110,26 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             : 'paid',
         'created_at': now,
         'synced': 0,
-      });
+      };
 
-      // Adicionar itens
-      for (final item in cartItems) {
-        await db.insert('sale_items', {
-          'id': _uuid.v4(),
-          'sale_id': saleId,
-          'product_id': item['productId'],
-          'qty_units': item['quantity'],
-          'unit_price': item['unitPrice'],
-          'total': item['total'],
-          'is_muntu': item['isMuntu'] == true ? 1 : 0,
-          'created_at': now,
-          'synced': 0,
-        });
-      }
+      // Preparar itens da venda
+      final saleItems = cartItems.map((item) => {
+        'id': _uuid.v4(),
+        'sale_id': saleId,
+        'product_id': item['productId'],
+        'qty_units': item['quantity'],
+        'unit_price': item['unitPrice'],
+        'total': item['total'],
+        'is_muntu': item['isMuntu'] == true ? 1 : 0,
+        'created_at': now,
+        'synced': 0,
+      }).toList();
+
+      // 🔴 Criar venda atomicamente (transacional) - inclui adição à fila de sync
+      await db.createSaleAtomically(
+        saleData: saleData,
+        saleItems: saleItems,
+      );
 
       // ATUALIZAR ESTOQUE - Decrementar quantidade de cada produto vendido
       await productsProvider.decrementStockForSale(cartItems);
@@ -3145,12 +3167,11 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             await customersProvider.addLoyaltyPoints(customerId, saleTotal);
       }
 
-      // Marcar para sincronização
-      await sync.markForSync(
-        entityType: 'sales',
-        entityId: saleId,
-        action: 'create',
-      );
+      // 🔴 CORREÇÃO: markForSync já foi chamado dentro de createSaleAtomically()
+      // Agora apenas disparar sincronização imediata se online
+      if (sync.isOnline) {
+        sync.syncSalesImmediately();
+      }
 
       // Limpar carrinho e cliente selecionado
       setState(() {
@@ -3192,6 +3213,11 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      // 🔴 CORREÇÃO CRÍTICA: Sempre liberar o lock, mesmo em caso de erro
+      if (mounted) {
+        setState(() => _isProcessingSale = false);
       }
     }
   }

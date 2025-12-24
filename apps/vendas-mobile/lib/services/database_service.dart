@@ -507,6 +507,41 @@ class DatabaseService {
     return await db.rawUpdate(sql, arguments);
   }
 
+  /// 🔴 CORREÇÃO CRÍTICA: Criar venda de forma ATÔMICA (transacional)
+  /// Garante que venda + itens são salvos juntos ou nenhum é salvo
+  Future<void> createSaleAtomically({
+    required Map<String, dynamic> saleData,
+    required List<Map<String, dynamic>> saleItems,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // 1. Inserir venda
+      await txn.insert('sales', saleData, conflictAlgorithm: ConflictAlgorithm.replace);
+      debugPrint('💾 [TX] Venda inserida: ${saleData['id']}');
+      
+      // 2. Inserir todos os itens
+      for (final item in saleItems) {
+        await txn.insert('sale_items', item, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      debugPrint('💾 [TX] ${saleItems.length} itens inseridos');
+      
+      // 3. Adicionar à fila de sync (prioridade máxima)
+      final syncQueueData = {
+        'entity_type': 'sales',
+        'entity_id': saleData['id'],
+        'action': 'create',
+        'data': jsonEncode(saleData),
+        'priority': 1, // Prioridade máxima para vendas
+        'created_at': DateTime.now().toIso8601String(),
+        'status': 'pending',
+      };
+      await txn.insert('sync_queue', syncQueueData, conflictAlgorithm: ConflictAlgorithm.replace);
+      debugPrint('💾 [TX] Venda adicionada à fila de sync');
+    });
+    
+    debugPrint('✅ Venda criada atomicamente: ${saleData['id']}');
+  }
+
   // Métodos de sincronização
   Future<void> addToSyncQueue({
     required String entityType,
@@ -716,7 +751,7 @@ class DatabaseService {
       final db = await database;
       final dbPath = await getDatabasesPath();
       final sourceFile = File(join(dbPath, 'barmanager_vendas.db'));
-      
+
       if (!await sourceFile.exists()) {
         debugPrint('⚠️ Arquivo de banco não encontrado para backup');
         return null;
@@ -731,13 +766,13 @@ class DatabaseService {
       // Nome do backup com timestamp
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final backupPath = join(backupDir.path, 'backup-$timestamp.db');
-      
+
       // Fechar conexões antes de copiar
       await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
-      
+
       // Copiar arquivo
       await sourceFile.copy(backupPath);
-      
+
       debugPrint('✅ Backup local criado: $backupPath');
       return backupPath;
     } catch (e) {
@@ -776,7 +811,7 @@ class DatabaseService {
     await db.delete('products');
     await db.delete('categories');
     // NÃO limpa 'users' para manter login ativo
-    
+
     debugPrint('🗑️ Todos os dados locais foram limpos');
   }
 }
