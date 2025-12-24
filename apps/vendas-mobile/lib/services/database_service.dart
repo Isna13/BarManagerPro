@@ -545,6 +545,68 @@ class DatabaseService {
     debugPrint('✅ Venda criada atomicamente: ${saleData['id']}');
   }
 
+  /// 🔴 CORREÇÃO CRÍTICA: Criar venda de mesa de forma ATÔMICA
+  /// Inclui: venda + itens + table_payment + sync_queue (tudo na mesma transação)
+  /// Isso garante que NENHUMA venda seja perdida, mesmo com crash ou perda de conexão
+  Future<void> createTableSaleAtomically({
+    required Map<String, dynamic> saleData,
+    required List<Map<String, dynamic>> saleItems,
+    Map<String, dynamic>? tablePaymentData,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // 1. Inserir venda
+      await txn.insert('sales', saleData,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      debugPrint('💾 [TX-MESA] Venda inserida: ${saleData['id']}');
+
+      // 2. Inserir todos os itens
+      for (final item in saleItems) {
+        await txn.insert('sale_items', item,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      debugPrint('💾 [TX-MESA] ${saleItems.length} itens inseridos');
+
+      // 3. Inserir TablePayment se fornecido
+      if (tablePaymentData != null) {
+        await txn.insert('table_payments', tablePaymentData,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+        debugPrint(
+            '💾 [TX-MESA] TablePayment inserido: ${tablePaymentData['id']}');
+
+        // Adicionar TablePayment à fila de sync
+        final tpSyncData = {
+          'entity_type': 'table_payments',
+          'entity_id': tablePaymentData['id'],
+          'action': 'create',
+          'data': jsonEncode(tablePaymentData),
+          'priority': 1, // Prioridade máxima
+          'created_at': DateTime.now().toIso8601String(),
+          'status': 'pending',
+        };
+        await txn.insert('sync_queue', tpSyncData,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+        debugPrint('💾 [TX-MESA] TablePayment adicionado à fila de sync');
+      }
+
+      // 4. Adicionar venda à fila de sync (prioridade máxima)
+      final syncQueueData = {
+        'entity_type': 'sales',
+        'entity_id': saleData['id'],
+        'action': 'create',
+        'data': jsonEncode(saleData), // 🔴 CRÍTICO: Salvar dados para retry
+        'priority': 1, // Prioridade máxima para vendas
+        'created_at': DateTime.now().toIso8601String(),
+        'status': 'pending',
+      };
+      await txn.insert('sync_queue', syncQueueData,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      debugPrint('💾 [TX-MESA] Venda adicionada à fila de sync');
+    });
+
+    debugPrint('✅ Venda de mesa criada atomicamente: ${saleData['id']}');
+  }
+
   // Métodos de sincronização
   Future<void> addToSyncQueue({
     required String entityType,

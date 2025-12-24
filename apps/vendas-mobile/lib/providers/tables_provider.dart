@@ -1157,49 +1157,43 @@ class TablesProvider extends ChangeNotifier {
       debugPrint(
           '   payment_method.runtimeType: ${normalizedMethod.runtimeType}');
 
-      // Criar venda COM customer_name para garantir identificação correta
-      await _db.insert('sales', {
+      // 🔴 CORREÇÃO CRÍTICA: Preparar dados da venda para transação atômica
+      final saleData = {
         'id': saleId,
         'sale_number': saleNumber,
         'branch_id': branchId,
         'type': 'table',
         'table_id': tableId,
         'customer_id': customerId,
-        'customer_name': customerName, // ✅ Adicionado para evitar "avulso"
+        'customer_name': customerName,
         'cashier_id': processedBy,
         'status': 'completed',
         'subtotal': amount,
         'total': amount,
-        'payment_method': normalizedMethod, // ✅ Método normalizado
+        'payment_method': normalizedMethod,
         'payment_status': 'paid',
         'created_at': now,
         'synced': 0,
-      });
+      };
 
-      // 🔴 LOG FASE 4: APÓS salvar venda - verificar o que foi salvo
-      debugPrint('🔴 [MESAS][LOCAL_SAVE] VENDA SALVA COM SUCESSO');
-
-      // 🔴 CORREÇÃO CRÍTICA: Criar itens da venda usando apenas os pedidos pagos NESTA transação
-      // Antes usava 'o['status'] == 'paid'' que pegava TODOS os pedidos já pagos (de transações anteriores)
-      // Agora usa ordersBeingPaidNow que contém apenas os pedidos desta transação específica
+      // 🔴 CORREÇÃO CRÍTICA: Preparar itens da venda
       debugPrint(
-          '📦 Criando ${ordersBeingPaidNow.length} itens da venda $saleId');
+          '📦 Preparando ${ordersBeingPaidNow.length} itens da venda $saleId');
 
+      final saleItems = <Map<String, dynamic>>[];
       for (final order in ordersBeingPaidNow) {
-        // 🔴 CORREÇÃO: Suportar ambos formatos de campo (snake_case e camelCase)
         final productId = order['product_id'] ?? order['productId'];
         final qtyUnits = order['qty_units'] ?? order['qtyUnits'] ?? 1;
         final isMuntu = order['is_muntu'] ?? order['isMuntu'] ?? 0;
         final unitPrice = order['unit_price'] ?? order['unitPrice'] ?? 0;
         final total = order['total'] ?? 0;
 
-        // 🔴 VALIDAÇÃO: Não inserir item sem product_id
         if (productId == null) {
           debugPrint('⚠️ [ERRO] Pedido sem product_id: $order');
           continue;
         }
 
-        await _db.insert('sale_items', {
+        saleItems.add({
           'id': _uuid.v4(),
           'sale_id': saleId,
           'product_id': productId,
@@ -1211,16 +1205,27 @@ class TablesProvider extends ChangeNotifier {
           'synced': 0,
         });
         debugPrint(
-            '   ✅ Item adicionado: productId=$productId, qty=$qtyUnits, total=$total');
+            '   📝 Item preparado: productId=$productId, qty=$qtyUnits, total=$total');
       }
 
-      // Marcar venda para sincronização
-      await _sync.markForSync(
-        entityType: 'sales',
-        entityId: saleId,
-        action: 'create',
+      // 🔴 CORREÇÃO CRÍTICA: Criar venda de forma ATÔMICA (transacional)
+      // Isso garante que venda + itens + sync_queue são salvos juntos ou nenhum é salvo
+      // Resolve o bug de vendas perdidas quando offline!
+      await _db.createTableSaleAtomically(
+        saleData: saleData,
+        saleItems: saleItems,
       );
-      debugPrint('💾 Venda de mesa criada: $saleId, total: $amount');
+
+      // 🔴 LOG FASE 4: APÓS salvar venda
+      debugPrint('🔴 [MESAS][LOCAL_SAVE] VENDA SALVA COM SUCESSO (ATÔMICA)');
+      debugPrint(
+          '💾 Venda de mesa criada atomicamente: $saleId, total: $amount');
+
+      // 🔴 CORREÇÃO CRÍTICA: Disparar sincronização imediata se online
+      // Isso garante que vendas de mesa sejam sincronizadas tão rápido quanto as do PDV
+      if (_sync.isOnline) {
+        _sync.syncSalesImmediately();
+      }
 
       // ═══════════════════════════════════════════════════════════════════
       // 🚫 REMOVIDO: Criação de dívida aqui causava DUPLICAÇÃO!

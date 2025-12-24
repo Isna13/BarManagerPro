@@ -22,6 +22,26 @@ class CashBoxProvider extends ChangeNotifier {
   bool get hasOpenCashBox =>
       _currentCashBox != null && _currentCashBox!['status'] == 'open';
 
+  /// 🔴 CORREÇÃO: Inicializar listener para eventos de sync
+  /// Isso garante que o caixa seja recarregado após sincronização
+  CashBoxProvider() {
+    _sync.addSyncEventListener(_onSyncEvent);
+  }
+
+  @override
+  void dispose() {
+    _sync.removeSyncEventListener(_onSyncEvent);
+    super.dispose();
+  }
+
+  /// 🔴 CORREÇÃO: Handler para eventos de sync
+  void _onSyncEvent(SyncEventType type, dynamic data) {
+    if (type == SyncEventType.cashBoxUpdated || type == SyncEventType.salesUpdated) {
+      debugPrint('📢 CashBoxProvider: Recebido evento $type, recarregando...');
+      loadCurrentCashBox();
+    }
+  }
+
   /// Normaliza os campos do caixa para snake_case (formato do banco local)
   /// Usa os valores de stats quando disponíveis (são calculados em tempo real pelo servidor)
   Map<String, dynamic> _normalizeToSnakeCase(Map<String, dynamic> cashBox) {
@@ -227,6 +247,12 @@ class CashBoxProvider extends ChangeNotifier {
         // Offline: usar banco local
         debugPrint('📴 Offline - usando banco local');
         _currentCashBox = localCashBox;
+
+        // 🔴 CORREÇÃO CRÍTICA: Quando offline, recalcular caixa a partir das vendas locais
+        // Isso garante que vendas feitas offline sejam refletidas no caixa
+        if (_currentCashBox != null) {
+          await recalculateCashBoxFromLocalSales();
+        }
       }
 
       if (_currentCashBox != null) {
@@ -652,6 +678,105 @@ class CashBoxProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Erro ao contar vendas locais: $e');
       _localSalesCount = 0;
+    }
+  }
+
+  /// 🔴 CORREÇÃO CRÍTICA: Recalcula os totais do caixa a partir das vendas locais
+  /// Isso garante consistência quando offline ou após perda de conexão
+  /// Deve ser chamado quando o app inicia offline ou detecta inconsistência
+  Future<void> recalculateCashBoxFromLocalSales() async {
+    if (_currentCashBox == null) {
+      debugPrint('❌ recalculateCashBoxFromLocalSales: nenhum caixa aberto');
+      return;
+    }
+
+    try {
+      final openedAt =
+          _currentCashBox!['opened_at'] ?? _currentCashBox!['openedAt'];
+      final boxId = _currentCashBox!['id'];
+
+      if (openedAt == null) {
+        debugPrint('❌ recalculateCashBoxFromLocalSales: openedAt é null');
+        return;
+      }
+
+      debugPrint('🔄 Recalculando caixa $boxId a partir de vendas locais...');
+
+      // Buscar TODAS as vendas locais desde a abertura do caixa (sincronizadas ou não)
+      final salesResults = await _db.rawQuery('''
+        SELECT 
+          payment_method,
+          SUM(total) as total_amount,
+          COUNT(*) as count
+        FROM sales 
+        WHERE created_at >= ? 
+          AND status != 'cancelled'
+        GROUP BY payment_method
+      ''', [openedAt]);
+
+      int totalCash = 0;
+      int totalCard = 0;
+      int totalMobile = 0;
+      int totalDebt = 0;
+      int salesCount = 0;
+
+      for (final row in salesResults) {
+        final method = (row['payment_method'] as String? ?? '').toLowerCase();
+        final amount = (row['total_amount'] as num? ?? 0).toInt();
+        final count = (row['count'] as num? ?? 0).toInt();
+
+        salesCount += count;
+
+        if (method == 'cash') {
+          totalCash += amount;
+        } else if (method == 'orange' ||
+            method == 'teletaku' ||
+            method == 'mobile') {
+          totalMobile += amount;
+        } else if (method == 'card' || method == 'mixed') {
+          totalCard += amount;
+        } else if (method == 'vale' || method == 'debt') {
+          totalDebt += amount;
+        }
+      }
+
+      final totalSales = totalCash + totalCard + totalMobile + totalDebt;
+
+      debugPrint('📊 Recálculo do caixa:');
+      debugPrint('   Cash: $totalCash');
+      debugPrint('   Card: $totalCard');
+      debugPrint('   Mobile: $totalMobile');
+      debugPrint('   Debt: $totalDebt');
+      debugPrint('   Total: $totalSales');
+      debugPrint('   Vendas: $salesCount');
+
+      // Atualizar o caixa em memória
+      _currentCashBox!['total_cash'] = totalCash;
+      _currentCashBox!['total_card'] = totalCard;
+      _currentCashBox!['total_mobile_money'] = totalMobile;
+      _currentCashBox!['total_debt'] = totalDebt;
+      _currentCashBox!['total_sales'] = totalSales;
+      _currentCashBox!['synced'] = 0;
+
+      // Persistir no banco local
+      await _db.update(
+        'cash_boxes',
+        {
+          'total_cash': totalCash,
+          'total_card': totalCard,
+          'total_mobile_money': totalMobile,
+          'total_debt': totalDebt,
+          'total_sales': totalSales,
+          'synced': 0,
+        },
+        where: 'id = ?',
+        whereArgs: [boxId],
+      );
+
+      debugPrint('✅ Caixa recalculado e salvo');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Erro ao recalcular caixa: $e');
     }
   }
 

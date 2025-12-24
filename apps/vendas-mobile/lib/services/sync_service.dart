@@ -182,6 +182,11 @@ class SyncService {
       debugPrint('✅ Sincronização completa!');
       _syncStatusController.add(
           SyncStatus(isSyncing: false, message: 'Sincronizado', success: true));
+      
+      // 🔴 CORREÇÃO CRÍTICA: Notificar que vendas e caixa foram atualizados
+      // Isso permite que os providers recarreguem seus dados
+      _emitSyncEvent(SyncEventType.salesUpdated);
+      _emitSyncEvent(SyncEventType.cashBoxUpdated);
     } catch (e) {
       debugPrint('❌ Erro na sincronização: $e');
       if (e.toString().contains('Unauthorized')) {
@@ -203,7 +208,33 @@ class SyncService {
             '🔁 Re-sync solicitado durante sync anterior, executando...');
         // Pequeno delay para evitar loop infinito
         Future.delayed(const Duration(milliseconds: 100), () => syncAll());
+      } else {
+        // 🔴 CORREÇÃO ADICIONAL: Verificar se ainda há itens pendentes na fila
+        // Isso garante que vendas rápidas não sejam perdidas
+        _checkForRemainingPendingItems();
       }
+    }
+  }
+
+  /// 🔴 NOVO: Verifica se ainda há itens pendentes e agenda re-sync se necessário
+  Future<void> _checkForRemainingPendingItems() async {
+    try {
+      final pendingCount = await _db.rawQuery(
+        "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'pending'",
+      );
+      final count = (pendingCount.first['count'] as int?) ?? 0;
+      
+      if (count > 0) {
+        debugPrint('⚠️ Ainda há $count itens pendentes na fila, agendando re-sync...');
+        // Agendar re-sync com delay maior para não sobrecarregar
+        Future.delayed(const Duration(seconds: 2), () {
+          if (_isOnline && !_isSyncing) {
+            syncAll();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao verificar itens pendentes: $e');
     }
   }
 
