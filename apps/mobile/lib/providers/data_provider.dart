@@ -162,9 +162,9 @@ class DataProvider extends ChangeNotifier {
 
   // ==================== DASHBOARD ====================
 
-  Future<void> loadDashboardStats() async {
+  Future<void> loadDashboardStats({bool silent = false}) async {
     if (_apiService == null) return;
-    _setLoading(true);
+    if (!silent) _setLoading(true);
     try {
       _dashboardStats = await _apiService!.getDashboardStats();
       _error = null;
@@ -172,7 +172,7 @@ class DataProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
     }
-    _setLoading(false);
+    if (!silent) _setLoading(false);
   }
 
   // ==================== PRODUCTS ====================
@@ -238,9 +238,10 @@ class DataProvider extends ChangeNotifier {
     DateTime? endDate,
     String? status,
     int? limit,
+    bool silent = false,
   }) async {
     if (_apiService == null) return;
-    _setLoading(true);
+    if (!silent) _setLoading(true);
     try {
       _sales = await _apiService!.getSales(
         startDate: startDate,
@@ -252,7 +253,7 @@ class DataProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
     }
-    _setLoading(false);
+    if (!silent) _setLoading(false);
   }
 
   // ==================== PURCHASES ====================
@@ -395,29 +396,142 @@ class DataProvider extends ChangeNotifier {
 
   // ==================== REFRESH ALL ====================
 
+  /// 🔴 CORREÇÃO: refreshAll otimizado para evitar notificações excessivas
+  /// Agora dispara apenas 2 notifyListeners (início e fim) ao invés de 20+
   Future<void> refreshAll() async {
     if (_apiService == null) return;
-    _setLoading(true);
+    
+    // 🔴 CORREÇÃO: Apenas UMA notificação de loading no início
+    _isLoading = true;
+    notifyListeners();
+    
     try {
+      // 🔴 CORREÇÃO: Carregar todos os dados SILENCIOSAMENTE (sem notifyListeners internos)
       await Future.wait([
-        loadDashboardStats(),
-        loadProducts(),
-        loadCategories(),
-        loadSuppliers(),
-        loadCustomers(),
-        loadInventory(),
-        loadDebts(),
-        loadSales(limit: 50),
-        loadPurchases(),
-        loadCashBoxHistory(limit: 30),
-        loadCurrentCashBox(),
+        _loadDashboardStatsSilent(),
+        _loadProductsSilent(),
+        _loadCategoriesSilent(),
+        _loadSuppliersSilent(),
+        _loadCustomersSilent(),
+        _loadInventorySilent(),
+        _loadDebtsSilent(),
+        _loadSalesSilent(limit: 50),
+        _loadPurchasesSilent(),
+        _loadCashBoxHistorySilent(limit: 30),
+        _loadCurrentCashBoxSilent(),
       ]);
       _lastRefresh = DateTime.now();
       _error = null;
     } catch (e) {
       _error = e.toString();
+      debugPrint('❌ Erro no refreshAll: $e');
     }
-    _setLoading(false);
+    
+    // 🔴 CORREÇÃO: Apenas UMA notificação no final com TODOS os dados atualizados
+    _isLoading = false;
+    notifyListeners();
+    debugPrint('✅ refreshAll completo - notificando UI uma única vez');
+  }
+  
+  // ==================== SILENT LOADERS (sem notifyListeners) ====================
+  
+  Future<void> _loadDashboardStatsSilent() async {
+    if (_apiService == null) return;
+    try {
+      _dashboardStats = await _apiService!.getDashboardStats();
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar dashboard: $e');
+    }
+  }
+  
+  Future<void> _loadProductsSilent({String? categoryId, String? search}) async {
+    if (_apiService == null) return;
+    try {
+      _products = await _apiService!.getProducts(categoryId: categoryId, search: search);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar produtos: $e');
+    }
+  }
+  
+  Future<void> _loadCategoriesSilent() async {
+    if (_apiService == null) return;
+    try {
+      _categories = await _apiService!.getCategories();
+    } catch (e) {
+      // Silent fail
+    }
+  }
+  
+  Future<void> _loadSuppliersSilent({String? search}) async {
+    if (_apiService == null) return;
+    try {
+      _suppliers = await _apiService!.getSuppliers(search: search);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar fornecedores: $e');
+    }
+  }
+  
+  Future<void> _loadCustomersSilent({String? search}) async {
+    if (_apiService == null) return;
+    try {
+      _customers = await _apiService!.getCustomers(search: search);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar clientes: $e');
+    }
+  }
+  
+  Future<void> _loadInventorySilent({String? search}) async {
+    if (_apiService == null) return;
+    try {
+      _inventory = await _apiService!.getInventory(search: search);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar inventário: $e');
+    }
+  }
+  
+  Future<void> _loadDebtsSilent() async {
+    if (_apiService == null) return;
+    try {
+      _debts = await _apiService!.getDebts();
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar dívidas: $e');
+    }
+  }
+  
+  Future<void> _loadSalesSilent({DateTime? startDate, DateTime? endDate, String? status, int? limit}) async {
+    if (_apiService == null) return;
+    try {
+      _sales = await _apiService!.getSales(startDate: startDate, endDate: endDate, status: status, limit: limit);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar vendas: $e');
+    }
+  }
+  
+  Future<void> _loadPurchasesSilent({DateTime? startDate, DateTime? endDate, String? status, String? supplierId}) async {
+    if (_apiService == null) return;
+    try {
+      _purchases = await _apiService!.getPurchases(startDate: startDate, endDate: endDate, status: status, supplierId: supplierId);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar compras: $e');
+    }
+  }
+  
+  Future<void> _loadCashBoxHistorySilent({int? limit}) async {
+    if (_apiService == null) return;
+    try {
+      _cashRegisters = await _apiService!.getCashBoxHistory(limit: limit ?? 30);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar histórico de caixa: $e');
+    }
+  }
+  
+  Future<void> _loadCurrentCashBoxSilent() async {
+    if (_apiService == null) return;
+    try {
+      _currentCashBox = await _apiService!.getCurrentCashBox();
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar caixa atual: $e');
+    }
   }
 
   // ==================== HELPERS ====================

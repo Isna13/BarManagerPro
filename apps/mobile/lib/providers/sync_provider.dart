@@ -51,7 +51,7 @@ class SyncProvider with ChangeNotifier {
 
       _pendingItems = 0;
       _lastSync = DateTime.now();
-      
+
       // Notificar que sync completou com sucesso
       debugPrint('🔄 SyncProvider: Sync completo, notificando listeners...');
       _syncCompleteController.add(true);

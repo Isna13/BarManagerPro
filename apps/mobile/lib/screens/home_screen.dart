@@ -64,7 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final syncProvider = context.read<SyncProvider>();
       _syncSubscription = syncProvider.onSyncComplete.listen((success) async {
         if (success && mounted) {
-          debugPrint('🔄 HomeScreen: Sync completou, atualizando DataProvider...');
+          debugPrint(
+              '🔄 HomeScreen: Sync completou, atualizando DataProvider...');
           final dataProvider = context.read<DataProvider>();
           await dataProvider.refreshAll();
           debugPrint('✅ HomeScreen: Todos os dados atualizados após sync!');

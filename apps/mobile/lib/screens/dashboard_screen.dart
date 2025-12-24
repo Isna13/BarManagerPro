@@ -17,24 +17,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final currencyFormat =
       NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA ', decimalDigits: 0);
   final numberFormat = NumberFormat('#,##0', 'pt_AO');
-  bool _hasLoadedInitial = false;
+  bool _isLoadingLocal = false;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // 🔴 CORREÇÃO: Carregar dados apenas UMA vez no initState
+    // O HomeScreen já carrega via refreshAll(), mas garantimos aqui também
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDataOnce();
+    });
   }
 
-  // CRÍTICO: Forçar reload quando a tela ganhar foco
-  // Isso garante que os dados do Dashboard estejam SEMPRE atualizados com o servidor
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Recarregar dados sempre que a tela ganhar foco (exceto primeira vez)
-    if (_hasLoadedInitial) {
-      _loadData();
+  // 🔴 CORREÇÃO: Removido didChangeDependencies que causava LOOP INFINITO
+  // O problema era: loadData → notifyListeners → didChangeDependencies → loadData → ...
+  // Agora a atualização é controlada apenas por:
+  // 1. initState (carga inicial)
+  // 2. Pull-to-refresh (ação do usuário)
+  // 3. SyncProvider (sync automático via HomeScreen)
+
+  Future<void> _loadDataOnce() async {
+    if (_isLoadingLocal) return; // Evita carga duplicada
+    _isLoadingLocal = true;
+    
+    try {
+      final provider = context.read<DataProvider>();
+      // Verificar se já tem dados (evita reload desnecessário)
+      if (provider.dashboardStats == null) {
+        await provider.loadDashboardStats();
+        await provider.loadSales(limit: 5);
+      }
+    } finally {
+      _isLoadingLocal = false;
     }
-    _hasLoadedInitial = true;
   }
 
   Future<void> _loadData() async {
