@@ -14,7 +14,7 @@ export class ProductsController {
   }
 
   @Get()
-  findAll(
+  async findAll(
     @Query('categoryId') categoryId?: string,
     @Query('search') search?: string,
     @Query('active') active?: string,
@@ -38,7 +38,12 @@ export class ProductsController {
       activeFilter = true;
     }
     
-    return this.productsService.findAll(categoryId, search, activeFilter);
+    const products = await this.productsService.findAll(categoryId, search, activeFilter);
+    
+    // 🔍 LOG DIAGNÓSTICO: Ajuda a entender 200 0b
+    console.log(`[Products] GET /products - activeFilter: ${activeFilter}, resultCount: ${products.length}`);
+    
+    return products;
   }
 
   @Get('categories')

@@ -9,8 +9,11 @@ export class InventoryController {
   constructor(private inventoryService: InventoryService) {}
 
   @Get()
-  findAll(@Query('branchId') branchId?: string) {
-    return this.inventoryService.findAll(branchId);
+  async findAll(@Query('branchId') branchId?: string) {
+    const items = await this.inventoryService.findAll(branchId);
+    // 🔍 LOG DIAGNÓSTICO: Ajuda a entender 200 0b
+    console.log(`[Inventory] GET /inventory - branchId: ${branchId || 'all'}, resultCount: ${items.length}`);
+    return items;
   }
 
   @Get('movements')

@@ -58,6 +58,8 @@ export class CashBoxController {
   @Get('current')
   async getCurrentCashBoxAny(@User() user: any) {
     const cashBox = await this.cashBoxService.getCurrentCashBoxForUser(user.userId);
+    // 🔍 LOG DIAGNÓSTICO: Ajuda a entender 200 0b
+    console.log(`[CashBox] GET /cash-box/current - userId: ${user.userId}, hasOpenBox: ${!!cashBox}`);
     // Retornar null explicitamente como JSON para que o cliente receba null, não string vazia
     return cashBox ?? null;
   }
