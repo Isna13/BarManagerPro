@@ -219,11 +219,15 @@ export class CashBoxService {
     // CRÍTICO: Buscar apenas pagamentos de mesas (TablePayment) que NÃO têm Payment vinculado
     // Se paymentId != null, significa que já existe um Payment contabilizado na Sale
     // Isso evita duplicação: Sale.total + TablePayment.amount
+    // CORREÇÃO: Excluir VALE pois já está contabilizado na Sale com paymentMethod='VALE'
     const tablePayments = await this.prisma.tablePayment.findMany({
       where: {
         processedAt: { gte: cashBox.openedAt },
         session: { branchId: cashBox.branchId },
         paymentId: null, // ⚠️ APENAS pagamentos de mesa SEM Payment vinculado
+        NOT: {
+          method: { in: ['VALE', 'vale', 'Vale'] },
+        },
       },
     });
 
@@ -321,10 +325,14 @@ export class CashBoxService {
         };
         
         // Query para TablePayments - APENAS os que NÃO têm Payment vinculado (evita duplicação)
+        // CORREÇÃO: Excluir VALE pois já está contabilizado na Sale com paymentMethod='VALE'
         const tablePaymentsQuery: any = {
           processedAt: { gte: cashBox.openedAt },
           session: { branchId: cashBox.branchId },
           paymentId: null, // ⚠️ CRÍTICO: Evita contar TablePayment que já tem Payment
+          NOT: {
+            method: { in: ['VALE', 'vale', 'Vale'] },
+          },
         };
         
         if (cashBox.closedAt) {
@@ -484,11 +492,15 @@ export class CashBoxService {
 
     // CRÍTICO: Buscar apenas pagamentos de mesas (TablePayment) que NÃO têm Payment vinculado
     // Se paymentId != null, significa que já existe um Payment contabilizado na Sale
+    // CORREÇÃO: Excluir VALE pois já está contabilizado na Sale com paymentMethod='VALE'
     const tablePayments = await this.prisma.tablePayment.findMany({
       where: {
         processedAt: { gte: cashBox.openedAt },
         session: { branchId: cashBox.branchId },
         paymentId: null, // ⚠️ CRÍTICO: Evita contar TablePayment que já tem Payment
+        NOT: {
+          method: { in: ['VALE', 'vale', 'Vale'] },
+        },
       },
     });
 
@@ -591,10 +603,14 @@ export class CashBoxService {
         };
         
         // Query para TablePayments - APENAS os que NÃO têm Payment vinculado (evita duplicação)
+        // CORREÇÃO: Excluir VALE pois já está contabilizado na Sale com paymentMethod='VALE'
         const tablePaymentsQuery: any = {
           processedAt: { gte: cashBox.openedAt },
           session: { branchId: cashBox.branchId },
           paymentId: null, // ⚠️ CRÍTICO: Evita contar TablePayment que já tem Payment
+          NOT: {
+            method: { in: ['VALE', 'vale', 'Vale'] },
+          },
         };
         
         // Se o caixa está fechado, limitar até a data de fechamento
