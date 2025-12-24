@@ -400,11 +400,11 @@ class DataProvider extends ChangeNotifier {
   /// Agora dispara apenas 2 notifyListeners (início e fim) ao invés de 20+
   Future<void> refreshAll() async {
     if (_apiService == null) return;
-    
+
     // 🔴 CORREÇÃO: Apenas UMA notificação de loading no início
     _isLoading = true;
     notifyListeners();
-    
+
     try {
       // 🔴 CORREÇÃO: Carregar todos os dados SILENCIOSAMENTE (sem notifyListeners internos)
       await Future.wait([
@@ -426,15 +426,15 @@ class DataProvider extends ChangeNotifier {
       _error = e.toString();
       debugPrint('❌ Erro no refreshAll: $e');
     }
-    
+
     // 🔴 CORREÇÃO: Apenas UMA notificação no final com TODOS os dados atualizados
     _isLoading = false;
     notifyListeners();
     debugPrint('✅ refreshAll completo - notificando UI uma única vez');
   }
-  
+
   // ==================== SILENT LOADERS (sem notifyListeners) ====================
-  
+
   Future<void> _loadDashboardStatsSilent() async {
     if (_apiService == null) return;
     try {
@@ -443,16 +443,17 @@ class DataProvider extends ChangeNotifier {
       debugPrint('⚠️ Erro ao carregar dashboard: $e');
     }
   }
-  
+
   Future<void> _loadProductsSilent({String? categoryId, String? search}) async {
     if (_apiService == null) return;
     try {
-      _products = await _apiService!.getProducts(categoryId: categoryId, search: search);
+      _products = await _apiService!
+          .getProducts(categoryId: categoryId, search: search);
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar produtos: $e');
     }
   }
-  
+
   Future<void> _loadCategoriesSilent() async {
     if (_apiService == null) return;
     try {
@@ -461,7 +462,7 @@ class DataProvider extends ChangeNotifier {
       // Silent fail
     }
   }
-  
+
   Future<void> _loadSuppliersSilent({String? search}) async {
     if (_apiService == null) return;
     try {
@@ -470,7 +471,7 @@ class DataProvider extends ChangeNotifier {
       debugPrint('⚠️ Erro ao carregar fornecedores: $e');
     }
   }
-  
+
   Future<void> _loadCustomersSilent({String? search}) async {
     if (_apiService == null) return;
     try {
@@ -479,7 +480,7 @@ class DataProvider extends ChangeNotifier {
       debugPrint('⚠️ Erro ao carregar clientes: $e');
     }
   }
-  
+
   Future<void> _loadInventorySilent({String? search}) async {
     if (_apiService == null) return;
     try {
@@ -488,7 +489,7 @@ class DataProvider extends ChangeNotifier {
       debugPrint('⚠️ Erro ao carregar inventário: $e');
     }
   }
-  
+
   Future<void> _loadDebtsSilent() async {
     if (_apiService == null) return;
     try {
@@ -497,25 +498,38 @@ class DataProvider extends ChangeNotifier {
       debugPrint('⚠️ Erro ao carregar dívidas: $e');
     }
   }
-  
-  Future<void> _loadSalesSilent({DateTime? startDate, DateTime? endDate, String? status, int? limit}) async {
+
+  Future<void> _loadSalesSilent(
+      {DateTime? startDate,
+      DateTime? endDate,
+      String? status,
+      int? limit}) async {
     if (_apiService == null) return;
     try {
-      _sales = await _apiService!.getSales(startDate: startDate, endDate: endDate, status: status, limit: limit);
+      _sales = await _apiService!.getSales(
+          startDate: startDate, endDate: endDate, status: status, limit: limit);
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar vendas: $e');
     }
   }
-  
-  Future<void> _loadPurchasesSilent({DateTime? startDate, DateTime? endDate, String? status, String? supplierId}) async {
+
+  Future<void> _loadPurchasesSilent(
+      {DateTime? startDate,
+      DateTime? endDate,
+      String? status,
+      String? supplierId}) async {
     if (_apiService == null) return;
     try {
-      _purchases = await _apiService!.getPurchases(startDate: startDate, endDate: endDate, status: status, supplierId: supplierId);
+      _purchases = await _apiService!.getPurchases(
+          startDate: startDate,
+          endDate: endDate,
+          status: status,
+          supplierId: supplierId);
     } catch (e) {
       debugPrint('⚠️ Erro ao carregar compras: $e');
     }
   }
-  
+
   Future<void> _loadCashBoxHistorySilent({int? limit}) async {
     if (_apiService == null) return;
     try {
@@ -524,7 +538,7 @@ class DataProvider extends ChangeNotifier {
       debugPrint('⚠️ Erro ao carregar histórico de caixa: $e');
     }
   }
-  
+
   Future<void> _loadCurrentCashBoxSilent() async {
     if (_apiService == null) return;
     try {

@@ -39,7 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadDataOnce() async {
     if (_isLoadingLocal) return; // Evita carga duplicada
     _isLoadingLocal = true;
-    
+
     try {
       final provider = context.read<DataProvider>();
       // Verificar se já tem dados (evita reload desnecessário)

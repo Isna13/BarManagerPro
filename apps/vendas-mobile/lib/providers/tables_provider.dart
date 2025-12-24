@@ -895,6 +895,10 @@ class TablesProvider extends ChangeNotifier {
     try {
       final now = DateTime.now().toIso8601String();
       final paymentId = _uuid.v4();
+      
+      // 🔴 CORREÇÃO CRÍTICA: Armazenar os pedidos que serão pagos NESTA transação
+      // Isso é usado depois para criar os itens da venda corretamente
+      List<Map<String, dynamic>> ordersBeingPaidNow = [];
 
       // 🔴 LOG FASE 1: Valor ORIGINAL recebido do botão
       debugPrint('\n═══════════════════════════════════════════════════════');
@@ -1024,6 +1028,9 @@ class TablesProvider extends ChangeNotifier {
 
           // Se o valor pago cobre os pedidos pendentes, marcar como pagos
           if (amount >= pendingAmount && pendingOrders.isNotEmpty) {
+            // 🔴 CORREÇÃO: Armazenar os pedidos que estão sendo pagos AGORA
+            ordersBeingPaidNow = List.from(pendingOrders);
+            
             for (final order in pendingOrders) {
               order['status'] = 'paid';
               // Atualizar no banco local também
@@ -1035,6 +1042,7 @@ class TablesProvider extends ChangeNotifier {
               );
             }
             debugPrint('✅ ${pendingOrders.length} pedidos marcados como pagos');
+            debugPrint('📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
           }
 
           // Verificar se TODOS os pedidos estão pagos para atualizar status do cliente
@@ -1087,46 +1095,21 @@ class TablesProvider extends ChangeNotifier {
       // ===== CRIAR REGISTRO DE VENDA PARA SINCRONIZAÇÃO =====
       // Isso garante que a venda de mesa apareça nos relatórios e sincronize com Railway/Electron
 
-      // 🔴 IDEMPOTÊNCIA: Gerar saleId determinístico baseado nos pedidos pagos
-      // Isso previne duplicação se o pagamento for chamado múltiplas vezes
-      final paidOrderIds = <String>[];
-      if (tableCustomerId != null) {
-        for (final order in _currentOrders) {
-          final orderCustomerId =
-              order['table_customer_id'] ?? order['tableCustomerId'];
-          if (orderCustomerId == tableCustomerId && order['status'] == 'paid') {
-            paidOrderIds.add(order['id'] as String);
-          }
-        }
-      }
-      paidOrderIds.sort(); // Ordenar para garantir hash consistente
-
-      // Gerar saleId determinístico ou usar UUID se não houver pedidos
-      final String saleId;
-      if (paidOrderIds.isNotEmpty) {
-        // Hash dos IDs dos pedidos garante idempotência
-        final idempotencyKey =
-            '${sessionId}_${tableCustomerId}_${paidOrderIds.join('_')}';
-        saleId =
-            'sale_${idempotencyKey.hashCode.toRadixString(16).padLeft(16, '0')}';
-      } else {
-        saleId = _uuid.v4();
-      }
-
-      // 🔴 VERIFICAR SE VENDA JÁ EXISTE (idempotência)
-      final existingSale = await _db.query(
-        'sales',
-        where: 'id = ?',
-        whereArgs: [saleId],
-      );
-
-      if (existingSale.isNotEmpty) {
-        debugPrint(
-            '⚠️ [IDEMPOTÊNCIA] Venda já existe: $saleId - ignorando duplicata');
-        _isLoading = false;
-        notifyListeners();
-        return true; // Retornar sucesso pois já foi processado
-      }
+      // 🔴 CORREÇÃO CRÍTICA: Usar UUID único para cada pagamento
+      // O problema anterior era que o hash baseado em pedidos 'paid' causava colisões
+      // quando múltiplos pagamentos eram feitos para o mesmo cliente.
+      // 
+      // Agora usamos UUID + timestamp para garantir unicidade ABSOLUTA de cada venda.
+      // A idempotência é garantida pelo lock _isLoading no início do método.
+      final String saleId = _uuid.v4();
+      
+      // 🔴 LOG: Identificar vendas para debug
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('🔴 [MESAS][SALE_ID] Gerando nova venda');
+      debugPrint('   saleId: $saleId');
+      debugPrint('   amount: $amount');
+      debugPrint('   tableCustomerId: $tableCustomerId');
+      debugPrint('═══════════════════════════════════════════════════════');
 
       final saleNumber =
           'M${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
@@ -1195,27 +1178,23 @@ class TablesProvider extends ChangeNotifier {
       // 🔴 LOG FASE 4: APÓS salvar venda - verificar o que foi salvo
       debugPrint('🔴 [MESAS][LOCAL_SAVE] VENDA SALVA COM SUCESSO');
 
-      // Criar itens da venda (baseado nos pedidos do cliente)
-      if (tableCustomerId != null) {
-        final customerOrders = _currentOrders
-            .where((o) =>
-                o['table_customer_id'] == tableCustomerId &&
-                o['status'] == 'paid')
-            .toList();
-
-        for (final order in customerOrders) {
-          await _db.insert('sale_items', {
-            'id': _uuid.v4(),
-            'sale_id': saleId,
-            'product_id': order['product_id'],
-            'qty_units': order['qty_units'] ?? 1,
-            'is_muntu': order['is_muntu'] ?? 0,
-            'unit_price': order['unit_price'] ?? 0,
-            'total': order['total'] ?? 0,
-            'created_at': now,
-            'synced': 0,
-          });
-        }
+      // 🔴 CORREÇÃO CRÍTICA: Criar itens da venda usando apenas os pedidos pagos NESTA transação
+      // Antes usava 'o['status'] == 'paid'' que pegava TODOS os pedidos já pagos (de transações anteriores)
+      // Agora usa ordersBeingPaidNow que contém apenas os pedidos desta transação específica
+      debugPrint('📦 Criando ${ordersBeingPaidNow.length} itens da venda $saleId');
+      
+      for (final order in ordersBeingPaidNow) {
+        await _db.insert('sale_items', {
+          'id': _uuid.v4(),
+          'sale_id': saleId,
+          'product_id': order['product_id'],
+          'qty_units': order['qty_units'] ?? 1,
+          'is_muntu': order['is_muntu'] ?? 0,
+          'unit_price': order['unit_price'] ?? 0,
+          'total': order['total'] ?? 0,
+          'created_at': now,
+          'synced': 0,
+        });
       }
 
       // Marcar venda para sincronização

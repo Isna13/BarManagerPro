@@ -22,7 +22,7 @@ class _SalesScreenState extends State<SalesScreen> {
 
   String _selectedFilter = 'today';
   final TextEditingController _searchController = TextEditingController();
-  
+
   // 🔴 CORREÇÃO: Lock para evitar requests concorrentes
   bool _isLoadingLocal = false;
   // 🔴 CORREÇÃO: Contador para cancelar requests antigos
@@ -42,12 +42,12 @@ class _SalesScreenState extends State<SalesScreen> {
       debugPrint('⚠️ SalesScreen: Request já em andamento, ignorando...');
       return;
     }
-    
+
     // 🔴 CORREÇÃO: Incrementar ID para invalidar requests antigos
     _loadRequestId++;
     final currentRequestId = _loadRequestId;
     _isLoadingLocal = true;
-    
+
     final provider = context.read<DataProvider>();
     final now = DateTime.now();
     DateTime startDate;
@@ -56,7 +56,8 @@ class _SalesScreenState extends State<SalesScreen> {
     // Debug: mostrar timezone do dispositivo
     debugPrint('🕐 DateTime.now(): $now');
     debugPrint('🕐 Timezone offset: ${now.timeZoneOffset}');
-    debugPrint('🕐 Filtro selecionado: $_selectedFilter (request #$currentRequestId)');
+    debugPrint(
+        '🕐 Filtro selecionado: $_selectedFilter (request #$currentRequestId)');
 
     switch (_selectedFilter) {
       case 'today':
@@ -100,18 +101,21 @@ class _SalesScreenState extends State<SalesScreen> {
         endDate = localEndOfDay.toUtc();
     }
 
-    debugPrint('🔍 Buscando vendas de $startDate até $endDate (request #$currentRequestId)');
-    
+    debugPrint(
+        '🔍 Buscando vendas de $startDate até $endDate (request #$currentRequestId)');
+
     try {
       await provider.loadSales(startDate: startDate, endDate: endDate);
-      
+
       // 🔴 CORREÇÃO: Verificar se este request ainda é o mais recente
       if (currentRequestId != _loadRequestId) {
-        debugPrint('⚠️ Request #$currentRequestId obsoleto, ignorando resultado');
+        debugPrint(
+            '⚠️ Request #$currentRequestId obsoleto, ignorando resultado');
         return;
       }
-      
-      debugPrint('✅ Vendas carregadas com sucesso: ${provider.sales.length} vendas');
+
+      debugPrint(
+          '✅ Vendas carregadas com sucesso: ${provider.sales.length} vendas');
     } finally {
       // 🔴 CORREÇÃO: Liberar lock apenas se for o request atual
       if (currentRequestId == _loadRequestId) {
@@ -254,11 +258,11 @@ class _SalesScreenState extends State<SalesScreen> {
   void _onFilterChanged(String filter) {
     // 🔴 CORREÇÃO: Evitar mudança se já está no mesmo filtro
     if (_selectedFilter == filter) return;
-    
+
     // 🔴 CORREÇÃO: Invalidar requests antigos antes de mudar filtro
     _loadRequestId++;
     _isLoadingLocal = false; // Forçar liberação do lock para novo filtro
-    
+
     setState(() {
       _selectedFilter = filter;
     });
