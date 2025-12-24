@@ -742,11 +742,15 @@ export class CashBoxService {
 
     // 2. 🔴 CORREÇÃO CRÍTICA: Buscar pagamentos de MESA (TablePayment)
     // Vendas de mesa usam TablePayment ao invés de Payment
+    // CRÍTICO: Excluir pagamentos VALE pois já são representados pelos Debts
     const tablePayments = await this.prisma.tablePayment.findMany({
       where: {
         createdAt: { gte: targetCashBox.openedAt },
         session: {
           table: { branchId: targetCashBox.branchId },
+        },
+        NOT: {
+          method: { in: ['VALE', 'vale', 'Vale'] },
         },
       },
       include: {

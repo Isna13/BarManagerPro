@@ -1629,7 +1629,7 @@ class SyncManager {
                 // Débitos/Vales - sincronizar do servidor para o desktop
                 // LOGS DE RASTREABILIDADE para diagnóstico de sincronização
                 console.log(`\n📋 SYNC DEBTS: Processando ${items.length} dívidas do servidor`);
-                let created = 0, updated = 0, skippedNoCustomer = 0, skippedPending = 0;
+                let created = 0, updated = 0, skippedNoCustomer = 0, skippedPending = 0, skippedDuplicate = 0;
                 for (const item of items) {
                     try {
                         const existing = this.dbManager.getDebtById ? this.dbManager.getDebtById(item.id) : null;
@@ -1670,10 +1670,32 @@ class SyncManager {
                                 skippedNoCustomer++;
                                 continue;
                             }
+                            // 🔒 IDEMPOTÊNCIA POR SALE_ID: Verificar se já existe debt local com mesmo saleId
+                            // Isso evita duplicação quando:
+                            // 1. Electron cria debt local (ID_LOCAL) com saleId=X
+                            // 2. Backend cria debt (ID_BACKEND) com saleId=X quando sincroniza Sale
+                            // 3. Electron baixa debt do servidor (ID_BACKEND) - sem esta verificação, criaria duplicata
+                            const saleId = item.saleId || item.sale_id;
+                            if (saleId) {
+                                const existingBySale = this.dbManager.prepare(`
+                  SELECT id, debt_number FROM debts WHERE sale_id = ?
+                `).get(saleId);
+                                if (existingBySale && existingBySale.id !== item.id) {
+                                    // Já existe debt local com mesmo saleId mas ID diferente
+                                    // Atualizar o debt local para usar o ID do servidor (canonical)
+                                    console.log(`   🔄 MERGE: Debt local ${existingBySale.id} → ${item.id} (mesmo saleId: ${saleId})`);
+                                    // Deletar o debt local (será substituído pelo do servidor)
+                                    this.dbManager.prepare(`DELETE FROM debts WHERE id = ?`).run(existingBySale.id);
+                                    // Remover da sync queue se estiver lá
+                                    this.dbManager.prepare(`
+                    DELETE FROM sync_queue WHERE entity_type = 'debt' AND entity_id = ?
+                  `).run(existingBySale.id);
+                                }
+                            }
                             this.dbManager.prepare(`
-                INSERT INTO debts (id, debt_number, customer_id, branch_id, original_amount, amount, paid_amount, balance, status, due_date, notes, created_by, synced, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-              `).run(item.id, item.debtNumber || item.debt_number || `DEBT-${Date.now()}`, customerId, item.branchId || item.branch_id || 'main-branch', item.originalAmount || amount, amount, paidAmount, balance, item.status || 'pending', item.dueDate || item.due_date || null, item.notes || null, item.createdBy || item.created_by || null);
+                INSERT INTO debts (id, debt_number, customer_id, sale_id, branch_id, original_amount, amount, paid_amount, balance, status, due_date, notes, created_by, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(item.id, item.debtNumber || item.debt_number || `DEBT-${Date.now()}`, customerId, saleId || null, item.branchId || item.branch_id || 'main-branch', item.originalAmount || amount, amount, paidAmount, balance, item.status || 'pending', item.dueDate || item.due_date || null, item.notes || null, item.createdBy || item.created_by || null);
                             created++;
                             console.log(`   ➕ Débito criado: ${item.id} | Cliente: ${customerExists.full_name} | Status: ${item.status} | Saldo: ${balance / 100} FCFA`);
                         }
