@@ -182,7 +182,7 @@ class SyncService {
       debugPrint('✅ Sincronização completa!');
       _syncStatusController.add(
           SyncStatus(isSyncing: false, message: 'Sincronizado', success: true));
-      
+
       // 🔴 CORREÇÃO CRÍTICA: Notificar que vendas e caixa foram atualizados
       // Isso permite que os providers recarreguem seus dados
       _emitSyncEvent(SyncEventType.salesUpdated);
@@ -223,9 +223,10 @@ class SyncService {
         "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'pending'",
       );
       final count = (pendingCount.first['count'] as int?) ?? 0;
-      
+
       if (count > 0) {
-        debugPrint('⚠️ Ainda há $count itens pendentes na fila, agendando re-sync...');
+        debugPrint(
+            '⚠️ Ainda há $count itens pendentes na fila, agendando re-sync...');
         // Agendar re-sync com delay maior para não sobrecarregar
         Future.delayed(const Duration(seconds: 2), () {
           if (_isOnline && !_isSyncing) {

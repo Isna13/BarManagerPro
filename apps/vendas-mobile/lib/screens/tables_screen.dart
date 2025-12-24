@@ -1767,13 +1767,18 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
       if (!mounted) return;
 
       if (success) {
-        // Atualizar totais do caixa
-        if (method == 'cash') {
+        // Atualizar totais do caixa - normalizar método para comparação
+        final normalizedMethod = method.toLowerCase();
+        if (normalizedMethod == 'cash') {
           await cashBox.updateCashBoxTotals(cashAmount: amount);
-        } else if (method == 'orange' || method == 'teletaku') {
+        } else if (normalizedMethod == 'orange' ||
+            normalizedMethod == 'teletaku' ||
+            normalizedMethod == 'mobile') {
           await cashBox.updateCashBoxTotals(mobileMoneyAmount: amount);
-        } else if (method == 'vale') {
+        } else if (normalizedMethod == 'vale' || normalizedMethod == 'debt') {
           await cashBox.updateCashBoxTotals(debtAmount: amount);
+        } else if (normalizedMethod == 'card' || normalizedMethod == 'mixed') {
+          await cashBox.updateCashBoxTotals(cardAmount: amount);
         }
 
         cashBox.incrementSalesCount();

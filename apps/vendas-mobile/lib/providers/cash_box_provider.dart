@@ -36,7 +36,8 @@ class CashBoxProvider extends ChangeNotifier {
 
   /// 🔴 CORREÇÃO: Handler para eventos de sync
   void _onSyncEvent(SyncEventType type, dynamic data) {
-    if (type == SyncEventType.cashBoxUpdated || type == SyncEventType.salesUpdated) {
+    if (type == SyncEventType.cashBoxUpdated ||
+        type == SyncEventType.salesUpdated) {
       debugPrint('📢 CashBoxProvider: Recebido evento $type, recarregando...');
       loadCurrentCashBox();
     }
@@ -134,56 +135,38 @@ class CashBoxProvider extends ChangeNotifier {
 
           // Verificar se já temos este caixa localmente
           if (localCashBox != null && localCashBox['id'] == serverId) {
-            // MESMO CAIXA
-            if (localCashBox['synced'] == 0) {
-              // Caixa local tem vendas NÃO sincronizadas
-              // Precisamos SOMAR: valores do servidor + incrementos locais
-              debugPrint('🔄 Caixa com vendas locais não sincronizadas');
+            // MESMO CAIXA - Salvar dados do servidor primeiro
+            _currentCashBox = serverCashBox;
+            await _saveCashBoxLocally(result);
 
-              // Calcular incrementos locais (diferença entre local e o que foi sincronizado antes)
-              // Usar o MAIOR valor para evitar perda de dados
-              final serverCash = (serverCashBox['total_cash'] ?? 0) as num;
-              final localCash = (localCashBox['total_cash'] ?? 0) as num;
-              final serverMobile =
-                  (serverCashBox['total_mobile_money'] ?? 0) as num;
-              final localMobile =
-                  (localCashBox['total_mobile_money'] ?? 0) as num;
-              final serverCard = (serverCashBox['total_card'] ?? 0) as num;
-              final localCard = (localCashBox['total_card'] ?? 0) as num;
-              final serverDebt = (serverCashBox['total_debt'] ?? 0) as num;
-              final localDebt = (localCashBox['total_debt'] ?? 0) as num;
+            // 🔴 CORREÇÃO CRÍTICA: SEMPRE recalcular a partir das vendas locais
+            // Isso garante que vendas offline (ainda não sincronizadas) sejam contabilizadas
+            // O recálculo usa TODAS as vendas locais (synced ou não) e compara com servidor
+            await _recalculateAndMergeCashBox(serverCashBox);
 
-              // Se o valor local é maior, significa que temos vendas locais não sincronizadas
-              // Nesse caso, mantemos o valor local
-              // Se o servidor é maior, alguém fez vendas em outro dispositivo
-              final finalCash = localCash > serverCash ? localCash : serverCash;
-              final finalMobile =
-                  localMobile > serverMobile ? localMobile : serverMobile;
-              final finalCard = localCard > serverCard ? localCard : serverCard;
-              final finalDebt = localDebt > serverDebt ? localDebt : serverDebt;
+            debugPrint('📦 Caixa mesclado com vendas locais');
+          } else if (localCashBox != null &&
+              localCashBox['id']?.toString().startsWith('temp_') == true) {
+            // Caixa temporário existe - precisamos migrar vendas para o caixa real
+            debugPrint(
+                '🔄 Migrando vendas do caixa temporário para o caixa real...');
+            _currentCashBox = serverCashBox;
+            await _saveCashBoxLocally(result);
 
-              _currentCashBox = {
-                ...serverCashBox,
-                'total_cash': finalCash.toInt(),
-                'total_card': finalCard.toInt(),
-                'total_mobile_money': finalMobile.toInt(),
-                'total_debt': finalDebt.toInt(),
-                // CRÍTICO: total_sales DEVE incluir TODOS os métodos, inclusive VALE/debt
-                'total_sales':
-                    (finalCash + finalCard + finalMobile + finalDebt).toInt(),
-                'synced': 0,
-              };
+            // Recalcular incluindo vendas do período temporário
+            await _recalculateAndMergeCashBox(serverCashBox);
 
-              debugPrint(
-                  '📦 Totais mesclados: cash=$finalCash, mobile=$finalMobile, debt=$finalDebt');
-            } else {
-              // Caixa local está sincronizado - usar valores do servidor (mais recentes)
-              debugPrint('✅ Caixa sincronizado - usando valores do servidor');
-              _currentCashBox = serverCashBox;
-
-              // Atualizar banco local com valores do servidor
-              await _saveCashBoxLocally(result);
-            }
+            // Fechar o caixa temporário
+            await _db.update(
+              'cash_boxes',
+              {
+                'status': 'closed',
+                'closed_at': DateTime.now().toIso8601String()
+              },
+              where: 'id = ?',
+              whereArgs: [localCashBox['id']],
+            );
+            debugPrint('✅ Caixa temporário fechado, vendas migradas');
           } else {
             // CAIXA NOVO do servidor (ou primeiro sync)
             debugPrint('🆕 Novo caixa do servidor - salvando localmente');
@@ -202,43 +185,61 @@ class CashBoxProvider extends ChangeNotifier {
               );
             }
 
-            // Salvar novo caixa localmente
+            // Salvar novo caixa localmente e recalcular
             await _saveCashBoxLocally(result);
+            await _recalculateAndMergeCashBox(serverCashBox);
           }
         } else {
           // Servidor não tem caixa aberto
           debugPrint('🌐 Servidor não tem caixa aberto');
 
-          // CRÍTICO: Se o servidor não tem caixa aberto, o Mobile DEVE refletir isso
-          // O servidor é a ÚNICA fonte da verdade para dados financeiros
           if (localCashBox != null) {
-            debugPrint(
-                '🔴 CRÍTICO: Fechando caixa local - servidor é a fonte da verdade');
-            debugPrint(
-                '   Caixa local: id=${localCashBox['id']}, synced=${localCashBox['synced']}');
+            // 🔴 CORREÇÃO CRÍTICA: Antes de fechar, verificar se há vendas pendentes
+            final pendingSales = await _db.rawQuery('''
+              SELECT COUNT(*) as count FROM sync_queue 
+              WHERE entity_type = 'sale' AND status = 'pending'
+            ''');
+            final pendingCount =
+                (pendingSales.first['count'] as num? ?? 0).toInt();
 
-            // Fechar o caixa local INDEPENDENTE do status synced
-            // Se havia vendas não sincronizadas, elas já deveriam ter sido enviadas
-            // Se não foram, o caixa já foi fechado no servidor de qualquer forma
-            await _db.update(
-              'cash_boxes',
-              {
+            if (pendingCount > 0 || localCashBox['synced'] == 0) {
+              // Há vendas não sincronizadas - NÃO fechar o caixa local!
+              debugPrint(
+                  '⚠️ $pendingCount vendas pendentes de sync - mantendo caixa local aberto');
+              debugPrint(
+                  '   Caixa local: id=${localCashBox['id']}, synced=${localCashBox['synced']}');
+
+              _currentCashBox = localCashBox;
+
+              // Recalcular para garantir que os totais estão corretos
+              await recalculateCashBoxFromLocalSales();
+
+              debugPrint(
+                  '📦 Caixa local mantido com vendas pendentes. Sincronize para fechar.');
+            } else {
+              // Sem vendas pendentes - seguro fechar
+              debugPrint('✅ Sem vendas pendentes - fechando caixa local');
+
+              await _db.update(
+                'cash_boxes',
+                {
+                  'status': 'closed',
+                  'closed_at': DateTime.now().toIso8601String(),
+                  'synced': 1,
+                },
+                where: 'id = ?',
+                whereArgs: [localCashBox['id']],
+              );
+
+              // Adicionar ao histórico e limpar caixa atual
+              _history.insert(0, {
+                ...localCashBox,
                 'status': 'closed',
                 'closed_at': DateTime.now().toIso8601String(),
-                'synced': 1,
-              },
-              where: 'id = ?',
-              whereArgs: [localCashBox['id']],
-            );
-
-            // Adicionar ao histórico e limpar caixa atual
-            _history.insert(0, {
-              ...localCashBox,
-              'status': 'closed',
-              'closed_at': DateTime.now().toIso8601String(),
-            });
-            _currentCashBox = null;
-            debugPrint('✅ Caixa local fechado para corresponder ao servidor');
+              });
+              _currentCashBox = null;
+              debugPrint('✅ Caixa local fechado para corresponder ao servidor');
+            }
           } else {
             _currentCashBox = null;
           }
@@ -492,8 +493,29 @@ class CashBoxProvider extends ChangeNotifier {
         debugPrint(
             '✅ Caixa carregado do banco local: ${_currentCashBox!['id']}');
       } else {
-        debugPrint('❌ Nenhum caixa aberto encontrado no banco local!');
-        return;
+        // 🔴 CORREÇÃO CRÍTICA: Se não há caixa local, criar um temporário para não perder vendas
+        // Quando o app sincronizar, ele vai associar essas vendas ao caixa do servidor
+        debugPrint(
+            '⚠️ Nenhum caixa aberto! Criando caixa temporário para não perder vendas...');
+        final now = DateTime.now();
+        final tempId = 'temp_${now.millisecondsSinceEpoch}';
+        _currentCashBox = {
+          'id': tempId,
+          'box_number': 'TEMP',
+          'branch_id': 'main-branch',
+          'status': 'open',
+          'opening_cash': 0,
+          'total_sales': 0,
+          'total_cash': 0,
+          'total_card': 0,
+          'total_mobile_money': 0,
+          'total_debt': 0,
+          'opened_at': now.toIso8601String(),
+          'synced': 0,
+        };
+        // Salvar no banco para persistir
+        await _db.insert('cash_boxes', _currentCashBox!);
+        debugPrint('✅ Caixa temporário criado: $tempId');
       }
     }
 
@@ -777,6 +799,131 @@ class CashBoxProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('❌ Erro ao recalcular caixa: $e');
+    }
+  }
+
+  /// Recalcula o caixa a partir das vendas locais e mescla com os valores do servidor
+  /// Usa MAX(local, servidor) para garantir que vendas offline não sejam perdidas
+  Future<void> _recalculateAndMergeCashBox(
+      Map<String, dynamic> serverCashBox) async {
+    if (_currentCashBox == null) return;
+
+    try {
+      final openedAt = serverCashBox['opened_at'] ??
+          serverCashBox['openedAt'] ??
+          _currentCashBox!['opened_at'];
+      final boxId = _currentCashBox!['id'];
+
+      if (openedAt == null) {
+        debugPrint(
+            '⚠️ _recalculateAndMergeCashBox: openedAt é null, usando servidor diretamente');
+        return;
+      }
+
+      debugPrint('🔄 Recalculando e mesclando caixa com vendas locais...');
+
+      // Buscar TODAS as vendas locais desde a abertura do caixa (sincronizadas ou não)
+      final salesResults = await _db.rawQuery('''
+        SELECT 
+          payment_method,
+          SUM(total) as total_amount,
+          COUNT(*) as count
+        FROM sales 
+        WHERE created_at >= ? 
+          AND status != 'cancelled'
+        GROUP BY payment_method
+      ''', [openedAt]);
+
+      int localCash = 0;
+      int localCard = 0;
+      int localMobile = 0;
+      int localDebt = 0;
+      int localSalesCount = 0;
+
+      for (final row in salesResults) {
+        final method = (row['payment_method'] as String? ?? '').toLowerCase();
+        final amount = (row['total_amount'] as num? ?? 0).toInt();
+        final count = (row['count'] as num? ?? 0).toInt();
+
+        localSalesCount += count;
+
+        if (method == 'cash') {
+          localCash += amount;
+        } else if (method == 'orange' ||
+            method == 'teletaku' ||
+            method == 'mobile') {
+          localMobile += amount;
+        } else if (method == 'card' || method == 'mixed') {
+          localCard += amount;
+        } else if (method == 'vale' || method == 'debt') {
+          localDebt += amount;
+        }
+      }
+
+      // Valores do servidor
+      final serverCash = (serverCashBox['total_cash'] as num? ?? 0).toInt();
+      final serverCard = (serverCashBox['total_card'] as num? ?? 0).toInt();
+      final serverMobile =
+          (serverCashBox['total_mobile_money'] as num? ?? 0).toInt();
+      final serverDebt = (serverCashBox['total_debt'] as num? ?? 0).toInt();
+
+      // Usar MAX(local, servidor) para cada tipo de pagamento
+      // Isso garante que vendas offline (ainda não no servidor) sejam mantidas
+      final finalCash = localCash > serverCash ? localCash : serverCash;
+      final finalCard = localCard > serverCard ? localCard : serverCard;
+      final finalMobile =
+          localMobile > serverMobile ? localMobile : serverMobile;
+      final finalDebt = localDebt > serverDebt ? localDebt : serverDebt;
+      final finalTotal = finalCash + finalCard + finalMobile + finalDebt;
+
+      debugPrint('📊 Merge caixa (local vs servidor):');
+      debugPrint('   Cash: $localCash vs $serverCash -> $finalCash');
+      debugPrint('   Card: $localCard vs $serverCard -> $finalCard');
+      debugPrint('   Mobile: $localMobile vs $serverMobile -> $finalMobile');
+      debugPrint('   Debt: $localDebt vs $serverDebt -> $finalDebt');
+      debugPrint('   Vendas locais: $localSalesCount');
+
+      // Verificar se há diferença (vendas locais não sincronizadas)
+      final hasLocalChanges = localCash > serverCash ||
+          localCard > serverCard ||
+          localMobile > serverMobile ||
+          localDebt > serverDebt;
+
+      // Atualizar o caixa em memória
+      _currentCashBox = {
+        ..._currentCashBox!,
+        'total_cash': finalCash,
+        'total_card': finalCard,
+        'total_mobile_money': finalMobile,
+        'total_debt': finalDebt,
+        'total_sales': finalTotal,
+        'synced': hasLocalChanges
+            ? 0
+            : 1, // Se tem vendas locais não sync, marcar como não sincronizado
+      };
+
+      // Persistir no banco local
+      await _db.update(
+        'cash_boxes',
+        {
+          'total_cash': finalCash,
+          'total_card': finalCard,
+          'total_mobile_money': finalMobile,
+          'total_debt': finalDebt,
+          'total_sales': finalTotal,
+          'synced': hasLocalChanges ? 0 : 1,
+        },
+        where: 'id = ?',
+        whereArgs: [boxId],
+      );
+
+      if (hasLocalChanges) {
+        debugPrint('⚠️ Caixa tem vendas locais não sincronizadas!');
+      } else {
+        debugPrint('✅ Caixa sincronizado com servidor');
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao recalcular e mesclar caixa: $e');
     }
   }
 

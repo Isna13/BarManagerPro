@@ -3137,14 +3137,17 @@ class _POSScreenState extends State<POSScreen> with TickerProviderStateMixin {
       // ATUALIZAR ESTOQUE - Decrementar quantidade de cada produto vendido
       await productsProvider.decrementStockForSale(cartItems);
 
-      // Atualizar totais do caixa baseado no método de pagamento
-      if (paymentMethod == 'cash') {
+      // Atualizar totais do caixa baseado no método de pagamento (normalizar para minúsculas)
+      final normalizedMethod = paymentMethod.toLowerCase();
+      if (normalizedMethod == 'cash') {
         await cashBox.updateCashBoxTotals(cashAmount: saleTotal);
-      } else if (paymentMethod == 'orange' || paymentMethod == 'teletaku') {
+      } else if (normalizedMethod == 'orange' ||
+          normalizedMethod == 'teletaku' ||
+          normalizedMethod == 'mobile') {
         await cashBox.updateCashBoxTotals(mobileMoneyAmount: saleTotal);
-      } else if (paymentMethod == 'mixed') {
+      } else if (normalizedMethod == 'card' || normalizedMethod == 'mixed') {
         await cashBox.updateCashBoxTotals(cardAmount: saleTotal);
-      } else if (paymentMethod == 'vale' || paymentMethod == 'debt') {
+      } else if (normalizedMethod == 'vale' || normalizedMethod == 'debt') {
         await cashBox.updateCashBoxTotals(debtAmount: saleTotal);
 
         // ═══════════════════════════════════════════════════════════════════
