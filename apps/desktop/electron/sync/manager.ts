@@ -1259,7 +1259,8 @@ export class SyncManager {
    * Verifica se um item local tem alterações pendentes (não sincronizadas)
    * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
    * 
-   * FASE 3: Agora também detecta e registra conflitos
+   * 🔴 CORREÇÃO CRÍTICA: Usa timestamp para resolver conflitos
+   * Se o servidor tem dados mais recentes (de outro dispositivo), aceita do servidor
    */
   private hasLocalPendingChanges(entityName: string, itemId: string, existing: any, serverItem?: any): boolean {
     // Se não existe localmente, não há conflito
@@ -1268,14 +1269,20 @@ export class SyncManager {
     // Verificar se synced = 0 (alteração local pendente)
     const synced = existing.synced ?? existing.is_synced ?? 1;
     if (synced === 0) {
-      console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais pendentes (synced=0)`);
-      
-      // FASE 3: Registrar conflito se temos dados do servidor
+      // 🔴 CORREÇÃO: Usar timestamp para resolver conflitos
       if (serverItem) {
-        this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+        const serverUpdatedAt = new Date(serverItem.updatedAt || serverItem.updated_at || 0).getTime();
+        const localUpdatedAt = new Date(existing.updated_at || existing.updatedAt || 0).getTime();
+        
+        // Se servidor é mais recente, aceitar dados do servidor (de outro dispositivo)
+        if (serverUpdatedAt > localUpdatedAt) {
+          console.log(`📥 ${entityName} ${itemId}: servidor mais recente (${new Date(serverUpdatedAt).toISOString()} > local: ${new Date(localUpdatedAt).toISOString()}), aceitando do servidor`);
+          return false; // NÃO bloqueia - permite sobrescrever
+        }
       }
       
-      return true;
+      console.log(`⏳ ${entityName} ${itemId}: alterações locais mais recentes (synced=0), aguardando envio`);
+      return true; // Bloqueia - mantém local
     }
     
     // Verificar se está na fila de sincronização
@@ -1285,13 +1292,18 @@ export class SyncManager {
     );
     
     if (hasPendingSync) {
-      console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais (na fila de sync)`);
-      
-      // FASE 3: Registrar conflito se temos dados do servidor
+      // 🔴 CORREÇÃO: Também usar timestamp para itens na fila
       if (serverItem) {
-        this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+        const serverUpdatedAt = new Date(serverItem.updatedAt || serverItem.updated_at || 0).getTime();
+        const localUpdatedAt = new Date(existing.updated_at || existing.updatedAt || 0).getTime();
+        
+        if (serverUpdatedAt > localUpdatedAt) {
+          console.log(`📥 ${entityName} ${itemId}: servidor mais recente, aceitando mesmo com item na fila`);
+          return false; // NÃO bloqueia
+        }
       }
       
+      console.log(`⏳ ${entityName} ${itemId}: na fila de sync, aguardando envio`);
       return true;
     }
     
@@ -1723,10 +1735,22 @@ export class SyncManager {
             const inventoryItem = this.dbManager.getInventoryItemByProductId(productId, branchId);
             
             if (inventoryItem) {
-              // Verificar se há alterações locais pendentes no inventário
+              // 🔴 CORREÇÃO CRÍTICA: Usar timestamp para resolver conflitos, não apenas synced
+              // Se synced === 0, pode haver alteração local pendente, MAS se o servidor
+              // tem dados mais recentes (de outro dispositivo), devemos aceitar do servidor
               if (inventoryItem.synced === 0) {
-                console.log(`⚠️ Inventory item ${productId} tem alterações locais pendentes (synced=0), pulando...`);
-                continue;
+                const serverUpdatedAt = new Date(item.updatedAt || item.updated_at || 0).getTime();
+                const localUpdatedAt = new Date(inventoryItem.updated_at || 0).getTime();
+                
+                if (serverUpdatedAt > localUpdatedAt) {
+                  // Servidor tem dados mais recentes (venda de outro dispositivo)
+                  console.log(`📥 Servidor tem estoque mais recente para ${productId} (server: ${new Date(serverUpdatedAt).toISOString()} > local: ${new Date(localUpdatedAt).toISOString()})`);
+                  // Continua e atualiza - NÃO pula
+                } else {
+                  // Local tem dados mais recentes - aguardar envio
+                  console.log(`⏳ Inventory item ${productId} tem alterações locais mais recentes (synced=0), aguardando envio...`);
+                  continue;
+                }
               }
               
               const currentStock = inventoryItem.qty_units ?? 0;

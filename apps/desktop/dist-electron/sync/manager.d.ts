@@ -119,7 +119,8 @@ export declare class SyncManager {
      * Verifica se um item local tem alterações pendentes (não sincronizadas)
      * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
      *
-     * FASE 3: Agora também detecta e registra conflitos
+     * 🔴 CORREÇÃO CRÍTICA: Usa timestamp para resolver conflitos
+     * Se o servidor tem dados mais recentes (de outro dispositivo), aceita do servidor
      */
     private hasLocalPendingChanges;
     /**

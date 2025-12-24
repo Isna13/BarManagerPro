@@ -247,6 +247,7 @@ class SyncManager {
             { name: 'debts', endpoint: '/debts' },
             { name: 'tables', endpoint: '/tables' },
             { name: 'table_sessions', endpoint: '/tables/sessions?status=open' },
+            { name: 'table_payments', endpoint: '/tables/payments?limit=500' }, // 🔴 CORREÇÃO: Baixar pagamentos de mesa
             { name: 'sales', endpoint: '/sales?limit=500' },
             { name: 'cash_boxes', endpoint: '/cash-box?limit=500' }, // Usar endpoint raiz
             { name: 'purchases', endpoint: '/purchases?limit=500' }, // Adicionar limite
@@ -725,6 +726,10 @@ class SyncManager {
                 const syncResult = await this.syncEntityItem(item, data);
                 if (syncResult.success) {
                     this.dbManager.markSyncItemCompleted(item.id);
+                    // 🔴 CORREÇÃO CRÍTICA: Marcar entidade como sincronizada
+                    if (item.entity === 'product' && item.entity_id) {
+                        this.dbManager.markProductSynced(item.entity_id);
+                    }
                     // Log de auditoria - sucesso
                     this.dbManager.logSyncAudit({
                         action: item.operation,
@@ -786,12 +791,16 @@ class SyncManager {
                     console.log('🔴 Erro de conexão ao sincronizar item:', error.code);
                     console.log('📦 Item será mantido na fila para próxima tentativa');
                     this.dbManager.markSyncItemFailed(item.id, `Erro de conexão: ${error.code}`);
-                    // Não parar sincronização, apenas marcar como falho para retry
-                    break; // Parar loop atual, mas não stop() completo
+                    // 🔴 ISOLAMENTO: Erro de conexão para em vez de continuar
+                    // porque se não há rede, não adianta tentar outros itens
+                    break;
                 }
                 else {
-                    console.error('⚠️ Erro desconhecido:', error);
+                    // 🔴 ISOLAMENTO POR ENTIDADE: Erros pontuais NÃO param o loop
+                    // O item é marcado como falho e o próximo é processado
+                    console.log(`⚠️ Erro em ${item.entity}/${item.entity_id}, continuando com próximos itens...`);
                     this.dbManager.markSyncItemFailed(item.id, errorMsg);
+                    // NÃO TEM BREAK - continua processando outros itens
                 }
             }
         }
@@ -1090,7 +1099,8 @@ class SyncManager {
      * Verifica se um item local tem alterações pendentes (não sincronizadas)
      * Retorna true se o item NÃO deve ser sobrescrito pelo servidor
      *
-     * FASE 3: Agora também detecta e registra conflitos
+     * 🔴 CORREÇÃO CRÍTICA: Usa timestamp para resolver conflitos
+     * Se o servidor tem dados mais recentes (de outro dispositivo), aceita do servidor
      */
     hasLocalPendingChanges(entityName, itemId, existing, serverItem) {
         // Se não existe localmente, não há conflito
@@ -1099,22 +1109,33 @@ class SyncManager {
         // Verificar se synced = 0 (alteração local pendente)
         const synced = existing.synced ?? existing.is_synced ?? 1;
         if (synced === 0) {
-            console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais pendentes (synced=0)`);
-            // FASE 3: Registrar conflito se temos dados do servidor
+            // 🔴 CORREÇÃO: Usar timestamp para resolver conflitos
             if (serverItem) {
-                this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+                const serverUpdatedAt = new Date(serverItem.updatedAt || serverItem.updated_at || 0).getTime();
+                const localUpdatedAt = new Date(existing.updated_at || existing.updatedAt || 0).getTime();
+                // Se servidor é mais recente, aceitar dados do servidor (de outro dispositivo)
+                if (serverUpdatedAt > localUpdatedAt) {
+                    console.log(`📥 ${entityName} ${itemId}: servidor mais recente (${new Date(serverUpdatedAt).toISOString()} > local: ${new Date(localUpdatedAt).toISOString()}), aceitando do servidor`);
+                    return false; // NÃO bloqueia - permite sobrescrever
+                }
             }
-            return true;
+            console.log(`⏳ ${entityName} ${itemId}: alterações locais mais recentes (synced=0), aguardando envio`);
+            return true; // Bloqueia - mantém local
         }
         // Verificar se está na fila de sincronização
         const pendingItems = this.dbManager.getPendingSyncItems();
         const hasPendingSync = pendingItems.some(item => item.entity === entityName.slice(0, -1) && item.entity_id === itemId);
         if (hasPendingSync) {
-            console.log(`⚠️ ${entityName} ${itemId}: mantendo alterações locais (na fila de sync)`);
-            // FASE 3: Registrar conflito se temos dados do servidor
+            // 🔴 CORREÇÃO: Também usar timestamp para itens na fila
             if (serverItem) {
-                this.registerConflictIfNeeded(entityName, itemId, existing, serverItem);
+                const serverUpdatedAt = new Date(serverItem.updatedAt || serverItem.updated_at || 0).getTime();
+                const localUpdatedAt = new Date(existing.updated_at || existing.updatedAt || 0).getTime();
+                if (serverUpdatedAt > localUpdatedAt) {
+                    console.log(`📥 ${entityName} ${itemId}: servidor mais recente, aceitando mesmo com item na fila`);
+                    return false; // NÃO bloqueia
+                }
             }
+            console.log(`⏳ ${entityName} ${itemId}: na fila de sync, aguardando envio`);
             return true;
         }
         return false;
@@ -1516,10 +1537,22 @@ class SyncManager {
                         // Buscar item de inventário local
                         const inventoryItem = this.dbManager.getInventoryItemByProductId(productId, branchId);
                         if (inventoryItem) {
-                            // Verificar se há alterações locais pendentes no inventário
+                            // 🔴 CORREÇÃO CRÍTICA: Usar timestamp para resolver conflitos, não apenas synced
+                            // Se synced === 0, pode haver alteração local pendente, MAS se o servidor
+                            // tem dados mais recentes (de outro dispositivo), devemos aceitar do servidor
                             if (inventoryItem.synced === 0) {
-                                console.log(`⚠️ Inventory item ${productId} tem alterações locais pendentes (synced=0), pulando...`);
-                                continue;
+                                const serverUpdatedAt = new Date(item.updatedAt || item.updated_at || 0).getTime();
+                                const localUpdatedAt = new Date(inventoryItem.updated_at || 0).getTime();
+                                if (serverUpdatedAt > localUpdatedAt) {
+                                    // Servidor tem dados mais recentes (venda de outro dispositivo)
+                                    console.log(`📥 Servidor tem estoque mais recente para ${productId} (server: ${new Date(serverUpdatedAt).toISOString()} > local: ${new Date(localUpdatedAt).toISOString()})`);
+                                    // Continua e atualiza - NÃO pula
+                                }
+                                else {
+                                    // Local tem dados mais recentes - aguardar envio
+                                    console.log(`⏳ Inventory item ${productId} tem alterações locais mais recentes (synced=0), aguardando envio...`);
+                                    continue;
+                                }
                             }
                             const currentStock = inventoryItem.qty_units ?? 0;
                             // Só atualizar se houver diferença
@@ -1993,6 +2026,18 @@ class SyncManager {
                             // Criar a venda no banco local
                             this.dbManager.createSale(saleData, true); // skipSyncQueue = true
                             console.log(`➕ Venda criada do servidor: ${item.id} (${item.status}, total: ${item.total})`);
+                            // 🔴 CORREÇÃO CRÍTICA: Atualizar totais do caixa para vendas sincronizadas
+                            // Vendas do Vendas-Mobile devem entrar nos cálculos da Caixa do Electron
+                            const currentCashBox = this.dbManager.getCurrentCashBox();
+                            if (currentCashBox && serverPaymentMethod && item.total > 0) {
+                                // Verificar se a venda foi criada durante este caixa (após abertura)
+                                const saleCreatedAt = new Date(item.createdAt || item.created_at || new Date());
+                                const cashBoxOpenedAt = new Date(currentCashBox.opened_at);
+                                if (saleCreatedAt >= cashBoxOpenedAt) {
+                                    this.dbManager.updateCashBoxTotals(currentCashBox.id, item.total, serverPaymentMethod);
+                                    console.log(`  💰 Caixa atualizado: +${item.total} (${serverPaymentMethod})`);
+                                }
+                            }
                             // Sincronizar itens da venda se existirem
                             if (item.items && Array.isArray(item.items)) {
                                 for (const saleItem of item.items) {
@@ -2161,6 +2206,41 @@ class SyncManager {
                     }
                 }
             },
+            // 🔴 CORREÇÃO: Handler para sincronizar pagamentos de mesa
+            table_payments: (items) => {
+                console.log(`💳 Processando ${items.length} pagamentos de mesa...`);
+                let created = 0, updated = 0, errors = 0;
+                for (const item of items) {
+                    try {
+                        const existing = this.dbManager.prepare(`SELECT id FROM table_payments WHERE id = ?`).get(item.id);
+                        if (existing) {
+                            // Atualizar pagamento existente
+                            this.dbManager.prepare(`
+                UPDATE table_payments SET
+                  amount = ?,
+                  method = ?,
+                  synced = 1,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).run(item.amount || 0, item.method || 'cash', item.id);
+                            updated++;
+                        }
+                        else {
+                            // Criar novo pagamento
+                            this.dbManager.prepare(`
+                INSERT INTO table_payments (id, session_id, table_customer_id, payment_id, amount, method, processed_by, paid_at, synced, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+              `).run(item.id, item.sessionId || item.session_id, item.tableCustomerId || item.table_customer_id || null, item.paymentId || item.payment_id || null, item.amount || 0, item.method || 'cash', item.processedBy || item.processed_by || 'system', item.paidAt || item.paid_at || new Date().toISOString());
+                            created++;
+                        }
+                    }
+                    catch (e) {
+                        errors++;
+                        console.error(`❌ Erro ao mesclar table_payment ${item.id}:`, e?.message);
+                    }
+                }
+                console.log(`📊 TABLE_PAYMENTS RESUMO: ✅ Criados: ${created} | 📝 Atualizados: ${updated} | ❌ Erros: ${errors}`);
+            },
         };
         const strategy = mergeStrategies[entityName];
         if (strategy) {
@@ -2175,7 +2255,16 @@ class SyncManager {
      */
     async syncEntityItem(item, data) {
         const { entity, operation, entity_id } = item;
-        console.log(`📤 Sync ${entity}/${operation}:`, JSON.stringify(data).substring(0, 200));
+        // 🔴 LOG ESTRUTURADO: Registrar todos os detalhes da sincronização
+        const syncLog = {
+            timestamp: new Date().toISOString(),
+            entity,
+            entityId: entity_id,
+            operation,
+            dataSize: JSON.stringify(data).length,
+            dataPreview: JSON.stringify(data).substring(0, 300),
+        };
+        console.log(`📤 [SYNC] ${entity}/${operation}:`, JSON.stringify(syncLog, null, 2));
         // Log especial para vendas de mesa
         if (entity === 'sale') {
             console.log(`🍽️ Sincronizando venda: ID=${entity_id}, Type=${data.type}, Status=${data.status}, Total=${data.total}`);
@@ -2524,8 +2613,28 @@ class SyncManager {
                 }
                 return { skip: true, success: false, reason: 'Operação de inventário não suportada' };
             case 'customer_loyalty':
-                // Fidelidade - não existe endpoint separado
-                return { skip: true, success: false, reason: 'Lealdade gerenciada via customer' };
+                // 🔴 CORREÇÃO CRÍTICA: Sincronizar pontos de fidelidade via endpoint dedicado
+                // O endpoint POST /loyalty/points/add existe no backend e deve ser usado
+                if (operation === 'update' && data.pointsAdded > 0) {
+                    try {
+                        await this.apiClient.post('/loyalty/points/add', {
+                            customerId: entity_id,
+                            points: data.pointsAdded,
+                            reason: data.reason || `Sincronização de pontos de fidelidade`,
+                        });
+                        console.log(`✅ Pontos de fidelidade sincronizados: ${data.pointsAdded} pontos para cliente ${entity_id}`);
+                        return { success: true };
+                    }
+                    catch (loyaltyError) {
+                        // Se cliente não encontrado, não é erro crítico
+                        if (loyaltyError.response?.status === 404) {
+                            console.warn(`⚠️ Cliente ${entity_id} não encontrado no servidor para sincronizar pontos`);
+                            return { skip: true, success: false, reason: 'Cliente não encontrado no servidor' };
+                        }
+                        throw loyaltyError;
+                    }
+                }
+                return { skip: true, success: false, reason: 'Nenhum ponto para sincronizar' };
             case 'purchase_item':
                 // Itens de compra devem ser adicionados via POST /purchases/:purchaseId/items
                 if (operation === 'create' && data.purchaseId) {
@@ -2728,16 +2837,38 @@ class SyncManager {
             default:
                 // Entidades normais - usar endpoint padrão
                 const endpoint = this.getEndpoint(entity, operation);
-                if (operation === 'create') {
-                    await this.apiClient.post(endpoint, data);
+                // 🔴 LOG ESTRUTURADO: Registrar detalhes da requisição
+                console.log(`📡 [API] ${operation.toUpperCase()} ${endpoint}${entity_id ? '/' + entity_id : ''}`);
+                console.log(`   📦 Payload (${JSON.stringify(data).length} bytes):`, JSON.stringify(data).substring(0, 500));
+                try {
+                    if (operation === 'create') {
+                        const response = await this.apiClient.post(endpoint, data);
+                        console.log(`   ✅ Response:`, response.status, response.data?.id || 'OK');
+                    }
+                    else if (operation === 'update') {
+                        const response = await this.apiClient.put(`${endpoint}/${entity_id || ''}`, data);
+                        console.log(`   ✅ Response:`, response.status, 'OK');
+                    }
+                    else if (operation === 'delete') {
+                        const response = await this.apiClient.delete(`${endpoint}/${entity_id || ''}`);
+                        console.log(`   ✅ Response:`, response.status, 'OK');
+                    }
+                    return { success: true };
                 }
-                else if (operation === 'update') {
-                    await this.apiClient.put(`${endpoint}/${entity_id || ''}`, data);
+                catch (error) {
+                    // 🔴 LOG ESTRUTURADO: Detalhes completos do erro
+                    const errorLog = {
+                        status: error.response?.status,
+                        statusText: error.response?.statusText,
+                        message: error.response?.data?.message,
+                        error: error.response?.data?.error,
+                        code: error.code,
+                        endpoint: `${endpoint}${entity_id ? '/' + entity_id : ''}`,
+                        operation,
+                    };
+                    console.error(`   ❌ [API ERROR]:`, JSON.stringify(errorLog, null, 2));
+                    throw error;
                 }
-                else if (operation === 'delete') {
-                    await this.apiClient.delete(`${endpoint}/${entity_id || ''}`);
-                }
-                return { success: true };
         }
     }
     getEndpoint(entity, operation) {
@@ -3095,25 +3226,33 @@ class SyncManager {
         }
         else if (entity === 'products' || entity === 'product') {
             data.name = item.name;
-            data.description = item.description || '';
+            // 🔴 CORREÇÃO: Não enviar description se não estiver definida (evitar string vazia)
+            if (item.description)
+                data.description = item.description;
             data.sku = item.sku;
-            data.barcode = item.barcode || '';
+            // 🔴 CORREÇÃO: Não enviar barcode vazio (pode causar conflito unique)
+            if (item.barcode)
+                data.barcode = item.barcode;
             data.categoryId = item.category_id || item.categoryId;
             data.supplierId = item.supplier_id || item.supplierId || null;
             data.unitsPerBox = item.units_per_box || item.unitsPerBox || 1;
-            // Preços - aceitar camelCase ou snake_case, e verificar se já está em centavos
-            const sellPrice = item.sell_price ?? item.sellPrice ?? item.priceUnit ?? 0;
-            const costPrice = item.cost_price ?? item.costPrice ?? item.costUnit ?? 0;
-            // Se o preço for muito pequeno (< 100), provavelmente não está em centavos ainda
-            data.priceUnit = sellPrice >= 100 ? sellPrice : Math.round(sellPrice * 100);
-            data.priceBox = Math.round((data.priceUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
-            data.costUnit = costPrice >= 100 ? costPrice : Math.round(costPrice * 100);
-            data.costBox = Math.round((data.costUnit / 100) * (item.units_per_box || item.unitsPerBox || 1) * 100);
-            data.minStock = item.low_stock_alert || item.minStock || 0;
+            // Preços - manter valores originais se já estão em centavos
+            // 🔴 CORREÇÃO: Usar priceBox e costBox originais se disponíveis
+            data.priceUnit = item.priceUnit ?? item.price_unit ?? 0;
+            data.priceBox = item.priceBox ?? item.price_box ?? 0;
+            data.costUnit = item.costUnit ?? item.cost_unit ?? 0;
+            data.costBox = item.costBox ?? item.cost_box ?? 0;
+            // 🔴 CORREÇÃO CRÍTICA: Usar lowStockAlert (nome correto do campo no backend)
+            data.lowStockAlert = item.lowStockAlert ?? item.low_stock_alert ?? 10;
             // Converter 0/1 para boolean
             data.isActive = item.is_active === 1 || item.is_active === true || item.isActive === 1 || item.isActive === true;
             data.trackInventory = item.track_inventory === 1 || item.track_inventory === true || item.trackInventory === 1 || item.trackInventory === true || true;
             data.isMuntuEligible = item.is_muntu_eligible === 1 || item.is_muntu_eligible === true || item.isMuntuEligible === 1 || item.isMuntuEligible === true || false;
+            // 🔴 CORREÇÃO: Adicionar campos de muntu se existirem
+            if (item.muntuQuantity !== undefined && item.muntuQuantity !== null)
+                data.muntuQuantity = item.muntuQuantity;
+            if (item.muntuPrice !== undefined && item.muntuPrice !== null)
+                data.muntuPrice = item.muntuPrice;
             if (item.id)
                 data.id = item.id;
         }
