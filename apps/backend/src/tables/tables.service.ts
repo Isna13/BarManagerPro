@@ -74,13 +74,13 @@ export class TablesService {
     const where: any = {};
     
     if (updatedAfter) {
-      where.paidAt = { gte: new Date(updatedAfter) };
+      where.processedAt = { gte: new Date(updatedAfter) };
     }
 
     return this.prisma.tablePayment.findMany({
       where,
       take: limit,
-      orderBy: { paidAt: 'desc' },
+      orderBy: { processedAt: 'desc' },
     });
   }
 
