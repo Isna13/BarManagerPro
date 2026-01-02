@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, Min, IsEmail, IsUUID, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, IsEmail, IsUUID, IsBoolean, ValidateIf } from 'class-validator';
 
 export class CreateCustomerDto {
   @IsOptional()
@@ -25,6 +25,7 @@ export class CreateCustomerDto {
   phone?: string;
 
   @IsOptional()
+  @ValidateIf((o) => o.email !== '' && o.email !== null)
   @IsEmail()
   email?: string;
 
@@ -65,6 +66,7 @@ export class UpdateCustomerDto {
   phone?: string;
 
   @IsOptional()
+  @ValidateIf((o) => o.email !== '' && o.email !== null)
   @IsEmail()
   email?: string;
 

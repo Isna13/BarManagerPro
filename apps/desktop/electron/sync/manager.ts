@@ -3942,14 +3942,15 @@ export class SyncManager {
     else if (entity === 'customers' || entity === 'customer') {
       data.name = item.full_name || item.name || 'Cliente';
       data.fullName = item.full_name || item.name;
-      data.phone = item.phone;
-      data.email = item.email;
-      data.code = item.code;
+      // 🔴 CORREÇÃO: Não enviar campos vazios (backend rejeita email vazio)
+      if (item.phone && item.phone.trim()) data.phone = item.phone;
+      if (item.email && item.email.trim()) data.email = item.email;
+      if (item.code) data.code = item.code;
       // Aceitar tanto creditLimit quanto credit_limit
       data.creditLimit = item.creditLimit ?? item.credit_limit ?? 0;
       data.loyaltyPoints = item.loyalty_points ?? item.loyaltyPoints ?? 0;
-      data.address = item.address;
-      data.notes = item.notes;
+      if (item.address && item.address.trim()) data.address = item.address;
+      if (item.notes && item.notes.trim()) data.notes = item.notes;
       if (item.id) data.id = item.id;
     }
     else {
