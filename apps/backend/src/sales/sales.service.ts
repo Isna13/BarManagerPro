@@ -93,66 +93,67 @@ export class SalesService {
 
       console.log('   saleData:', JSON.stringify(saleData));
 
-      const result = await this.prisma.sale.create({
-        data: saleData,
-        include: {
-          items: {
-            include: {
-              product: true,
+      // 🔴 CORREÇÃO CRÍTICA: Usar transação ACID para vendas VALE
+      // Isso garante que Sale + Debt + Customer.currentDebt são atualizados atomicamente
+      const result = await this.prisma.$transaction(async (tx) => {
+        // 1. Criar a venda
+        const sale = await tx.sale.create({
+          data: saleData,
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
             },
+            table: true,
+            customer: true,
+            cashier: true,
           },
-          table: true,
-          customer: true,
-          cashier: true,
-        },
-      });
-      
-      console.log('✅ Venda criada:', result.id);
+        });
 
-      // 🔴 CORREÇÃO CRÍTICA: Criar dívida automaticamente para vendas VALE sincronizadas
-      // Esta lógica garante que vendas VALE do Mobile/Desktop gerem dívidas no Railway
-      if (saleData.paymentMethod === 'VALE' && saleData.customerId && result.total > 0) {
-        try {
+        console.log('✅ Venda criada:', sale.id);
+
+        // 2. Se for VALE, criar dívida atomicamente
+        if (saleData.paymentMethod === 'VALE' && saleData.customerId && sale.total > 0) {
           // Verificar se já existe dívida para esta venda (evitar duplicação)
-          const existingDebt = await this.prisma.debt.findFirst({
-            where: { saleId: result.id },
+          const existingDebt = await tx.debt.findFirst({
+            where: { saleId: sale.id },
           });
 
           if (!existingDebt) {
-            const debt = await this.prisma.debt.create({
+            const debt = await tx.debt.create({
               data: {
                 debtNumber: `DEBT-${Date.now()}`,
                 customer: { connect: { id: saleData.customerId } },
-                sale: { connect: { id: result.id } },
+                sale: { connect: { id: sale.id } },
                 branch: { connect: { id: saleData.branchId } },
                 createdByUser: { connect: { id: userId } },
-                originalAmount: result.total,
-                amount: result.total,
+                originalAmount: sale.total,
+                amount: sale.total,
                 paidAmount: 0,
-                balance: result.total,
+                balance: sale.total,
                 status: 'pending',
               },
             });
-            console.log(`✅ Dívida criada automaticamente: ${debt.id} para venda VALE ${result.id}`);
+            console.log(`✅ Dívida criada atomicamente: ${debt.id} para venda VALE ${sale.id}`);
 
             // Atualizar dívida total do cliente
-            await this.prisma.customer.update({
+            await tx.customer.update({
               where: { id: saleData.customerId },
               data: {
                 currentDebt: {
-                  increment: result.total,
+                  increment: sale.total,
                 },
               },
             });
-            console.log(`   ✅ currentDebt do cliente atualizado (+${result.total})`);
+            console.log(`   ✅ currentDebt do cliente atualizado (+${sale.total})`);
           } else {
-            console.log(`   ⚠️ Dívida já existe para venda ${result.id}: ${existingDebt.id}`);
+            console.log(`   ⚠️ Dívida já existe para venda ${sale.id}: ${existingDebt.id}`);
           }
-        } catch (debtError: any) {
-          console.error(`   ❌ Erro ao criar dívida para venda VALE: ${debtError.message}`);
-          // Não falhar a venda por erro na dívida, apenas logar
         }
-      }
+
+        return sale;
+      });
 
       return result;
     } catch (error: any) {

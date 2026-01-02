@@ -73,7 +73,7 @@ export class CashBoxService {
       throw new BadRequestException('Caixa já foi fechado');
     }
 
-    // Calcular valor esperado baseado em vendas
+    // Calcular valor esperado baseado em vendas (PDV/Balcão)
     const sales = await this.prisma.sale.findMany({
       where: {
         branchId: cashBox.branchId,
@@ -87,13 +87,31 @@ export class CashBoxService {
       },
     });
 
-    // Somar apenas pagamentos em dinheiro (case-insensitive)
-    const cashPayments = sales.reduce((sum, sale) => {
+    // Somar pagamentos em dinheiro de vendas diretas (PDV)
+    let cashPayments = sales.reduce((sum, sale) => {
       const cashAmount = sale.payments
         .filter(p => (p.method || '').toLowerCase() === 'cash' && p.status === 'completed')
         .reduce((s, p) => s + p.amount, 0);
       return sum + cashAmount;
     }, 0);
+
+    // 🔴 CORREÇÃO CRÍTICA: Incluir pagamentos de MESA em dinheiro
+    // Buscar TablePayments com method='CASH' e paymentId=null (evita duplicação)
+    const tablePaymentsCash = await this.prisma.tablePayment.findMany({
+      where: {
+        processedAt: { gte: cashBox.openedAt },
+        session: { branchId: cashBox.branchId },
+        paymentId: null, // ⚠️ CRÍTICO: Evita duplicação
+        method: { in: ['CASH', 'cash', 'Cash'] },
+        status: 'completed',
+      },
+    });
+
+    // Somar pagamentos de mesa em dinheiro
+    const tableCashPayments = tablePaymentsCash.reduce((sum, tp) => sum + tp.amount, 0);
+    cashPayments += tableCashPayments;
+
+    console.log(`[CashBox] closeCashBox: PDV cash=${cashPayments - tableCashPayments}, Mesa cash=${tableCashPayments}, Total cash=${cashPayments}`);
 
     const expectedAmount = cashBox.openingCash + cashPayments;
     const difference = closeDto.closingAmount - expectedAmount;

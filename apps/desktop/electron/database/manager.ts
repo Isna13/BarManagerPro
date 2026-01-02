@@ -2527,6 +2527,19 @@ export class DatabaseManager {
       notes: notes || undefined,
     });
 
+    // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização
+    // Sem isso, perdas não sincronizam com o Railway
+    this.addToSyncQueue('update', 'inventory', inventory.id, {
+      productId,
+      branchId,
+      qtyUnits: qtyBefore - quantity,
+      adjustment: -quantity,
+      reason: `Perda: ${reason}`,
+      movementType: 'loss',
+      responsible,
+      notes,
+    }, 2);
+
     return { success: true, quantityLost: quantity };
   }
 
@@ -2581,6 +2594,19 @@ export class DatabaseManager {
       notes: notes || undefined,
     });
 
+    // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização
+    // Sem isso, quebras não sincronizam com o Railway
+    this.addToSyncQueue('update', 'inventory', inventory.id, {
+      productId,
+      branchId,
+      qtyUnits: qtyBefore - quantity,
+      adjustment: -quantity,
+      reason: `Quebra: ${reason}`,
+      movementType: 'breakage',
+      responsible,
+      notes,
+    }, 2);
+
     return { success: true, quantityBroken: quantity };
   }
 
@@ -2628,6 +2654,19 @@ export class DatabaseManager {
       responsible,
       notes: notes || undefined,
     });
+
+    // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização
+    // Sem isso, ajustes manuais não sincronizam com o Railway
+    this.addToSyncQueue('update', 'inventory', inventory.id, {
+      productId,
+      branchId,
+      qtyUnits: qtyBefore + quantity,
+      adjustment: quantity,
+      reason: `Ajuste manual: ${reason}`,
+      movementType: 'adjustment',
+      responsible,
+      notes,
+    }, 2);
 
     return { success: true, adjusted: quantity };
   }

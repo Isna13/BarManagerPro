@@ -1026,11 +1026,14 @@ class TablesProvider extends ChangeNotifier {
             }
           }
 
+          // 🔴 CORREÇÃO CRÍTICA: SEMPRE incluir itens na venda, independente do valor pago
+          // Antes: só incluía se amount >= pendingAmount (pagamento integral)
+          // Agora: sempre inclui os pedidos pendentes para registro na venda
+          // Isso garante que a venda tenha todos os itens mesmo em pagamentos parciais
+          ordersBeingPaidNow = List.from(pendingOrders);
+          
           // Se o valor pago cobre os pedidos pendentes, marcar como pagos
           if (amount >= pendingAmount && pendingOrders.isNotEmpty) {
-            // 🔴 CORREÇÃO: Armazenar os pedidos que estão sendo pagos AGORA
-            ordersBeingPaidNow = List.from(pendingOrders);
-
             for (final order in pendingOrders) {
               order['status'] = 'paid';
               // Atualizar no banco local também
@@ -1042,9 +1045,9 @@ class TablesProvider extends ChangeNotifier {
               );
             }
             debugPrint('✅ ${pendingOrders.length} pedidos marcados como pagos');
-            debugPrint(
-                '📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
           }
+          
+          debugPrint('📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
 
           // Verificar se TODOS os pedidos estão pagos para atualizar status do cliente
           final hasAnyPending = _currentOrders.any((o) {
