@@ -837,8 +837,20 @@ ipcMain.handle('sync:updateHeartbeat', async () => {
 // Dead Letter Queue Management
 ipcMain.handle('sync:getDeadLetterStats', async () => {
   try {
-    const stats = dbManager?.getDeadLetterStats() || { total: 0, byEntityType: {} };
-    return stats;
+    const rawStats = dbManager?.getDeadLetterStats() || [];
+    
+    // Transformar array de resultados em formato esperado pelo dashboard
+    const byEntityType: Record<string, number> = {};
+    let total = 0;
+    
+    if (Array.isArray(rawStats)) {
+      for (const stat of rawStats as any[]) {
+        byEntityType[stat.entity] = stat.pending || 0;
+        total += stat.pending || 0;
+      }
+    }
+    
+    return { total, byEntityType };
   } catch (error: any) {
     console.error('Erro ao buscar DLQ stats:', error);
     return { total: 0, byEntityType: {}, error: error.message };
@@ -848,7 +860,18 @@ ipcMain.handle('sync:getDeadLetterStats', async () => {
 ipcMain.handle('sync:getDeadLetterItems', async (_, limit?: number) => {
   try {
     const items = dbManager?.getDeadLetterItems(limit || 50) || [];
-    return items;
+    
+    // Transformar snake_case para camelCase para o dashboard
+    return (items as any[]).map(item => ({
+      id: item.id,
+      originalId: item.original_id,
+      entityType: item.entity,
+      entityId: item.entity_id,
+      action: item.operation,
+      error: item.last_error || 'Erro desconhecido',
+      retryCount: item.retry_count || 0,
+      movedAt: item.moved_at
+    }));
   } catch (error: any) {
     console.error('Erro ao buscar DLQ items:', error);
     return [];
