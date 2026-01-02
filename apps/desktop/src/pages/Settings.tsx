@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
+import SyncDashboard from '../components/SyncDashboard';
 import { 
   Database, CheckCircle, AlertCircle, Settings as SettingsIcon, 
   ShoppingCart, Table, Package, Printer, Shield, HardDrive, 
@@ -7,7 +8,7 @@ import {
   Clock, FileText, Lock, History, Trash2, ChevronDown, ChevronUp,
   Cloud, RefreshCw, Upload, Wifi, WifiOff, Download, Users,
   CreditCard, Boxes, FileBox, Monitor, AlertTriangle, Laptop, 
-  CheckSquare, XCircle
+  CheckSquare, XCircle, BarChart3
 } from 'lucide-react';
 
 // Interface para status detalhado de sync
@@ -78,6 +79,7 @@ export default function SettingsPage() {
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
     database: true,
     sync: true,
+    syncDashboard: false,
     syncDetails: false,
     conflicts: false,
     devices: false,
@@ -986,7 +988,12 @@ export default function SettingsPage() {
             </div>
           </ConfigCard>
 
-          {/* 2.5 Detalhes de Sincronização por Entidade */}
+          {/* 2.5 Dashboard de Monitoramento de Sync */}
+          <ConfigCard title="Dashboard de Monitoramento" icon={BarChart3} sectionKey="syncDashboard">
+            <SyncDashboard />
+          </ConfigCard>
+
+          {/* 2.6 Detalhes de Sincronização por Entidade */}
           <ConfigCard title="Status Detalhado por Módulo" icon={Activity} sectionKey="syncDetails">
             <div className="space-y-3">
               <div className="flex justify-between items-center mb-4">

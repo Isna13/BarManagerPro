@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math';
 import '../config/app_config.dart';
 
 class ApiService {
@@ -23,6 +24,24 @@ class ApiService {
         if (_token != null) {
           options.headers['Authorization'] = 'Bearer $_token';
         }
+        
+        // 🔴 CORREÇÃO: Adicionar X-Idempotency-Key para proteção contra duplicação
+        // O backend pode usar isso para evitar processar a mesma requisição duas vezes
+        if (options.method == 'POST' && options.data != null) {
+          final data = options.data;
+          String? entityId;
+          if (data is Map) {
+            entityId = data['id']?.toString() ?? data['entityId']?.toString();
+          }
+          if (entityId != null) {
+            options.headers['X-Idempotency-Key'] = '$entityId-${DateTime.now().millisecondsSinceEpoch}';
+          } else {
+            // Para requisições sem ID, gerar chave única
+            final random = Random().nextInt(999999999).toRadixString(36);
+            options.headers['X-Idempotency-Key'] = '${DateTime.now().millisecondsSinceEpoch}-$random';
+          }
+        }
+        
         return handler.next(options);
       },
       onError: (error, handler) async {

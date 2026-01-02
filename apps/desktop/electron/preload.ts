@@ -254,6 +254,17 @@ const api = {
       ipcRenderer.on('sync:connectionChange', handler);
       return () => ipcRenderer.removeListener('sync:connectionChange', handler);
     },
+
+    // Dead Letter Queue management
+    getDeadLetterStats: () => ipcRenderer.invoke('sync:getDeadLetterStats'),
+    getDeadLetterItems: (limit?: number) => ipcRenderer.invoke('sync:getDeadLetterItems', limit),
+    retryDeadLetterItem: (id: number) => ipcRenderer.invoke('sync:retryDeadLetterItem', id),
+    discardDeadLetterItem: (id: number) => ipcRenderer.invoke('sync:discardDeadLetterItem', id),
+    
+    // Dashboard de Monitoramento (fetches do servidor)
+    getDashboardStats: () => ipcRenderer.invoke('sync:getDashboardStats'),
+    getDashboardAlerts: () => ipcRenderer.invoke('sync:getDashboardAlerts'),
+    getDashboardHistory: (limit?: number) => ipcRenderer.invoke('sync:getDashboardHistory', limit),
   },
   
   // Settings

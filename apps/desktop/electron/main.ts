@@ -834,6 +834,87 @@ ipcMain.handle('sync:updateHeartbeat', async () => {
   }
 });
 
+// Dead Letter Queue Management
+ipcMain.handle('sync:getDeadLetterStats', async () => {
+  try {
+    const stats = dbManager?.getDeadLetterStats() || { total: 0, byEntityType: {} };
+    return stats;
+  } catch (error: any) {
+    console.error('Erro ao buscar DLQ stats:', error);
+    return { total: 0, byEntityType: {}, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:getDeadLetterItems', async (_, limit?: number) => {
+  try {
+    const items = dbManager?.getDeadLetterItems(limit || 50) || [];
+    return items;
+  } catch (error: any) {
+    console.error('Erro ao buscar DLQ items:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('sync:retryDeadLetterItem', async (_, id: number) => {
+  try {
+    const result = dbManager?.retryDeadLetterItem(id);
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Erro ao reprocessar DLQ item:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:discardDeadLetterItem', async (_, id: number) => {
+  try {
+    const result = dbManager?.discardDeadLetterItem(id);
+    return { success: true, result };
+  } catch (error: any) {
+    console.error('Erro ao descartar DLQ item:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Dashboard de Monitoramento - Fetch do Servidor
+ipcMain.handle('sync:getDashboardStats', async () => {
+  try {
+    if (!syncManager) {
+      return { success: false, error: 'SyncManager não inicializado' };
+    }
+    const result = await syncManager.fetchFromServer('/sync/dashboard');
+    return result;
+  } catch (error: any) {
+    console.error('Erro ao buscar dashboard stats:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:getDashboardAlerts', async () => {
+  try {
+    if (!syncManager) {
+      return { success: false, error: 'SyncManager não inicializado' };
+    }
+    const result = await syncManager.fetchFromServer('/sync/dashboard/alerts');
+    return result;
+  } catch (error: any) {
+    console.error('Erro ao buscar dashboard alerts:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sync:getDashboardHistory', async (_, limit?: number) => {
+  try {
+    if (!syncManager) {
+      return { success: false, error: 'SyncManager não inicializado' };
+    }
+    const result = await syncManager.fetchFromServer(`/sync/dashboard/history?limit=${limit || 20}`);
+    return result;
+  } catch (error: any) {
+    console.error('Erro ao buscar dashboard history:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Settings
 ipcMain.handle('settings:get', async (_, key) => {
   return store.get(key);

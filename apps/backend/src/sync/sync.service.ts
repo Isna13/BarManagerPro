@@ -347,6 +347,15 @@ export class SyncService {
 
     switch (item.operation) {
       case 'create':
+        // 🔴 CORREÇÃO: Usar upsert para idempotência
+        // Se o registro já existe, não atualizar (evita sobrescrever dados mais recentes)
+        if (data.id) {
+          return (this.prisma as any)[entityTable].upsert({
+            where: { id: data.id },
+            create: data,
+            update: {}, // Não atualizar se já existe - manter dados existentes
+          });
+        }
         return (this.prisma as any)[entityTable].create({ data });
       case 'update':
         return (this.prisma as any)[entityTable].update({
@@ -376,5 +385,368 @@ export class SyncService {
       table_order: 'tableOrder',
     };
     return mapping[entity] || null;
+  }
+
+  // ============================================
+  // ACK Explícito Bidirecional
+  // ============================================
+
+  /**
+   * Registra confirmação de recebimento do cliente
+   * Marca itens como confirmados no registro de sincronização
+   */
+  async acknowledgeSync(
+    entityIds: string[],
+    deviceId: string,
+    syncTimestamp: string,
+    userId: string,
+  ) {
+    const timestamp = new Date();
+    
+    // Registrar ACK para auditoria
+    const ackRecords = entityIds.map(entityId => ({
+      deviceId,
+      entityId,
+      syncTimestamp: new Date(syncTimestamp),
+      acknowledgedAt: timestamp,
+      userId,
+    }));
+
+    // Atualizar sync_queue para marcar como confirmados
+    const updateResult = await this.prisma.syncQueue.updateMany({
+      where: {
+        entityId: { in: entityIds },
+        status: 'synced',
+      },
+      data: {
+        status: 'acknowledged',
+        processedAt: timestamp,
+      },
+    });
+
+    console.log(`✅ ACK recebido de ${deviceId}: ${entityIds.length} itens confirmados`);
+
+    return {
+      acknowledged: updateResult.count,
+      timestamp: timestamp.toISOString(),
+    };
+  }
+
+  /**
+   * Registra heartbeat do dispositivo para monitoramento
+   */
+  async recordHeartbeat(
+    data: {
+      deviceId: string;
+      pendingItems: number;
+      failedItems: number;
+      dlqItems: number;
+      lastSync: string;
+    },
+    branchId: string,
+  ) {
+    const timestamp = new Date();
+    
+    // Upsert no registro de dispositivos (usando raw query ou modelo apropriado)
+    // Por simplicidade, vamos apenas logar e retornar status
+    console.log(`💓 Heartbeat de ${data.deviceId}: pending=${data.pendingItems}, failed=${data.failedItems}, dlq=${data.dlqItems}`);
+
+    // Verificar se há itens pendentes do servidor para este dispositivo
+    const pendingForDevice = await this.prisma.syncQueue.count({
+      where: {
+        branchId,
+        status: 'pending',
+      },
+    });
+
+    return {
+      received: true,
+      timestamp: timestamp.toISOString(),
+      serverPendingItems: pendingForDevice,
+      message: data.failedItems > 0 || data.dlqItems > 0 
+        ? 'Atenção: há itens falhados no dispositivo' 
+        : 'OK',
+    };
+  }
+
+  /**
+   * Retorna status detalhado de um dispositivo
+   */
+  async getDeviceStatus(deviceId: string, branchId: string) {
+    // Buscar estatísticas de sincronização deste dispositivo
+    const [pendingItems, syncedItems, conflicts] = await Promise.all([
+      this.prisma.syncQueue.count({
+        where: { deviceId, status: 'pending' },
+      }),
+      this.prisma.syncQueue.count({
+        where: { deviceId, status: { in: ['synced', 'acknowledged'] } },
+      }),
+      this.prisma.syncConflict.count({
+        where: { deviceId, resolved: false },
+      }),
+    ]);
+
+    return {
+      deviceId,
+      branchId,
+      pendingItems,
+      syncedItems,
+      unresolvedConflicts: conflicts,
+      status: conflicts > 0 ? 'has_conflicts' : pendingItems > 0 ? 'syncing' : 'synced',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ============================================
+  // Dashboard de Monitoramento de Sync
+  // ============================================
+
+  /**
+   * Retorna estatísticas completas para o dashboard de monitoramento
+   */
+  async getDashboardStats(branchId: string) {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // Buscar todas as estatísticas em paralelo
+    const [
+      totalPending,
+      totalFailed,
+      totalSynced24h,
+      pendingByEntity,
+      failedByEntity,
+      activeDevices,
+      recentConflicts,
+      avgSyncTime,
+    ] = await Promise.all([
+      // Total pendentes
+      this.prisma.syncQueue.count({
+        where: { status: 'pending' },
+      }),
+
+      // Total com erro
+      this.prisma.syncQueue.count({
+        where: { status: 'error' },
+      }),
+
+      // Total sincronizados nas últimas 24h
+      this.prisma.syncQueue.count({
+        where: {
+          status: { in: ['synced', 'acknowledged'] },
+          updatedAt: { gte: oneDayAgo },
+        },
+      }),
+
+      // Pendentes por tipo de entidade
+      this.prisma.syncQueue.groupBy({
+        by: ['entityType'],
+        where: { status: 'pending' },
+        _count: { id: true },
+      }),
+
+      // Falhas por tipo de entidade
+      this.prisma.syncQueue.groupBy({
+        by: ['entityType'],
+        where: { status: 'error' },
+        _count: { id: true },
+      }),
+
+      // Dispositivos ativos (enviaram heartbeat na última hora)
+      this.prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "deviceId") as count
+        FROM "sync_queue"
+        WHERE "updatedAt" >= ${oneHourAgo}
+      `,
+
+      // Conflitos recentes não resolvidos
+      this.prisma.syncConflict.count({
+        where: { resolved: false },
+      }),
+
+      // Tempo médio de sincronização (usando meta dos items processados)
+      this.prisma.$queryRaw`
+        SELECT AVG(EXTRACT(EPOCH FROM ("updatedAt" - "createdAt"))) as avg_seconds
+        FROM "sync_queue"
+        WHERE status = 'synced' AND "updatedAt" >= ${oneDayAgo}
+      `,
+    ]);
+
+    // Converter resultados agrupados para formato amigável
+    const pendingByEntityMap: Record<string, number> = {};
+    for (const item of pendingByEntity) {
+      pendingByEntityMap[item.entityType] = item._count.id;
+    }
+
+    const failedByEntityMap: Record<string, number> = {};
+    for (const item of failedByEntity) {
+      failedByEntityMap[item.entityType] = item._count.id;
+    }
+
+    // Calcular saúde geral do sistema
+    const healthScore = this.calculateHealthScore(totalPending, totalFailed, recentConflicts);
+
+    return {
+      overview: {
+        totalPending,
+        totalFailed,
+        totalSynced24h,
+        activeDevices: Number((activeDevices as any[])[0]?.count || 0),
+        unresolvedConflicts: recentConflicts,
+        healthScore,
+        healthStatus: healthScore >= 80 ? 'healthy' : healthScore >= 50 ? 'warning' : 'critical',
+      },
+      breakdown: {
+        pendingByEntity: pendingByEntityMap,
+        failedByEntity: failedByEntityMap,
+      },
+      performance: {
+        avgSyncTimeSeconds: Math.round((avgSyncTime as any[])[0]?.avg_seconds || 0),
+      },
+      timestamp: now.toISOString(),
+    };
+  }
+
+  /**
+   * Calcula score de saúde do sistema de sync (0-100)
+   */
+  private calculateHealthScore(pending: number, failed: number, conflicts: number): number {
+    let score = 100;
+
+    // Penalizar por itens pendentes (até -30 pontos)
+    if (pending > 100) score -= 30;
+    else if (pending > 50) score -= 20;
+    else if (pending > 20) score -= 10;
+    else if (pending > 5) score -= 5;
+
+    // Penalizar por falhas (até -40 pontos)
+    if (failed > 50) score -= 40;
+    else if (failed > 20) score -= 30;
+    else if (failed > 10) score -= 20;
+    else if (failed > 0) score -= 10;
+
+    // Penalizar por conflitos (até -30 pontos)
+    if (conflicts > 20) score -= 30;
+    else if (conflicts > 10) score -= 20;
+    else if (conflicts > 5) score -= 15;
+    else if (conflicts > 0) score -= 10;
+
+    return Math.max(0, score);
+  }
+
+  /**
+   * Retorna histórico de sincronização recente
+   */
+  async getSyncHistory(branchId: string, limit: number = 50, entityType?: string) {
+    const where: any = {};
+    if (entityType) {
+      where.entityType = entityType;
+    }
+
+    const items = await this.prisma.syncQueue.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        entityType: true,
+        entityId: true,
+        action: true,
+        status: true,
+        retryCount: true,
+        deviceId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      items,
+      total: items.length,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Retorna alertas de sincronização ativos
+   */
+  async getSyncAlerts(branchId: string) {
+    const alerts: Array<{
+      type: 'warning' | 'error' | 'info';
+      message: string;
+      count?: number;
+      entityType?: string;
+    }> = [];
+
+    // Verificar itens com muitas tentativas de retry
+    const stuckItems = await this.prisma.syncQueue.count({
+      where: {
+        status: 'pending',
+        retryCount: { gte: 5 },
+      },
+    });
+    if (stuckItems > 0) {
+      alerts.push({
+        type: 'error',
+        message: `${stuckItems} item(s) estão presos com 5+ tentativas de sync`,
+        count: stuckItems,
+      });
+    }
+
+    // Verificar falhas recentes
+    const recentFailures = await this.prisma.syncQueue.count({
+      where: {
+        status: 'error',
+        updatedAt: {
+          gte: new Date(Date.now() - 60 * 60 * 1000), // última hora
+        },
+      },
+    });
+    if (recentFailures > 0) {
+      alerts.push({
+        type: 'warning',
+        message: `${recentFailures} falha(s) de sync na última hora`,
+        count: recentFailures,
+      });
+    }
+
+    // Verificar conflitos não resolvidos
+    const conflicts = await this.prisma.syncConflict.count({
+      where: { resolved: false },
+    });
+    if (conflicts > 0) {
+      alerts.push({
+        type: 'warning',
+        message: `${conflicts} conflito(s) não resolvido(s) aguardando ação`,
+        count: conflicts,
+      });
+    }
+
+    // Verificar entidades com muitos pendentes
+    const heavyEntities = await this.prisma.syncQueue.groupBy({
+      by: ['entityType'],
+      where: { status: 'pending' },
+      _count: { id: true },
+      having: {
+        id: { _count: { gte: 50 } },
+      },
+    });
+
+    for (const entity of heavyEntities) {
+      alerts.push({
+        type: 'info',
+        message: `${entity._count.id} itens pendentes para ${entity.entityType}`,
+        count: entity._count.id,
+        entityType: entity.entityType,
+      });
+    }
+
+    return {
+      alerts,
+      count: alerts.length,
+      hasErrors: alerts.some((a) => a.type === 'error'),
+      hasWarnings: alerts.some((a) => a.type === 'warning'),
+      timestamp: new Date().toISOString(),
+    };
   }
 }

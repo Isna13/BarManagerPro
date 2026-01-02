@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bull';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
+import { IdempotencyMiddleware } from './common/middleware/idempotency.middleware';
 
 // Core modules
 import { PrismaModule } from './prisma/prisma.module';
@@ -102,8 +103,14 @@ import { AdminModule } from './admin/admin.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // Middleware de idempotência - protege contra requisições duplicadas
+    consumer
+      .apply(IdempotencyMiddleware)
+      .forRoutes('sales', 'debts', 'purchases', 'inventory', 'cash-box');
+    
+    // Logger - aplicar em todas as rotas
     consumer
       .apply(LoggerMiddleware)
-      .forRoutes('*'); // Aplicar logging em todas as rotas
+      .forRoutes('*');
   }
 }

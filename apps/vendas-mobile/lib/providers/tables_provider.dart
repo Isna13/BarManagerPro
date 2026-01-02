@@ -1031,7 +1031,7 @@ class TablesProvider extends ChangeNotifier {
           // Agora: sempre inclui os pedidos pendentes para registro na venda
           // Isso garante que a venda tenha todos os itens mesmo em pagamentos parciais
           ordersBeingPaidNow = List.from(pendingOrders);
-          
+
           // Se o valor pago cobre os pedidos pendentes, marcar como pagos
           if (amount >= pendingAmount && pendingOrders.isNotEmpty) {
             for (final order in pendingOrders) {
@@ -1046,8 +1046,9 @@ class TablesProvider extends ChangeNotifier {
             }
             debugPrint('✅ ${pendingOrders.length} pedidos marcados como pagos');
           }
-          
-          debugPrint('📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
+
+          debugPrint(
+              '📝 ordersBeingPaidNow: ${ordersBeingPaidNow.length} pedidos para esta venda');
 
           // Verificar se TODOS os pedidos estão pagos para atualizar status do cliente
           final hasAnyPending = _currentOrders.any((o) {

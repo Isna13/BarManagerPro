@@ -461,6 +461,25 @@ export class DatabaseManager {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      -- Dead Letter Queue (itens que falharam definitivamente)
+      CREATE TABLE IF NOT EXISTS sync_dead_letter (
+        id TEXT PRIMARY KEY,
+        original_item_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        entity TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        data TEXT NOT NULL,
+        priority INTEGER DEFAULT 5,
+        retry_count INTEGER DEFAULT 0,
+        last_error TEXT,
+        original_created_at DATETIME,
+        moved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        reason TEXT,
+        resolved_at DATETIME,
+        resolved_by TEXT,
+        resolution_action TEXT
+      );
+
       -- Device Registry (registro de dispositivos ativos)
       CREATE TABLE IF NOT EXISTS device_registry (
         device_id TEXT PRIMARY KEY,
@@ -1061,6 +1080,66 @@ export class DatabaseManager {
     } catch (error) {
       console.error('Erro na migration users sync fields:', error);
     }
+
+    // Migration 18: Adicionar coluna version para detecção de conflitos (versionamento otimista)
+    try {
+      // Adicionar version em sales
+      const salesInfo: any[] = this.db.pragma('table_info(sales)') as any[];
+      const salesHasVersion = salesInfo.some((col: any) => col.name === 'version');
+      if (!salesHasVersion) {
+        console.log('Executando migration: adicionando coluna version em sales...');
+        this.db.exec('ALTER TABLE sales ADD COLUMN version INTEGER DEFAULT 1');
+        console.log('✅ Migration sales.version concluída!');
+      }
+
+      // Adicionar version em customers
+      const customersInfo: any[] = this.db.pragma('table_info(customers)') as any[];
+      const customersHasVersion = customersInfo.some((col: any) => col.name === 'version');
+      if (!customersHasVersion) {
+        console.log('Executando migration: adicionando coluna version em customers...');
+        this.db.exec('ALTER TABLE customers ADD COLUMN version INTEGER DEFAULT 1');
+        console.log('✅ Migration customers.version concluída!');
+      }
+
+      // Adicionar version em inventory_items
+      const inventoryInfo: any[] = this.db.pragma('table_info(inventory_items)') as any[];
+      const inventoryHasVersion = inventoryInfo.some((col: any) => col.name === 'version');
+      if (!inventoryHasVersion) {
+        console.log('Executando migration: adicionando coluna version em inventory_items...');
+        this.db.exec('ALTER TABLE inventory_items ADD COLUMN version INTEGER DEFAULT 1');
+        console.log('✅ Migration inventory_items.version concluída!');
+      }
+
+      // Adicionar version em products
+      const productsInfo: any[] = this.db.pragma('table_info(products)') as any[];
+      const productsHasVersion = productsInfo.some((col: any) => col.name === 'version');
+      if (!productsHasVersion) {
+        console.log('Executando migration: adicionando coluna version em products...');
+        this.db.exec('ALTER TABLE products ADD COLUMN version INTEGER DEFAULT 1');
+        console.log('✅ Migration products.version concluída!');
+      }
+
+      // Adicionar version em purchases
+      const purchasesInfo: any[] = this.db.pragma('table_info(purchases)') as any[];
+      const purchasesHasVersion = purchasesInfo.some((col: any) => col.name === 'version');
+      if (!purchasesHasVersion) {
+        console.log('Executando migration: adicionando coluna version em purchases...');
+        this.db.exec('ALTER TABLE purchases ADD COLUMN version INTEGER DEFAULT 1');
+        console.log('✅ Migration purchases.version concluída!');
+      }
+
+      // Adicionar version em debts
+      const debtsInfo: any[] = this.db.pragma('table_info(debts)') as any[];
+      const debtsHasVersion = debtsInfo.some((col: any) => col.name === 'version');
+      if (!debtsHasVersion) {
+        console.log('Executando migration: adicionando coluna version em debts...');
+        this.db.exec('ALTER TABLE debts ADD COLUMN version INTEGER DEFAULT 1');
+        console.log('✅ Migration debts.version concluída!');
+      }
+
+    } catch (error) {
+      console.error('Erro na migration version columns:', error);
+    }
   }
 
   // ============================================
@@ -1189,12 +1268,13 @@ export class DatabaseManager {
       paymentData.notes || null
     );
     
-    // Atualizar status da venda para 'paid'
+    // Atualizar status da venda para 'paid' e incrementar versão
     this.db.prepare(`
       UPDATE sales 
       SET status = 'paid', 
           updated_at = datetime('now'),
-          synced = 0
+          synced = 0,
+          version = COALESCE(version, 0) + 1
       WHERE id = ?
     `).run(saleId);
     
@@ -1424,6 +1504,7 @@ export class DatabaseManager {
     }
 
     fields.push('updated_at = datetime(\'now\')');
+    fields.push('version = COALESCE(version, 0) + 1');
     // Só marca como synced = 0 se não foi explicitamente definido
     if (productData.synced === undefined) {
       fields.push('synced = 0');
@@ -1457,10 +1538,10 @@ export class DatabaseManager {
       return { success: false, id, error: 'Produto não encontrado' };
     }
     
-    // Soft delete - apenas marca como inativo
+    // Soft delete - apenas marca como inativo e incrementa versão
     const stmt = this.db.prepare(`
       UPDATE products 
-      SET is_active = 0, synced = 0, updated_at = datetime('now')
+      SET is_active = 0, synced = 0, updated_at = datetime('now'), version = COALESCE(version, 0) + 1
       WHERE id = ?
     `);
     stmt.run(id);
@@ -1965,14 +2046,15 @@ export class DatabaseManager {
       const newClosedBoxes = Math.floor(newQtyUnits / unitsPerBox);
       const newOpenBoxUnits = newQtyUnits % unitsPerBox;
       
-      // Atualizar existente
+      // Atualizar existente e incrementar versão
       this.db.prepare(`
         UPDATE inventory_items 
         SET qty_units = ?, 
             closed_boxes = ?,
             open_box_units = ?,
             updated_at = datetime('now'),
-            synced = 0
+            synced = 0,
+            version = COALESCE(version, 0) + 1
         WHERE product_id = ? AND branch_id = ? AND batch_number IS NULL
       `).run(newQtyUnits, newClosedBoxes, newOpenBoxUnits, productId, branchId);
     } else {
@@ -2928,7 +3010,8 @@ export class DatabaseManager {
           total = (SELECT SUM(total) FROM sale_items WHERE sale_id = '${saleId}'),
           muntu_savings = (SELECT SUM(muntu_savings) FROM sale_items WHERE sale_id = '${saleId}'),
           updated_at = CURRENT_TIMESTAMP,
-          synced = 0
+          synced = 0,
+          version = COALESCE(version, 0) + 1
       WHERE id = '${saleId}'
     `);
   }
@@ -3038,6 +3121,7 @@ export class DatabaseManager {
     updates.push('synced = ?');
     params.push(synced);
     updates.push('updated_at = datetime(\'now\')');
+    updates.push('version = COALESCE(version, 0) + 1');
     
     if (updates.length === 0) {
       return this.getCustomerById(id);
@@ -3061,10 +3145,10 @@ export class DatabaseManager {
   }
 
   deleteCustomer(id: string) {
-    // Soft delete - apenas marca como inativo
+    // Soft delete - apenas marca como inativo e incrementa versão
     const stmt = this.db.prepare(`
       UPDATE customers 
-      SET is_blocked = 1, updated_at = datetime('now'), synced = 0
+      SET is_blocked = 1, updated_at = datetime('now'), synced = 0, version = COALESCE(version, 0) + 1
       WHERE id = ?
     `);
     
@@ -4382,6 +4466,136 @@ export class DatabaseManager {
       SELECT entity, COUNT(*) as count, MAX(last_error) as last_error
       FROM sync_queue 
       WHERE status = 'failed'
+      GROUP BY entity
+    `).all();
+  }
+
+  // ============================================
+  // Dead Letter Queue (DLQ)
+  // ============================================
+
+  /**
+   * Move itens que excederam o limite de retentativas para a Dead Letter Queue
+   * Isso limpa a sync_queue e preserva os dados para análise/recuperação manual
+   */
+  moveToDeadLetterQueue(maxRetries: number = 10) {
+    const failedItems = this.db.prepare(`
+      SELECT * FROM sync_queue 
+      WHERE status = 'failed' AND retry_count >= ?
+    `).all(maxRetries) as any[];
+
+    let movedCount = 0;
+    for (const item of failedItems) {
+      const dlqId = this.generateUUID();
+      
+      this.db.prepare(`
+        INSERT INTO sync_dead_letter (
+          id, original_item_id, operation, entity, entity_id, data,
+          priority, retry_count, last_error, original_created_at, reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        dlqId,
+        item.id,
+        item.operation,
+        item.entity,
+        item.entity_id,
+        item.data,
+        item.priority,
+        item.retry_count,
+        item.last_error,
+        item.created_at,
+        `Excedeu limite de ${maxRetries} tentativas`
+      );
+
+      // Remover da fila principal
+      this.db.prepare('DELETE FROM sync_queue WHERE id = ?').run(item.id);
+      movedCount++;
+    }
+
+    if (movedCount > 0) {
+      console.log(`📦 ${movedCount} itens movidos para Dead Letter Queue`);
+    }
+    return movedCount;
+  }
+
+  /**
+   * Lista itens na Dead Letter Queue para análise
+   */
+  getDeadLetterItems(limit: number = 100) {
+    return this.db.prepare(`
+      SELECT * FROM sync_dead_letter 
+      WHERE resolved_at IS NULL
+      ORDER BY moved_at DESC
+      LIMIT ?
+    `).all(limit);
+  }
+
+  /**
+   * Tenta reprocessar um item da Dead Letter Queue
+   * Move de volta para sync_queue com retry_count zerado
+   */
+  retryDeadLetterItem(dlqId: string) {
+    const item = this.db.prepare(
+      'SELECT * FROM sync_dead_letter WHERE id = ?'
+    ).get(dlqId) as any;
+
+    if (!item) {
+      throw new Error('Item não encontrado na Dead Letter Queue');
+    }
+
+    // Criar novo item na sync_queue
+    const newId = this.generateUUID();
+    this.db.prepare(`
+      INSERT INTO sync_queue (
+        id, operation, entity, entity_id, data, priority, status, retry_count
+      ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0)
+    `).run(
+      newId,
+      item.operation,
+      item.entity,
+      item.entity_id,
+      item.data,
+      item.priority
+    );
+
+    // Marcar DLQ item como resolvido
+    this.db.prepare(`
+      UPDATE sync_dead_letter 
+      SET resolved_at = CURRENT_TIMESTAMP, resolution_action = 'retry'
+      WHERE id = ?
+    `).run(dlqId);
+
+    console.log(`🔄 Item ${dlqId} movido de volta para sync_queue como ${newId}`);
+    return newId;
+  }
+
+  /**
+   * Descarta permanentemente um item da Dead Letter Queue
+   */
+  discardDeadLetterItem(dlqId: string, resolvedBy: string, reason: string) {
+    this.db.prepare(`
+      UPDATE sync_dead_letter 
+      SET resolved_at = CURRENT_TIMESTAMP, 
+          resolved_by = ?,
+          resolution_action = 'discarded',
+          reason = ?
+      WHERE id = ?
+    `).run(resolvedBy, reason, dlqId);
+    
+    console.log(`🗑️ Item ${dlqId} descartado da Dead Letter Queue`);
+  }
+
+  /**
+   * Estatísticas da Dead Letter Queue
+   */
+  getDeadLetterStats() {
+    return this.db.prepare(`
+      SELECT 
+        entity,
+        COUNT(*) as total,
+        SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN resolved_at IS NOT NULL THEN 1 ELSE 0 END) as resolved
+      FROM sync_dead_letter
       GROUP BY entity
     `).all();
   }
@@ -7533,6 +7747,50 @@ export class DatabaseManager {
       completed: stats.find(s => s.status === 'completed')?.count || 0,
       byEntity,
     };
+  }
+
+  /**
+   * Retorna contagem de itens de sync pendentes
+   */
+  getPendingSyncCount(): number {
+    const result = this.db.prepare(
+      "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'pending'"
+    ).get() as any;
+    return result?.count || 0;
+  }
+
+  /**
+   * Retorna contagem de itens de sync com falha
+   */
+  getFailedSyncCount(): number {
+    const result = this.db.prepare(
+      "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'failed'"
+    ).get() as any;
+    return result?.count || 0;
+  }
+
+  /**
+   * Retorna contagem de itens na Dead Letter Queue
+   */
+  getDlqCount(): number {
+    const result = this.db.prepare(
+      "SELECT COUNT(*) as count FROM sync_dead_letter WHERE resolved_at IS NULL"
+    ).get() as any;
+    return result?.count || 0;
+  }
+
+  /**
+   * Retorna IDs de itens sincronizados recentemente (para ACK)
+   */
+  getRecentlySyncedIds(): string[] {
+    const results = this.db.prepare(`
+      SELECT entity_id FROM sync_queue 
+      WHERE status = 'pending' 
+        AND synced = 0 
+        AND updated_at > datetime('now', '-1 minute')
+      LIMIT 50
+    `).all() as any[];
+    return results.map((r: any) => r.entity_id);
   }
 
   // ============================================
