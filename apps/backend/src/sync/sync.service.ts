@@ -534,29 +534,29 @@ export class SyncService {
       this.prisma.syncQueue.count({
         where: {
           status: { in: ['synced', 'acknowledged'] },
-          updatedAt: { gte: oneDayAgo },
+          processedAt: { gte: oneDayAgo },
         },
       }),
 
       // Pendentes por tipo de entidade
       this.prisma.syncQueue.groupBy({
-        by: ['entityType'],
+        by: ['entity'],
         where: { status: 'pending' },
         _count: { id: true },
       }),
 
       // Falhas por tipo de entidade
       this.prisma.syncQueue.groupBy({
-        by: ['entityType'],
+        by: ['entity'],
         where: { status: 'error' },
         _count: { id: true },
       }),
 
       // Dispositivos ativos (enviaram heartbeat na última hora)
       this.prisma.$queryRaw`
-        SELECT COUNT(DISTINCT "deviceId") as count
+        SELECT COUNT(DISTINCT "device_id") as count
         FROM "sync_queue"
-        WHERE "updatedAt" >= ${oneHourAgo}
+        WHERE "created_at" >= ${oneHourAgo}
       `,
 
       // Conflitos recentes não resolvidos
@@ -566,21 +566,21 @@ export class SyncService {
 
       // Tempo médio de sincronização (usando meta dos items processados)
       this.prisma.$queryRaw`
-        SELECT AVG(EXTRACT(EPOCH FROM ("updatedAt" - "createdAt"))) as avg_seconds
+        SELECT AVG(EXTRACT(EPOCH FROM ("processed_at" - "created_at"))) as avg_seconds
         FROM "sync_queue"
-        WHERE status = 'synced' AND "updatedAt" >= ${oneDayAgo}
+        WHERE status = 'synced' AND "processed_at" >= ${oneDayAgo}
       `,
     ]);
 
     // Converter resultados agrupados para formato amigável
     const pendingByEntityMap: Record<string, number> = {};
     for (const item of pendingByEntity) {
-      pendingByEntityMap[item.entityType] = item._count.id;
+      pendingByEntityMap[item.entity] = item._count.id;
     }
 
     const failedByEntityMap: Record<string, number> = {};
     for (const item of failedByEntity) {
-      failedByEntityMap[item.entityType] = item._count.id;
+      failedByEntityMap[item.entity] = item._count.id;
     }
 
     // Calcular saúde geral do sistema
@@ -640,28 +640,41 @@ export class SyncService {
   async getSyncHistory(branchId: string, limit: number = 50, entityType?: string) {
     const where: any = {};
     if (entityType) {
-      where.entityType = entityType;
+      where.entity = entityType;
     }
 
     const items = await this.prisma.syncQueue.findMany({
       where,
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
         id: true,
-        entityType: true,
+        entity: true,
         entityId: true,
-        action: true,
+        operation: true,
         status: true,
         retryCount: true,
         deviceId: true,
         createdAt: true,
-        updatedAt: true,
+        processedAt: true,
       },
     });
 
+    // Mapear para formato esperado pelo frontend
+    const mappedItems = items.map(item => ({
+      id: item.id,
+      entityType: item.entity,
+      entityId: item.entityId,
+      action: item.operation,
+      status: item.status,
+      retryCount: item.retryCount,
+      deviceId: item.deviceId,
+      createdAt: item.createdAt,
+      updatedAt: item.processedAt || item.createdAt,
+    }));
+
     return {
-      items,
+      items: mappedItems,
       total: items.length,
       timestamp: new Date().toISOString(),
     };
@@ -697,7 +710,7 @@ export class SyncService {
     const recentFailures = await this.prisma.syncQueue.count({
       where: {
         status: 'error',
-        updatedAt: {
+        createdAt: {
           gte: new Date(Date.now() - 60 * 60 * 1000), // última hora
         },
       },
@@ -724,7 +737,7 @@ export class SyncService {
 
     // Verificar entidades com muitos pendentes
     const heavyEntities = await this.prisma.syncQueue.groupBy({
-      by: ['entityType'],
+      by: ['entity'],
       where: { status: 'pending' },
       _count: { id: true },
       having: {
@@ -735,9 +748,9 @@ export class SyncService {
     for (const entity of heavyEntities) {
       alerts.push({
         type: 'info',
-        message: `${entity._count.id} itens pendentes para ${entity.entityType}`,
+        message: `${entity._count.id} itens pendentes para ${entity.entity}`,
         count: entity._count.id,
-        entityType: entity.entityType,
+        entityType: entity.entity,
       });
     }
 
