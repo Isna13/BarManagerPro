@@ -733,6 +733,87 @@ electron_1.ipcMain.handle('sync:updateHeartbeat', async () => {
         return { success: false, error: error.message };
     }
 });
+// Dead Letter Queue Management
+electron_1.ipcMain.handle('sync:getDeadLetterStats', async () => {
+    try {
+        const stats = dbManager?.getDeadLetterStats() || { total: 0, byEntityType: {} };
+        return stats;
+    }
+    catch (error) {
+        console.error('Erro ao buscar DLQ stats:', error);
+        return { total: 0, byEntityType: {}, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:getDeadLetterItems', async (_, limit) => {
+    try {
+        const items = dbManager?.getDeadLetterItems(limit || 50) || [];
+        return items;
+    }
+    catch (error) {
+        console.error('Erro ao buscar DLQ items:', error);
+        return [];
+    }
+});
+electron_1.ipcMain.handle('sync:retryDeadLetterItem', async (_, id) => {
+    try {
+        const result = dbManager?.retryDeadLetterItem(id);
+        return { success: true, result };
+    }
+    catch (error) {
+        console.error('Erro ao reprocessar DLQ item:', error);
+        return { success: false, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:discardDeadLetterItem', async (_, { id, resolvedBy, reason }) => {
+    try {
+        const result = dbManager?.discardDeadLetterItem(id, resolvedBy || 'system', reason || 'Descartado manualmente');
+        return { success: true, result };
+    }
+    catch (error) {
+        console.error('Erro ao descartar DLQ item:', error);
+        return { success: false, error: error.message };
+    }
+});
+// Dashboard de Monitoramento - Fetch do Servidor
+electron_1.ipcMain.handle('sync:getDashboardStats', async () => {
+    try {
+        if (!syncManager) {
+            return { success: false, error: 'SyncManager não inicializado' };
+        }
+        const result = await syncManager.fetchFromServer('/sync/dashboard');
+        return result;
+    }
+    catch (error) {
+        console.error('Erro ao buscar dashboard stats:', error);
+        return { success: false, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:getDashboardAlerts', async () => {
+    try {
+        if (!syncManager) {
+            return { success: false, error: 'SyncManager não inicializado' };
+        }
+        const result = await syncManager.fetchFromServer('/sync/dashboard/alerts');
+        return result;
+    }
+    catch (error) {
+        console.error('Erro ao buscar dashboard alerts:', error);
+        return { success: false, error: error.message };
+    }
+});
+electron_1.ipcMain.handle('sync:getDashboardHistory', async (_, limit) => {
+    try {
+        if (!syncManager) {
+            return { success: false, error: 'SyncManager não inicializado' };
+        }
+        const result = await syncManager.fetchFromServer(`/sync/dashboard/history?limit=${limit || 20}`);
+        return result;
+    }
+    catch (error) {
+        console.error('Erro ao buscar dashboard history:', error);
+        return { success: false, error: error.message };
+    }
+});
 // Settings
 electron_1.ipcMain.handle('settings:get', async (_, key) => {
     return store.get(key);

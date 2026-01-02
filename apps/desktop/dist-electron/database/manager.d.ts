@@ -457,6 +457,28 @@ export declare class DatabaseManager {
      * Obtém contagem de itens falhados por entidade
      */
     getFailedSyncStats(): any;
+    /**
+     * Move itens que excederam o limite de retentativas para a Dead Letter Queue
+     * Isso limpa a sync_queue e preserva os dados para análise/recuperação manual
+     */
+    moveToDeadLetterQueue(maxRetries?: number): number;
+    /**
+     * Lista itens na Dead Letter Queue para análise
+     */
+    getDeadLetterItems(limit?: number): any;
+    /**
+     * Tenta reprocessar um item da Dead Letter Queue
+     * Move de volta para sync_queue com retry_count zerado
+     */
+    retryDeadLetterItem(dlqId: string): string;
+    /**
+     * Descarta permanentemente um item da Dead Letter Queue
+     */
+    discardDeadLetterItem(dlqId: string, resolvedBy: string, reason: string): void;
+    /**
+     * Estatísticas da Dead Letter Queue
+     */
+    getDeadLetterStats(): any;
     getSalesReport(startDate: Date, endDate: Date, branchId?: string): any;
     getInventoryReport(branchId?: string): any;
     /**
@@ -925,6 +947,22 @@ export declare class DatabaseManager {
         completed: number;
         byEntity: any[];
     };
+    /**
+     * Retorna contagem total de itens de sync pendentes (sem filtro de entidade)
+     */
+    getTotalPendingSyncCount(): number;
+    /**
+     * Retorna contagem de itens de sync com falha
+     */
+    getFailedSyncCount(): number;
+    /**
+     * Retorna contagem de itens na Dead Letter Queue
+     */
+    getDlqCount(): number;
+    /**
+     * Retorna IDs de itens sincronizados recentemente (para ACK)
+     */
+    getRecentlySyncedIds(): string[];
     /**
      * Registra uma entrada no log de auditoria de sync
      */

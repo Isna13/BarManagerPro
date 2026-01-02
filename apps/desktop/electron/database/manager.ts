@@ -7750,9 +7750,9 @@ export class DatabaseManager {
   }
 
   /**
-   * Retorna contagem de itens de sync pendentes
+   * Retorna contagem total de itens de sync pendentes (sem filtro de entidade)
    */
-  getPendingSyncCount(): number {
+  getTotalPendingSyncCount(): number {
     const result = this.db.prepare(
       "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'pending'"
     ).get() as any;

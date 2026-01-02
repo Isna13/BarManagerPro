@@ -90,6 +90,11 @@ export declare class SyncManager {
     syncSalesImmediately(): void;
     stop(): Promise<void>;
     syncNow(): Promise<void>;
+    /**
+     * Bulk sync - envia múltiplas vendas em uma única requisição
+     * Mais eficiente para sincronizar grandes volumes de vendas offline
+     */
+    private bulkSyncSales;
     private pushLocalChanges;
     /**
      * Verifica se o Railway está vazio mas o banco local tem dados
@@ -110,6 +115,24 @@ export declare class SyncManager {
      */
     private sortByDependency;
     private pullServerChanges;
+    /**
+     * Envia confirmação (ACK) ao servidor de que os dados foram recebidos e processados
+     */
+    private sendAcknowledgement;
+    /**
+     * Envia heartbeat ao servidor com status do dispositivo
+     * Chamado periodicamente para monitoramento
+     */
+    sendHeartbeat(): Promise<any>;
+    /**
+     * Busca dados genéricos do servidor (para dashboard, etc)
+     * @param endpoint - Endpoint a ser chamado (ex: '/sync/dashboard')
+     */
+    fetchFromServer(endpoint: string): Promise<{
+        success: boolean;
+        data?: any;
+        error?: string;
+    }>;
     /**
      * Sincroniza apenas dívidas do servidor para o desktop
      * Usado quando a aba Dívidas é aberta para garantir dados atualizados

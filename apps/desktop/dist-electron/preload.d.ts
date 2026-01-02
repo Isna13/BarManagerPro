@@ -167,6 +167,13 @@ declare const api: {
         onConnectionChange: (callback: (data: {
             isOnline: boolean;
         }) => void) => () => Electron.IpcRenderer;
+        getDeadLetterStats: () => Promise<any>;
+        getDeadLetterItems: (limit?: number) => Promise<any>;
+        retryDeadLetterItem: (id: number) => Promise<any>;
+        discardDeadLetterItem: (id: number) => Promise<any>;
+        getDashboardStats: () => Promise<any>;
+        getDashboardAlerts: () => Promise<any>;
+        getDashboardHistory: (limit?: number) => Promise<any>;
     };
     settings: {
         get: (key: string) => Promise<any>;

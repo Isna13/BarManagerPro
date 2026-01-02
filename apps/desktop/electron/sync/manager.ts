@@ -1352,7 +1352,7 @@ export class SyncManager {
       const lastSync = this.dbManager.getLastSyncDate();
       
       // Estatísticas do dispositivo usando métodos públicos
-      const pendingItems = this.dbManager.getPendingSyncCount();
+      const pendingItems = this.dbManager.getTotalPendingSyncCount();
       const failedItems = this.dbManager.getFailedSyncCount();
       const dlqItems = this.dbManager.getDlqCount();
 

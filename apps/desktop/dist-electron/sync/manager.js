@@ -61,7 +61,7 @@ class SyncManager {
                 'Content-Type': 'application/json; charset=utf-8',
             },
         });
-        // Interceptor para adicionar token
+        // Interceptor para adicionar token e idempotency key
         this.apiClient.interceptors.request.use(config => {
             if (this.token) {
                 config.headers.Authorization = `Bearer ${this.token}`;
@@ -69,6 +69,19 @@ class SyncManager {
             // Garantir UTF-8 em todas as requisições
             if (!config.headers['Content-Type']) {
                 config.headers['Content-Type'] = 'application/json; charset=utf-8';
+            }
+            // 🔴 CORREÇÃO: Adicionar X-Idempotency-Key para proteção contra duplicação
+            // Usa o ID da entidade + timestamp para garantir unicidade
+            // O backend pode usar isso para evitar processar a mesma requisição duas vezes
+            if (config.method === 'post' && config.data) {
+                const entityId = config.data.id || config.data.entityId;
+                if (entityId) {
+                    config.headers['X-Idempotency-Key'] = `${entityId}-${Date.now()}`;
+                }
+                else {
+                    // Para requisições sem ID, gerar chave única
+                    config.headers['X-Idempotency-Key'] = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                }
             }
             return config;
         });
@@ -643,6 +656,13 @@ class SyncManager {
             // Verificar se Railway está vazio e banco local tem dados
             // Se sim, fazer resync automático completo
             await this.checkAndTriggerFullResyncIfNeeded();
+            // 🔴 CORREÇÃO: Mover itens que excederam 10 tentativas para Dead Letter Queue
+            // Isso limpa a fila e preserva os dados para análise manual
+            const movedToDLQ = this.dbManager.moveToDeadLetterQueue(10);
+            if (movedToDLQ > 0) {
+                console.log(`📦 ${movedToDLQ} itens movidos para Dead Letter Queue (excederam 10 tentativas)`);
+                this.emit('sync:dlq', { count: movedToDLQ });
+            }
             // Restaurar itens falhados para pendentes antes de sincronizar
             // Isso garante que vendas que falharam por queda de conexão sejam retentadas
             const retriedItems = this.dbManager.retryFailedSyncItems(10); // Aumentado para 10 tentativas
@@ -703,6 +723,61 @@ class SyncManager {
             }
         }
     }
+    /**
+     * Bulk sync - envia múltiplas vendas em uma única requisição
+     * Mais eficiente para sincronizar grandes volumes de vendas offline
+     */
+    async bulkSyncSales(salesItems) {
+        if (salesItems.length === 0) {
+            return { success: 0, failed: 0 };
+        }
+        console.log(`📦 Bulk sync: enviando ${salesItems.length} vendas em uma requisição...`);
+        try {
+            const bulkData = salesItems.map(item => {
+                const rawData = JSON.parse(item.data);
+                return {
+                    entity: 'sale',
+                    operation: item.operation,
+                    entityId: item.entity_id,
+                    data: JSON.stringify(this.prepareDataForSync('sale', rawData)),
+                    branchId: rawData.branchId || rawData.branch_id,
+                    deviceId: this.dbManager.getDeviceId(),
+                };
+            });
+            const response = await this.apiClient.post('/sync/bulk', { items: bulkData });
+            const result = response.data;
+            console.log(`📦 Bulk sync resultado: ${result.success} sucesso, ${result.failed} falhas, ${result.conflicts} conflitos`);
+            // Marcar itens como sincronizados
+            for (let i = 0; i < salesItems.length; i++) {
+                const item = salesItems[i];
+                const hasError = result.errors?.some((e) => e.item?.entityId === item.entity_id);
+                if (!hasError) {
+                    this.dbManager.markSyncItemCompleted(item.id);
+                    this.dbManager.logSyncAudit({
+                        action: item.operation,
+                        entity: item.entity,
+                        entityId: item.entity_id,
+                        direction: 'push',
+                        status: 'success',
+                        details: { bulkSync: true },
+                    });
+                }
+                else {
+                    const error = result.errors.find((e) => e.item?.entityId === item.entity_id);
+                    this.dbManager.markSyncItemFailed(item.id, error?.error || 'Bulk sync error');
+                }
+            }
+            return { success: result.success, failed: result.failed };
+        }
+        catch (error) {
+            console.error('❌ Bulk sync falhou:', error.message);
+            // Marcar todos como falhados para retry individual
+            for (const item of salesItems) {
+                this.dbManager.markSyncItemFailed(item.id, error.message);
+            }
+            return { success: 0, failed: salesItems.length };
+        }
+    }
     async pushLocalChanges() {
         const pendingItems = this.dbManager.getPendingSyncItems();
         if (pendingItems.length === 0) {
@@ -717,8 +792,21 @@ class SyncManager {
         sortedItems.forEach((item, idx) => {
             console.log(`  ${idx + 1}. ${item.entity}/${item.operation} - ${item.entity_id}`);
         });
+        // 🔴 OTIMIZAÇÃO: Usar bulk sync para vendas quando houver 3+ pendentes
+        // Isso reduz o número de requisições e melhora a performance
+        const salesItems = sortedItems.filter(item => item.entity === 'sale' && item.operation === 'create');
+        const nonSalesItems = sortedItems.filter(item => !(item.entity === 'sale' && item.operation === 'create'));
+        if (salesItems.length >= 3) {
+            console.log(`📦 Usando bulk sync para ${salesItems.length} vendas...`);
+            await this.bulkSyncSales(salesItems);
+        }
+        else {
+            // Processar vendas individualmente se forem poucas
+            nonSalesItems.push(...salesItems);
+        }
         let hasFailures = false;
-        for (const item of sortedItems) {
+        // Processar itens não-vendas e vendas restantes individualmente
+        for (const item of nonSalesItems) {
             try {
                 const rawData = JSON.parse(item.data);
                 const data = this.prepareDataForSync(item.entity, rawData);
@@ -1050,10 +1138,80 @@ class SyncManager {
             // 3. Atualizar data da última sincronização
             this.dbManager.setLastSyncDate(new Date());
             console.log('✅ Pull do servidor concluído');
+            // 4. Enviar ACK para confirmar recebimento
+            await this.sendAcknowledgement();
         }
         catch (error) {
             console.error('❌ Erro geral no pull:', error?.message);
             throw error;
+        }
+    }
+    /**
+     * Envia confirmação (ACK) ao servidor de que os dados foram recebidos e processados
+     */
+    async sendAcknowledgement() {
+        try {
+            const deviceId = this.dbManager.getDeviceId();
+            const lastSync = this.dbManager.getLastSyncDate();
+            // Buscar IDs de itens sincronizados recentemente usando método público
+            const entityIds = this.dbManager.getRecentlySyncedIds();
+            if (entityIds.length > 0) {
+                await this.apiClient.post('/sync/ack', {
+                    entityIds,
+                    deviceId,
+                    syncTimestamp: lastSync?.toISOString() || new Date().toISOString(),
+                });
+                console.log(`✅ ACK enviado: ${entityIds.length} itens confirmados`);
+            }
+        }
+        catch (error) {
+            // ACK é opcional, não falhar o sync por isso
+            console.warn('⚠️ Erro ao enviar ACK:', error?.message);
+        }
+    }
+    /**
+     * Envia heartbeat ao servidor com status do dispositivo
+     * Chamado periodicamente para monitoramento
+     */
+    async sendHeartbeat() {
+        if (!this.isOnline)
+            return;
+        try {
+            const deviceId = this.dbManager.getDeviceId();
+            const lastSync = this.dbManager.getLastSyncDate();
+            // Estatísticas do dispositivo usando métodos públicos
+            const pendingItems = this.dbManager.getTotalPendingSyncCount();
+            const failedItems = this.dbManager.getFailedSyncCount();
+            const dlqItems = this.dbManager.getDlqCount();
+            const response = await this.apiClient.post('/sync/heartbeat', {
+                deviceId,
+                pendingItems,
+                failedItems,
+                dlqItems,
+                lastSync: lastSync?.toISOString() || null,
+            });
+            console.log(`💓 Heartbeat: ${JSON.stringify(response.data)}`);
+            return response.data;
+        }
+        catch (error) {
+            console.warn('⚠️ Erro ao enviar heartbeat:', error?.message);
+        }
+    }
+    /**
+     * Busca dados genéricos do servidor (para dashboard, etc)
+     * @param endpoint - Endpoint a ser chamado (ex: '/sync/dashboard')
+     */
+    async fetchFromServer(endpoint) {
+        if (!this.isOnline) {
+            return { success: false, error: 'Offline - sem conexão com o servidor' };
+        }
+        try {
+            const response = await this.apiClient.get(endpoint, { timeout: 15000 });
+            return { success: true, data: response.data };
+        }
+        catch (error) {
+            console.error(`❌ Erro ao buscar ${endpoint}:`, error?.message);
+            return { success: false, error: error?.message || 'Erro desconhecido' };
         }
     }
     /**

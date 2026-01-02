@@ -211,6 +211,15 @@ const api = {
             electron_1.ipcRenderer.on('sync:connectionChange', handler);
             return () => electron_1.ipcRenderer.removeListener('sync:connectionChange', handler);
         },
+        // Dead Letter Queue management
+        getDeadLetterStats: () => electron_1.ipcRenderer.invoke('sync:getDeadLetterStats'),
+        getDeadLetterItems: (limit) => electron_1.ipcRenderer.invoke('sync:getDeadLetterItems', limit),
+        retryDeadLetterItem: (id) => electron_1.ipcRenderer.invoke('sync:retryDeadLetterItem', id),
+        discardDeadLetterItem: (id) => electron_1.ipcRenderer.invoke('sync:discardDeadLetterItem', id),
+        // Dashboard de Monitoramento (fetches do servidor)
+        getDashboardStats: () => electron_1.ipcRenderer.invoke('sync:getDashboardStats'),
+        getDashboardAlerts: () => electron_1.ipcRenderer.invoke('sync:getDashboardAlerts'),
+        getDashboardHistory: (limit) => electron_1.ipcRenderer.invoke('sync:getDashboardHistory', limit),
     },
     // Settings
     settings: {

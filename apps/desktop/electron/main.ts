@@ -855,7 +855,7 @@ ipcMain.handle('sync:getDeadLetterItems', async (_, limit?: number) => {
   }
 });
 
-ipcMain.handle('sync:retryDeadLetterItem', async (_, id: number) => {
+ipcMain.handle('sync:retryDeadLetterItem', async (_, id: string) => {
   try {
     const result = dbManager?.retryDeadLetterItem(id);
     return { success: true, result };
@@ -865,9 +865,9 @@ ipcMain.handle('sync:retryDeadLetterItem', async (_, id: number) => {
   }
 });
 
-ipcMain.handle('sync:discardDeadLetterItem', async (_, id: number) => {
+ipcMain.handle('sync:discardDeadLetterItem', async (_, { id, resolvedBy, reason }: { id: string; resolvedBy?: string; reason?: string }) => {
   try {
-    const result = dbManager?.discardDeadLetterItem(id);
+    const result = dbManager?.discardDeadLetterItem(id, resolvedBy || 'system', reason || 'Descartado manualmente');
     return { success: true, result };
   } catch (error: any) {
     console.error('Erro ao descartar DLQ item:', error);

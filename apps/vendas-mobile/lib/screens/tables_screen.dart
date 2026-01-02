@@ -2350,15 +2350,25 @@ class _TableSessionSheetState extends State<TableSessionSheet> {
     if (!mounted) return;
 
     if (success) {
-      Navigator.pop(context); // Fechar bottom sheet
+      // Primeiro fechar o bottom sheet
+      if (mounted) Navigator.pop(context);
+
+      // Aguardar um frame antes de continuar
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Recarregar mesas (não precisa de context)
       await tables.loadTables(branchId: auth.branchId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mesa fechada com sucesso!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } else if (tables.error != null) {
+
+      // Verificar se ainda está montado antes de mostrar snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mesa fechada com sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else if (tables.error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(tables.error!),
