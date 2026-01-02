@@ -1053,6 +1053,62 @@ class DatabaseManager {
         catch (error) {
             console.error('Erro na migration version columns:', error);
         }
+        // Migration 19: Adicionar coluna qty_boxes na tabela purchase_items
+        // CRÍTICO: Necessário para sincronização de itens de compra do servidor Railway
+        try {
+            const purchaseItemsInfo = this.db.pragma('table_info(purchase_items)');
+            const hasQtyBoxes = purchaseItemsInfo.some((col) => col.name === 'qty_boxes');
+            if (!hasQtyBoxes) {
+                console.log('Executando migration: adicionando coluna qty_boxes em purchase_items...');
+                this.db.exec('ALTER TABLE purchase_items ADD COLUMN qty_boxes INTEGER DEFAULT 0');
+                console.log('✅ Migration purchase_items.qty_boxes concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration qty_boxes:', error);
+        }
+        // Migration 20: Criar tabela inventory_movements se não existir
+        // CRÍTICO: Necessário para sincronização e rastreamento de movimentações de estoque
+        try {
+            const tables = this.db.pragma('table_list');
+            const hasInventoryMovements = tables.some((t) => t.name === 'inventory_movements');
+            if (!hasInventoryMovements) {
+                console.log('Executando migration: criando tabela inventory_movements...');
+                this.db.exec(`
+          CREATE TABLE IF NOT EXISTS inventory_movements (
+            id TEXT PRIMARY KEY,
+            product_id TEXT NOT NULL,
+            branch_id TEXT NOT NULL,
+            type TEXT NOT NULL, -- 'entrada', 'saida', 'ajuste', 'transferencia'
+            qty_before INTEGER NOT NULL,
+            qty_after INTEGER NOT NULL,
+            qty_changed INTEGER NOT NULL,
+            closed_boxes_before INTEGER DEFAULT 0,
+            closed_boxes_after INTEGER DEFAULT 0,
+            open_box_units_before INTEGER DEFAULT 0,
+            open_box_units_after INTEGER DEFAULT 0,
+            reason TEXT NOT NULL,
+            reference_type TEXT, -- 'sale', 'purchase', 'adjustment', 'transfer'
+            reference_id TEXT,
+            responsible TEXT,
+            notes TEXT,
+            synced BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES products(id),
+            FOREIGN KEY (branch_id) REFERENCES branches(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_inventory_movements_product ON inventory_movements(product_id);
+          CREATE INDEX IF NOT EXISTS idx_inventory_movements_branch ON inventory_movements(branch_id);
+          CREATE INDEX IF NOT EXISTS idx_inventory_movements_type ON inventory_movements(type);
+          CREATE INDEX IF NOT EXISTS idx_inventory_movements_created ON inventory_movements(created_at);
+        `);
+                console.log('✅ Migration inventory_movements table concluída!');
+            }
+        }
+        catch (error) {
+            console.error('Erro na migration inventory_movements:', error);
+        }
     }
     // ============================================
     // CRUD Operations
