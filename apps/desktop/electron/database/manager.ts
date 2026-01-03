@@ -1204,6 +1204,17 @@ export class DatabaseManager {
   // CRUD Operations
   // ============================================
 
+  /**
+   * 🔴 TRANSAÇÃO ATÔMICA: Wrapper para operações que precisam ser atômicas
+   * Garante rollback automático em caso de erro
+   */
+  private runInTransaction<T>(operation: () => T): T {
+    const transaction = this.db.transaction(() => {
+      return operation();
+    });
+    return transaction();
+  }
+
   createSale(data: any, skipSyncQueue: boolean = false) {
     // Se o ID já existe (vindo do servidor), usar ele; senão gerar novo
     const id = data.id || this.generateUUID();
@@ -1264,36 +1275,41 @@ export class DatabaseManager {
       throw new Error('Dados do item inválidos: branchId é obrigatório');
     }
 
-    const id = this.generateUUID();
-    const stmt = this.db.prepare(`
-      INSERT INTO sale_items 
-      (id, sale_id, product_id, qty_units, is_muntu, unit_price, unit_cost, 
-       subtotal, tax_amount, total, muntu_savings)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(id, saleId, itemData.productId, itemData.qtyUnits, 
-             itemData.isMuntu ? 1 : 0, itemData.unitPrice, itemData.unitCost,
-             itemData.subtotal, itemData.taxAmount, itemData.total, itemData.muntuSavings);
-    
-    // Atualizar totais da venda
-    this.updateSaleTotals(saleId);
-    
-    // Deduzir estoque usando o sistema avançado com abertura automática de caixas
-    // Se falhar, a exceção será propagada e a venda será cancelada
-    this.deductInventoryAdvanced(
-      itemData.productId, 
-      itemData.branchId, 
-      itemData.qtyUnits,
-      itemData.isMuntu || false,
-      saleId,
-      itemData.cashierId || 'system'
-    );
-    
-    // Adicionar à fila - incluir saleId nos dados
-    this.addToSyncQueue('create', 'sale_item', id, { ...itemData, saleId }, 1);
-    
-    return { id, ...itemData };
+    // 🔴 CORREÇÃO CRÍTICA: Envolver em transação atômica
+    // Se qualquer operação falhar (insert, update totais, deduct estoque),
+    // todas as mudanças são revertidas automaticamente
+    return this.runInTransaction(() => {
+      const id = this.generateUUID();
+      const stmt = this.db.prepare(`
+        INSERT INTO sale_items 
+        (id, sale_id, product_id, qty_units, is_muntu, unit_price, unit_cost, 
+         subtotal, tax_amount, total, muntu_savings)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      stmt.run(id, saleId, itemData.productId, itemData.qtyUnits, 
+               itemData.isMuntu ? 1 : 0, itemData.unitPrice, itemData.unitCost,
+               itemData.subtotal, itemData.taxAmount, itemData.total, itemData.muntuSavings);
+      
+      // Atualizar totais da venda
+      this.updateSaleTotals(saleId);
+      
+      // Deduzir estoque usando o sistema avançado com abertura automática de caixas
+      // Se falhar, a exceção será propagada e TODA a transação será revertida
+      this.deductInventoryAdvanced(
+        itemData.productId, 
+        itemData.branchId, 
+        itemData.qtyUnits,
+        itemData.isMuntu || false,
+        saleId,
+        itemData.cashierId || 'system'
+      );
+      
+      // Adicionar à fila - incluir saleId nos dados
+      this.addToSyncQueue('create', 'sale_item', id, { ...itemData, saleId }, 1);
+      
+      return { id, ...itemData };
+    });
   }
 
   addSalePayment(saleId: string, paymentData: any) {
@@ -1307,48 +1323,52 @@ export class DatabaseManager {
       throw new Error(`Método de pagamento inválido: ${paymentData.method}`);
     }
     
-    const id = this.generateUUID();
-    const stmt = this.db.prepare(`
-      INSERT INTO payments 
-      (id, sale_id, method, provider, amount, reference_number, transaction_id, status, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
-      id, 
-      saleId, 
-      normalizedMethod, // Método validado e normalizado
-      paymentData.provider || null,
-      paymentData.amount,
-      paymentData.referenceNumber || null,
-      paymentData.transactionId || null,
-      paymentData.status || 'completed',
-      paymentData.notes || null
-    );
-    
-    // Atualizar status da venda para 'paid' e incrementar versão
-    this.db.prepare(`
-      UPDATE sales 
-      SET status = 'paid', 
-          updated_at = datetime('now'),
-          synced = 0,
-          version = COALESCE(version, 0) + 1
-      WHERE id = ?
-    `).run(saleId);
-    
-    // IMPORTANTE: Atualizar totais do caixa
-    const currentCashBox: any = this.getCurrentCashBox();
-    if (currentCashBox) {
-      this.updateCashBoxTotals(currentCashBox.id, paymentData.amount, normalizedMethod);
-      console.log(`[CASH-BOX] Atualizado: +${paymentData.amount/100} FCFA (${normalizedMethod})`);
-    } else {
-      console.warn('[CASH-BOX] Nenhum caixa aberto - totais não atualizados');
-    }
-    
-    // Adicionar à fila - incluir saleId nos dados
-    this.addToSyncQueue('create', 'payment', id, { ...paymentData, saleId }, 1);
-    
-    return { id, ...paymentData };
+    // 🔴 CORREÇÃO CRÍTICA: Envolver em transação atômica
+    // Garante que pagamento, atualização de venda e caixa são atômicos
+    return this.runInTransaction(() => {
+      const id = this.generateUUID();
+      const stmt = this.db.prepare(`
+        INSERT INTO payments 
+        (id, sale_id, method, provider, amount, reference_number, transaction_id, status, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      stmt.run(
+        id, 
+        saleId, 
+        normalizedMethod, // Método validado e normalizado
+        paymentData.provider || null,
+        paymentData.amount,
+        paymentData.referenceNumber || null,
+        paymentData.transactionId || null,
+        paymentData.status || 'completed',
+        paymentData.notes || null
+      );
+      
+      // Atualizar status da venda para 'paid' e incrementar versão
+      this.db.prepare(`
+        UPDATE sales 
+        SET status = 'paid', 
+            updated_at = datetime('now'),
+            synced = 0,
+            version = COALESCE(version, 0) + 1
+        WHERE id = ?
+      `).run(saleId);
+      
+      // IMPORTANTE: Atualizar totais do caixa
+      const currentCashBox: any = this.getCurrentCashBox();
+      if (currentCashBox) {
+        this.updateCashBoxTotals(currentCashBox.id, paymentData.amount, normalizedMethod);
+        console.log(`[CASH-BOX] Atualizado: +${paymentData.amount/100} FCFA (${normalizedMethod})`);
+      } else {
+        console.warn('[CASH-BOX] Nenhum caixa aberto - totais não atualizados');
+      }
+      
+      // Adicionar à fila - incluir saleId nos dados
+      this.addToSyncQueue('create', 'payment', id, { ...paymentData, saleId }, 1);
+      
+      return { id, ...paymentData };
+    });
   }
 
   getSales(filters: any = {}) {
@@ -1977,18 +1997,7 @@ export class DatabaseManager {
   }
 
   completePurchase(purchaseId: string, receivedBy: string) {
-    // Atualizar status da compra
-    this.db.prepare(`
-      UPDATE purchases 
-      SET status = 'completed', 
-          received_by = ?,
-          received_at = datetime('now'),
-          updated_at = datetime('now'),
-          synced = 0
-      WHERE id = ?
-    `).run(receivedBy, purchaseId);
-
-    // Obter itens da compra
+    // Obter itens da compra ANTES da transação para evitar problemas
     const items = this.db.prepare(`
       SELECT product_id, qty_units, batch_number, expiry_date
       FROM purchase_items
@@ -1998,13 +2007,32 @@ export class DatabaseManager {
     // Obter branch_id da compra
     const purchase: any = this.db.prepare('SELECT branch_id FROM purchases WHERE id = ?').get(purchaseId);
 
-    // Atualizar estoque para cada item
-    items.forEach((item: any) => {
-      this.addInventory(item.product_id, purchase.branch_id, item.qty_units, item.batch_number, item.expiry_date);
-    });
+    if (!purchase) {
+      throw new Error('Compra não encontrada');
+    }
 
-    this.addToSyncQueue('update', 'purchase', purchaseId, { status: 'completed', receivedBy });
-    return { success: true };
+    // 🔴 CORREÇÃO CRÍTICA: Envolver em transação atômica
+    // Garante que status da compra e estoque são atualizados juntos
+    return this.runInTransaction(() => {
+      // Atualizar status da compra
+      this.db.prepare(`
+        UPDATE purchases 
+        SET status = 'completed', 
+            received_by = ?,
+            received_at = datetime('now'),
+            updated_at = datetime('now'),
+            synced = 0
+        WHERE id = ?
+      `).run(receivedBy, purchaseId);
+
+      // Atualizar estoque para cada item
+      items.forEach((item: any) => {
+        this.addInventory(item.product_id, purchase.branch_id, item.qty_units, item.batch_number, item.expiry_date);
+      });
+
+      this.addToSyncQueue('update', 'purchase', purchaseId, { status: 'completed', receivedBy });
+      return { success: true };
+    });
   }
 
   private updatePurchaseTotals(purchaseId: string) {
@@ -4012,6 +4040,7 @@ export class DatabaseManager {
 
   /**
    * Registra um pagamento de dívida (quitação ou parcial)
+   * 🔴 CORREÇÃO CRÍTICA: Agora usa transação atômica
    */
   payDebt(data: {
     debtId: string;
@@ -4037,77 +4066,81 @@ export class DatabaseManager {
       throw new Error(`Valor maior que o saldo da dívida (${debt.balance / 100} FCFA)`);
     }
 
-    const paymentId = this.generateUUID();
-    const newBalance = debt.balance - data.amount;
-    const newStatus = newBalance === 0 ? 'paid' : 'partial';
+    // 🔴 CORREÇÃO CRÍTICA: Envolver em transação atômica
+    // Garante que pagamento, atualização de dívida e cliente são atômicos
+    return this.runInTransaction(() => {
+      const paymentId = this.generateUUID();
+      const newBalance = debt.balance - data.amount;
+      const newStatus = newBalance === 0 ? 'paid' : 'partial';
 
-    // Registrar pagamento da dívida
-    this.db.prepare(`
-      INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, received_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      paymentId, data.debtId, data.amount, data.method, 
-      data.reference || null, data.notes || null, data.receivedBy
-    );
+      // Registrar pagamento da dívida
+      this.db.prepare(`
+        INSERT INTO debt_payments (id, debt_id, amount, method, reference, notes, received_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        paymentId, data.debtId, data.amount, data.method, 
+        data.reference || null, data.notes || null, data.receivedBy
+      );
 
-    // Atualizar dívida - incluir synced = 0 para garantir sincronização
-    const newPaidAmount = debt.paid_amount + data.amount;
-    this.db.prepare(`
-      UPDATE debts 
-      SET paid_amount = ?,
-          balance = ?,
-          status = ?,
-          synced = 0,
-          updated_at = datetime('now')
-      WHERE id = ?
-    `).run(newPaidAmount, newBalance, newStatus, data.debtId);
+      // Atualizar dívida - incluir synced = 0 para garantir sincronização
+      const newPaidAmount = debt.paid_amount + data.amount;
+      this.db.prepare(`
+        UPDATE debts 
+        SET paid_amount = ?,
+            balance = ?,
+            status = ?,
+            synced = 0,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(newPaidAmount, newBalance, newStatus, data.debtId);
 
-    // Atualizar dívida atual do cliente - incluir synced = 0
-    this.db.prepare(`
-      UPDATE customers 
-      SET current_debt = current_debt - ?,
-          synced = 0,
-          updated_at = datetime('now')
-      WHERE id = ?
-    `).run(data.amount, debt.customer_id);
+      // Atualizar dívida atual do cliente - incluir synced = 0
+      this.db.prepare(`
+        UPDATE customers 
+        SET current_debt = current_debt - ?,
+            synced = 0,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(data.amount, debt.customer_id);
 
-    // Registrar pagamento geral (para rastreabilidade)
-    const generalPaymentId = this.generateUUID();
-    this.db.prepare(`
-      INSERT INTO payments (id, debt_id, method, amount, status, notes)
-      VALUES (?, ?, ?, ?, 'completed', ?)
-    `).run(
-      generalPaymentId, data.debtId, data.method, data.amount,
-      `Pagamento de dívida ${debt.debt_number}`
-    );
+      // Registrar pagamento geral (para rastreabilidade)
+      const generalPaymentId = this.generateUUID();
+      this.db.prepare(`
+        INSERT INTO payments (id, debt_id, method, amount, status, notes)
+        VALUES (?, ?, ?, ?, 'completed', ?)
+      `).run(
+        generalPaymentId, data.debtId, data.method, data.amount,
+        `Pagamento de dívida ${debt.debt_number}`
+      );
 
-    // Sincronizar pagamento de dívida para o backend
-    this.addToSyncQueue('create', 'debt_payment', paymentId, {
-      debtId: data.debtId,
-      amount: data.amount,
-      method: data.method,
-      reference: data.reference,
-      notes: data.notes,
-    }, 1); // Alta prioridade
-    
-    // IMPORTANTE: Também sincronizar a atualização da dívida em si
-    this.addToSyncQueue('update', 'debt', data.debtId, {
-      paidAmount: newPaidAmount,
-      balance: newBalance,
-      status: newStatus,
-    }, 20); // Prioridade normal de dívidas
-    
-    // Sincronizar atualização do current_debt do cliente
-    this.addToSyncQueue('update', 'customer', debt.customer_id, {
-      currentDebt: debt.current_debt - data.amount,
-    }, 10); // Prioridade de clientes
+      // Sincronizar pagamento de dívida para o backend
+      this.addToSyncQueue('create', 'debt_payment', paymentId, {
+        debtId: data.debtId,
+        amount: data.amount,
+        method: data.method,
+        reference: data.reference,
+        notes: data.notes,
+      }, 1); // Alta prioridade
+      
+      // IMPORTANTE: Também sincronizar a atualização da dívida em si
+      this.addToSyncQueue('update', 'debt', data.debtId, {
+        paidAmount: newPaidAmount,
+        balance: newBalance,
+        status: newStatus,
+      }, 20); // Prioridade normal de dívidas
+      
+      // Sincronizar atualização do current_debt do cliente
+      this.addToSyncQueue('update', 'customer', debt.customer_id, {
+        currentDebt: debt.current_debt - data.amount,
+      }, 10); // Prioridade de clientes
 
-    return {
-      paymentId,
-      newBalance,
-      status: newStatus,
-      isPaid: newBalance === 0
-    };
+      return {
+        paymentId,
+        newBalance,
+        status: newStatus,
+        isPaid: newBalance === 0
+      };
+    });
   }
 
   /**
