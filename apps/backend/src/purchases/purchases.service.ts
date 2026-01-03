@@ -91,6 +91,19 @@ export class PurchasesService {
   }
 
   async addItem(purchaseId: string, itemDto: AddPurchaseItemDto) {
+    // 🔴 IDEMPOTÊNCIA: Se já existe um item com esse ID, retornar o existente
+    // Isso evita duplicação quando o sync reenvia o mesmo item
+    if (itemDto.id) {
+      const existingById = await this.prisma.purchaseItem.findUnique({
+        where: { id: itemDto.id },
+        include: { product: true },
+      });
+      if (existingById) {
+        console.log(`[Purchases] Item ${itemDto.id} já existe, retornando existente (idempotência)`);
+        return existingById;
+      }
+    }
+
     const purchase = await this.prisma.purchase.findUnique({
       where: { id: purchaseId },
     });
@@ -111,16 +124,54 @@ export class PurchasesService {
       throw new NotFoundException('Produto não encontrado');
     }
 
-    // Converter caixas para unidades
+    // 🔴 IDEMPOTÊNCIA ADICIONAL: Verificar se já existe item para esse produto nessa compra
+    // Evita duplicação mesmo sem ID
+    const existingByProduct = await this.prisma.purchaseItem.findFirst({
+      where: { 
+        purchaseId, 
+        productId: itemDto.productId 
+      },
+      include: { product: true },
+    });
+    if (existingByProduct) {
+      console.log(`[Purchases] Item para produto ${itemDto.productId} já existe na compra ${purchaseId}, retornando existente`);
+      return existingByProduct;
+    }
+
+    // 🔴 CORREÇÃO CRÍTICA: Cálculo de custo de compra
+    // O frontend envia:
+    // - qtyUnits: total de unidades (já convertido de caixas)
+    // - qtyBoxes: número de caixas (pode ser 0 se já convertido)
+    // - unitCost: custo por CAIXA (não por unidade!)
+    // - subtotal: valor total já calculado pelo frontend
+    //
+    // Se subtotal vier do frontend, usar diretamente (já está correto)
+    // Senão, calcular: qtyBoxes * unitCost (custo por caixa × número de caixas)
+    
     const totalUnits = (itemDto.qtyBoxes || 0) * product.unitsPerBox + (itemDto.qtyUnits || 0);
-    const totalCost = itemDto.unitCost * totalUnits;
+    
+    // Calcular número de caixas a partir de unidades se qtyBoxes não foi informado
+    const qtyBoxes = itemDto.qtyBoxes || Math.ceil((itemDto.qtyUnits || 0) / product.unitsPerBox);
+    
+    // 🔴 CORREÇÃO: Se subtotal já veio calculado do frontend, usar ele!
+    // O frontend calcula corretamente: qtyBoxes * unitCost (custo por caixa)
+    // Se não veio subtotal, calcular: qtyBoxes * unitCost
+    let totalCost: number;
+    if (itemDto.subtotal && itemDto.subtotal > 0) {
+      // Usar valor do frontend que já está correto
+      totalCost = itemDto.subtotal;
+    } else {
+      // Fallback: calcular usando caixas × custo por caixa
+      totalCost = qtyBoxes * itemDto.unitCost;
+    }
 
     const purchaseItem = await this.prisma.purchaseItem.create({
       data: {
+        id: itemDto.id, // Usar ID do frontend se fornecido
         purchase: { connect: { id: purchaseId } },
         product: { connect: { id: itemDto.productId } },
         qtyUnits: totalUnits,
-        qtyBoxes: itemDto.qtyBoxes || 0,
+        qtyBoxes: qtyBoxes,
         unitCost: itemDto.unitCost,
         subtotal: totalCost,
         total: totalCost,

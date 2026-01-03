@@ -3782,11 +3782,16 @@ export class SyncManager {
             throw checkError;
           }
           
+          // 🔴 CORREÇÃO: Enviar subtotal e ID para idempotência
+          // O subtotal já está calculado corretamente no frontend
+          // O ID garante que o mesmo item não seja criado duas vezes
           await this.apiClient.post(`/purchases/${data.purchaseId}/items`, {
+            id: entity_id, // ID do item para idempotência
             productId: data.productId || data.product_id,
             qtyUnits: data.qtyUnits || data.qty_units || 0,
             qtyBoxes: data.qtyBoxes || data.qty_boxes || 0,
             unitCost: data.unitCost || data.unit_cost || 0,
+            subtotal: data.subtotal || data.total || 0, // Enviar subtotal calculado
           });
           console.log('✅ Item de compra sincronizado:', entity_id);
           return { success: true };

@@ -44,6 +44,10 @@ export class UpdatePurchaseDto {
 }
 
 export class AddPurchaseItemDto {
+  @IsOptional()
+  @IsString()
+  id?: string; // ID opcional para idempotência - se já existe, ignora
+
   @IsString()
   productId: string;
 
@@ -60,4 +64,9 @@ export class AddPurchaseItemDto {
   @IsInt()
   @Min(0)
   unitCost: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  subtotal?: number;
 }
