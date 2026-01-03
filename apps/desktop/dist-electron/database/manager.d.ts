@@ -38,6 +38,11 @@ export declare class DatabaseManager {
     isAvailable(): boolean;
     private createTables;
     private runMigrations;
+    /**
+     * 🔴 TRANSAÇÃO ATÔMICA: Wrapper para operações que precisam ser atômicas
+     * Garante rollback automático em caso de erro
+     */
+    private runInTransaction;
     createSale(data: any, skipSyncQueue?: boolean): {
         items: any;
         payments: any;
@@ -405,6 +410,7 @@ export declare class DatabaseManager {
     }>;
     /**
      * Registra um pagamento de dívida (quitação ou parcial)
+     * 🔴 CORREÇÃO CRÍTICA: Agora usa transação atômica
      */
     payDebt(data: {
         debtId: string;

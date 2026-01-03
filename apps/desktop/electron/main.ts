@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Notification } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import Store from 'electron-store';
 import axios from 'axios';
 import { DatabaseManager } from './database/manager';
 import { SyncManager } from './sync/manager';
+import { BackupManager } from './backup/manager';
 
 // Logs críticos obrigatórios
 console.log('🚀 ELECTRON MAIN STARTED');
@@ -15,6 +16,7 @@ const store = new Store();
 let mainWindow: BrowserWindow | null = null;
 let dbManager: DatabaseManager;
 let syncManager: SyncManager;
+let backupManager: BackupManager;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -67,6 +69,11 @@ app.whenReady().then(async () => {
   try {
     await dbManager.initialize();
     console.log('✅ Banco de dados SQLite inicializado');
+    
+    // Inicializar backup automático
+    backupManager = new BackupManager(dbPath);
+    backupManager.startAutoBackup();
+    console.log('✅ Backup automático iniciado');
   } catch (error) {
     console.error('⚠️ Erro ao inicializar banco SQLite (funcionará apenas online):', error);
     // Continuar sem banco local - app vai usar apenas API
@@ -952,7 +959,162 @@ ipcMain.handle('settings:getAll', async () => {
   return store.store;
 });
 
-// Backup
+// ═══════════════════════════════════════════════════════════════════════════
+// BACKUP AUTOMÁTICO - Gerenciamento de backups periódicos do SQLite
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Criar backup manual
+ipcMain.handle('autoBackup:create', async () => {
+  if (!backupManager) {
+    return { success: false, error: 'BackupManager não inicializado' };
+  }
+  const backupPath = backupManager.createBackup('manual');
+  return { success: !!backupPath, path: backupPath };
+});
+
+// Listar backups disponíveis
+ipcMain.handle('autoBackup:list', async () => {
+  if (!backupManager) {
+    return [];
+  }
+  return backupManager.listBackups();
+});
+
+// Restaurar backup
+ipcMain.handle('autoBackup:restore', async (_, backupPath: string) => {
+  if (!backupManager) {
+    return { success: false, error: 'BackupManager não inicializado' };
+  }
+  const success = backupManager.restoreBackup(backupPath);
+  return { success };
+});
+
+// Estatísticas de backup
+ipcMain.handle('autoBackup:stats', async () => {
+  if (!backupManager) {
+    return { totalBackups: 0, totalSize: 0, lastBackup: null, backupDir: '' };
+  }
+  return backupManager.getStats();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEAD LETTER QUEUE - Monitoramento de itens com falha de sincronização
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Obter itens na Dead Letter Queue
+ipcMain.handle('dlq:list', async () => {
+  if (!dbManager) {
+    return [];
+  }
+  try {
+    const dlqItems = dbManager.prepare(`
+      SELECT 
+        sq.*,
+        CASE 
+          WHEN sq.entity_type = 'sale' THEN (SELECT sale_number FROM sales WHERE id = sq.entity_id)
+          WHEN sq.entity_type = 'customer' THEN (SELECT name FROM customers WHERE id = sq.entity_id)
+          WHEN sq.entity_type = 'debt' THEN (SELECT debt_number FROM debts WHERE id = sq.entity_id)
+          ELSE sq.entity_id
+        END as entity_display
+      FROM sync_queue sq 
+      WHERE sq.retry_count >= 10 
+      ORDER BY sq.created_at DESC
+      LIMIT 100
+    `).all();
+    return dlqItems;
+  } catch (error) {
+    console.error('Erro ao listar DLQ:', error);
+    return [];
+  }
+});
+
+// Obter contagem de itens na DLQ
+ipcMain.handle('dlq:count', async () => {
+  if (!dbManager) {
+    return 0;
+  }
+  try {
+    const result = dbManager.prepare(`
+      SELECT COUNT(*) as count FROM sync_queue WHERE retry_count >= 10
+    `).get() as any;
+    return result?.count || 0;
+  } catch (error) {
+    console.error('Erro ao contar DLQ:', error);
+    return 0;
+  }
+});
+
+// Reprocessar item da DLQ (reset retry count)
+ipcMain.handle('dlq:retry', async (_, entityId: string) => {
+  if (!dbManager) {
+    return { success: false, error: 'Database não inicializado' };
+  }
+  try {
+    dbManager.prepare(`
+      UPDATE sync_queue SET retry_count = 0, last_error = NULL 
+      WHERE entity_id = ?
+    `).run(entityId);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Erro ao reprocessar item DLQ:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Remover item da DLQ permanentemente
+ipcMain.handle('dlq:remove', async (_, entityId: string) => {
+  if (!dbManager) {
+    return { success: false, error: 'Database não inicializado' };
+  }
+  try {
+    dbManager.prepare(`DELETE FROM sync_queue WHERE entity_id = ?`).run(entityId);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Erro ao remover item DLQ:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Limpar toda a DLQ
+ipcMain.handle('dlq:clear', async () => {
+  if (!dbManager) {
+    return { success: false, error: 'Database não inicializado' };
+  }
+  try {
+    const result = dbManager.prepare(`DELETE FROM sync_queue WHERE retry_count >= 10`).run();
+    return { success: true, deletedCount: result.changes };
+  } catch (error: any) {
+    console.error('Erro ao limpar DLQ:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Verificar e alertar sobre DLQ (chamado periodicamente)
+ipcMain.handle('dlq:checkAlert', async () => {
+  if (!dbManager) return { shouldAlert: false, count: 0 };
+  
+  try {
+    const result = dbManager.prepare(`
+      SELECT COUNT(*) as count FROM sync_queue WHERE retry_count >= 10
+    `).get() as any;
+    
+    const count = result?.count || 0;
+    const shouldAlert = count >= 10; // Alertar se tiver 10+ itens na DLQ
+    
+    if (shouldAlert && Notification.isSupported()) {
+      new Notification({
+        title: '⚠️ Atenção: Itens não sincronizados',
+        body: `${count} itens falharam na sincronização. Verifique a Dead Letter Queue.`
+      }).show();
+    }
+    
+    return { shouldAlert, count };
+  } catch (error) {
+    return { shouldAlert: false, count: 0 };
+  }
+});
+
+// Backup (handlers existentes)
 ipcMain.handle('backup:create', async (_, options) => {
   const backupPath = options?.backupDir || path.join(app.getPath('documents'), 'BarManager-Backups');
   const backupType = options?.backupType || 'manual';

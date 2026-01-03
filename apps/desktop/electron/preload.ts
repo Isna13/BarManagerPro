@@ -274,7 +274,25 @@ const api = {
     getAll: () => ipcRenderer.invoke('settings:getAll'),
   },
   
-  // Backup
+  // Backup Automático (novo sistema)
+  autoBackup: {
+    create: () => ipcRenderer.invoke('autoBackup:create'),
+    list: () => ipcRenderer.invoke('autoBackup:list'),
+    restore: (backupPath: string) => ipcRenderer.invoke('autoBackup:restore', backupPath),
+    stats: () => ipcRenderer.invoke('autoBackup:stats'),
+  },
+  
+  // Dead Letter Queue - Monitoramento de falhas de sincronização
+  dlq: {
+    list: () => ipcRenderer.invoke('dlq:list'),
+    count: () => ipcRenderer.invoke('dlq:count'),
+    retry: (entityId: string) => ipcRenderer.invoke('dlq:retry', entityId),
+    remove: (entityId: string) => ipcRenderer.invoke('dlq:remove', entityId),
+    clear: () => ipcRenderer.invoke('dlq:clear'),
+    checkAlert: () => ipcRenderer.invoke('dlq:checkAlert'),
+  },
+  
+  // Backup (sistema existente)
   backup: {
     create: (options?: { backupDir?: string; backupType?: string; createdBy?: string }) => 
       ipcRenderer.invoke('backup:create', options),

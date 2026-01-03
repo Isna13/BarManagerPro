@@ -1268,8 +1268,6 @@ export class SyncManager {
         { name: 'table_sessions', endpoint: '/table-sessions', fullSync: true }, // Rota separada para evitar conflito com /tables/:id
       ];
       
-      console.log('🔍 DEBUG: Entidades para sincronizar:', entities.map(e => e.name).join(', '));
-      
       for (const entity of entities) {
         try {
           console.log(`📥 Sincronizando ${entity.name}...`);
@@ -2739,9 +2737,6 @@ export class SyncManager {
               // Venda já existe - verificar se precisa atualizar
               const existingAny = existing as any;
               
-              // DEBUG: Log do que o servidor enviou
-              console.log(`🔍 DEBUG Venda ${item.id}: payments=${JSON.stringify(item.payments)}, paymentMethod=${item.paymentMethod || item.payment_method}`);
-              
               // Atualizar status se necessário
               if (existingAny.status !== item.status) {
                 this.dbManager.prepare(`
@@ -2755,8 +2750,6 @@ export class SyncManager {
               const localPayments = this.dbManager.prepare(`
                 SELECT id, method FROM payments WHERE sale_id = ?
               `).all(item.id) as any[];
-              
-              console.log(`📊 DEBUG Local payments (${localPayments.length}): ${JSON.stringify(localPayments)}`);
               
               // Determinar método de pagamento do servidor
               const serverPaymentMethod = item.payments && Array.isArray(item.payments) && item.payments.length > 0

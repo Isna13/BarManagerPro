@@ -1313,9 +1313,6 @@ export class DatabaseManager {
   }
 
   addSalePayment(saleId: string, paymentData: any) {
-    console.log('💳 DEBUG addSalePayment - paymentData:', JSON.stringify(paymentData));
-    console.log('💳 DEBUG addSalePayment - method recebido:', paymentData.method);
-    
     // Validar método de pagamento - NUNCA usar fallback
     const normalizedMethod = tryNormalizePaymentMethod(paymentData.method);
     if (!normalizedMethod) {

@@ -91,16 +91,60 @@ export default function SettingsPage() {
     users: false,
     backup: false,
     serverBackup: false,
+    autoBackup: false,
+    dlq: false,
     resetData: false,
     advanced: false
   });
+
+  // Estados para DLQ e Backup Automático
+  const [dlqCount, setDlqCount] = useState(0);
+  const [dlqItems, setDlqItems] = useState<any[]>([]);
+  const [dlqLoading, setDlqLoading] = useState(false);
+  const [autoBackupStats, setAutoBackupStats] = useState<any>(null);
+  const [autoBackupList, setAutoBackupList] = useState<any[]>([]);
+  const [autoBackupLoading, setAutoBackupLoading] = useState(false);
 
   // Carregar status detalhado ao montar
   useEffect(() => {
     loadDetailedSyncStatus();
     loadBackupHistory();
     loadBackupPath();
+    loadDlqStatus();
+    loadAutoBackupStats();
   }, []);
+
+  // Carregar DLQ
+  const loadDlqStatus = async () => {
+    try {
+      // @ts-ignore
+      const count = await window.electronAPI?.dlq?.count?.() || 0;
+      setDlqCount(count);
+      
+      if (count > 0) {
+        // @ts-ignore
+        const items = await window.electronAPI?.dlq?.list?.() || [];
+        setDlqItems(items);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar DLQ:', error);
+    }
+  };
+
+  // Carregar estatísticas de backup automático
+  const loadAutoBackupStats = async () => {
+    try {
+      // @ts-ignore
+      const stats = await window.electronAPI?.autoBackup?.stats?.();
+      setAutoBackupStats(stats);
+      
+      // @ts-ignore
+      const list = await window.electronAPI?.autoBackup?.list?.() || [];
+      setAutoBackupList(list);
+    } catch (error) {
+      console.error('Erro ao carregar stats de backup:', error);
+    }
+  };
 
   const loadBackupHistory = async () => {
     try {
@@ -1695,6 +1739,269 @@ export default function SettingsPage() {
                     </ul>
                   </div>
                 </div>
+              </div>
+            </div>
+          </ConfigCard>
+
+          {/* 8.2 Backup Automático Local */}
+          <ConfigCard title="Backup Automático (Local)" icon={HardDrive} sectionKey="autoBackup">
+            <div className="space-y-4">
+              {/* Status do Backup Automático */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-700">{autoBackupStats?.totalBackups || 0}</div>
+                  <div className="text-sm text-blue-600">Backups</div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-green-700">
+                    {autoBackupStats?.totalSize ? `${(autoBackupStats.totalSize / 1024 / 1024).toFixed(1)} MB` : '0 MB'}
+                  </div>
+                  <div className="text-sm text-green-600">Tamanho Total</div>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-purple-700">4h</div>
+                  <div className="text-sm text-purple-600">Intervalo</div>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                  <div className="text-sm font-medium text-gray-700">
+                    {autoBackupStats?.lastBackup 
+                      ? new Date(autoBackupStats.lastBackup).toLocaleString('pt-BR')
+                      : 'Nunca'}
+                  </div>
+                  <div className="text-sm text-gray-600">Último Backup</div>
+                </div>
+              </div>
+
+              {/* Ações */}
+              <div className="flex gap-3">
+                <button
+                  onClick={async () => {
+                    setAutoBackupLoading(true);
+                    try {
+                      // @ts-ignore
+                      const result = await window.electronAPI?.autoBackup?.create?.();
+                      if (result?.success) {
+                        toast.success('✅ Backup manual criado com sucesso!');
+                        loadAutoBackupStats();
+                      } else {
+                        toast.error('❌ Erro ao criar backup');
+                      }
+                    } catch (error) {
+                      toast.error('❌ Erro ao criar backup');
+                    } finally {
+                      setAutoBackupLoading(false);
+                    }
+                  }}
+                  disabled={autoBackupLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center gap-2"
+                >
+                  {autoBackupLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  Criar Backup Manual
+                </button>
+                <button
+                  onClick={loadAutoBackupStats}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Atualizar
+                </button>
+              </div>
+
+              {/* Lista de Backups */}
+              {autoBackupList.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-4 py-2 font-medium">Data</th>
+                        <th className="text-left px-4 py-2 font-medium">Tipo</th>
+                        <th className="text-left px-4 py-2 font-medium">Tamanho</th>
+                        <th className="text-right px-4 py-2 font-medium">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autoBackupList.slice(0, 5).map((backup, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="px-4 py-2">{new Date(backup.date).toLocaleString('pt-BR')}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              backup.reason === 'scheduled' ? 'bg-blue-100 text-blue-700' :
+                              backup.reason === 'startup' ? 'bg-green-100 text-green-700' :
+                              backup.reason === 'manual' ? 'bg-purple-100 text-purple-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {backup.reason === 'scheduled' ? 'Agendado' :
+                               backup.reason === 'startup' ? 'Inicialização' :
+                               backup.reason === 'manual' ? 'Manual' : backup.reason}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">{(backup.size / 1024 / 1024).toFixed(2)} MB</td>
+                          <td className="px-4 py-2 text-right">
+                            <button
+                              onClick={async () => {
+                                if (confirm('Restaurar este backup? O banco atual será substituído.')) {
+                                  // @ts-ignore
+                                  const result = await window.electronAPI?.autoBackup?.restore?.(backup.path);
+                                  if (result?.success) {
+                                    toast.success('✅ Backup restaurado! Reinicie o app.');
+                                  } else {
+                                    toast.error('❌ Erro ao restaurar');
+                                  }
+                                }
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-xs"
+                            >
+                              Restaurar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                <strong>ℹ️ Info:</strong> Backups automáticos são criados a cada 4 horas e na inicialização do app.
+                Os últimos 7 backups são mantidos.
+                {autoBackupStats?.backupDir && <span className="block mt-1 text-xs">📁 {autoBackupStats.backupDir}</span>}
+              </div>
+            </div>
+          </ConfigCard>
+
+          {/* 8.3 Dead Letter Queue - Monitoramento */}
+          <ConfigCard title="Dead Letter Queue (Itens com Falha)" icon={AlertTriangle} sectionKey="dlq">
+            <div className="space-y-4">
+              {/* Status da DLQ */}
+              <div className="flex items-center gap-4">
+                <div className={`px-4 py-3 rounded-lg flex items-center gap-2 ${
+                  dlqCount === 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                }`}>
+                  {dlqCount === 0 ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                  )}
+                  <span className={`font-medium ${dlqCount === 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {dlqCount === 0 
+                      ? '✅ Nenhum item com falha de sincronização' 
+                      : `⚠️ ${dlqCount} itens falharam na sincronização`}
+                  </span>
+                </div>
+                <button
+                  onClick={loadDlqStatus}
+                  disabled={dlqLoading}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-1"
+                >
+                  <RefreshCw className={`w-4 h-4 ${dlqLoading ? 'animate-spin' : ''}`} />
+                  Atualizar
+                </button>
+              </div>
+
+              {/* Lista de Itens na DLQ */}
+              {dlqItems.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-4 py-2 font-medium">Tipo</th>
+                        <th className="text-left px-4 py-2 font-medium">Identificador</th>
+                        <th className="text-left px-4 py-2 font-medium">Tentativas</th>
+                        <th className="text-left px-4 py-2 font-medium">Último Erro</th>
+                        <th className="text-right px-4 py-2 font-medium">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dlqItems.slice(0, 10).map((item, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="px-4 py-2">
+                            <span className="px-2 py-0.5 bg-gray-100 rounded text-xs uppercase">
+                              {item.entity_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 font-mono text-xs">
+                            {item.entity_display || item.entity_id?.slice(0, 8)}...
+                          </td>
+                          <td className="px-4 py-2 text-red-600 font-medium">{item.retry_count}x</td>
+                          <td className="px-4 py-2 text-xs text-gray-600 max-w-xs truncate">
+                            {item.last_error || '-'}
+                          </td>
+                          <td className="px-4 py-2 text-right space-x-2">
+                            <button
+                              onClick={async () => {
+                                // @ts-ignore
+                                const result = await window.electronAPI?.dlq?.retry?.(item.entity_id);
+                                if (result?.success) {
+                                  toast.success('✅ Item reenfileirado para nova tentativa');
+                                  loadDlqStatus();
+                                }
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-xs"
+                            >
+                              Tentar Novamente
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (confirm('Remover permanentemente?')) {
+                                  // @ts-ignore
+                                  const result = await window.electronAPI?.dlq?.remove?.(item.entity_id);
+                                  if (result?.success) {
+                                    toast.success('Item removido');
+                                    loadDlqStatus();
+                                  }
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              Remover
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Ações Globais */}
+              {dlqItems.length > 0 && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={async () => {
+                      // @ts-ignore
+                      for (const item of dlqItems) {
+                        // @ts-ignore
+                        await window.electronAPI?.dlq?.retry?.(item.entity_id);
+                      }
+                      toast.success('✅ Todos os itens reenfileirados');
+                      loadDlqStatus();
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Tentar Todos Novamente
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (confirm('Limpar toda a Dead Letter Queue?')) {
+                        // @ts-ignore
+                        const result = await window.electronAPI?.dlq?.clear?.();
+                        if (result?.success) {
+                          toast.success(`✅ ${result.deletedCount} itens removidos`);
+                          loadDlqStatus();
+                        }
+                      }
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Limpar DLQ
+                  </button>
+                </div>
+              )}
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                <strong>ℹ️ O que é a Dead Letter Queue?</strong><br />
+                Itens que falharam 10+ vezes ao sincronizar são movidos para cá. 
+                Você pode tentar novamente ou removê-los manualmente.
               </div>
             </div>
           </ConfigCard>
