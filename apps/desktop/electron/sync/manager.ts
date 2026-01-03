@@ -803,25 +803,39 @@ export class SyncManager {
   
   /**
    * Sincroniza caixa do servidor para o banco local
+   * 🔴 CORREÇÃO: Mapear TODOS os campos do servidor para evitar NaN/Invalid Date
    */
   private syncServerCashBoxToLocal(serverBox: any) {
     try {
+      // Mapear campos do servidor (camelCase) para local (snake_case)
+      const mappedData = {
+        id: serverBox.id,
+        boxNumber: serverBox.boxNumber || serverBox.box_number,
+        branchId: serverBox.branchId || serverBox.branch_id,
+        openedBy: serverBox.openedBy || serverBox.opened_by || serverBox.openedByUser?.id,
+        openingCash: serverBox.openingCash ?? serverBox.opening_cash ?? 0,
+        status: serverBox.status || 'open',
+        openedAt: serverBox.openedAt || serverBox.opened_at || new Date().toISOString(),
+        totalSales: serverBox.totalSales ?? serverBox.total_sales ?? 0,
+        totalCash: serverBox.totalCash ?? serverBox.total_cash ?? 0,
+        totalCard: serverBox.totalCard ?? serverBox.total_card ?? 0,
+        totalMobileMoney: serverBox.totalMobileMoney ?? serverBox.total_mobile_money ?? 0,
+        totalDebt: serverBox.totalDebt ?? serverBox.total_debt ?? 0,
+        closingCash: serverBox.closingCash ?? serverBox.closing_cash,
+        closedAt: serverBox.closedAt || serverBox.closed_at,
+        closedBy: serverBox.closedBy || serverBox.closed_by,
+        notes: serverBox.notes,
+      };
+      
       // Verificar se já existe localmente
       const existingLocal = this.dbManager.getCashBoxById(serverBox.id);
       
       if (existingLocal) {
         console.log('📦 Caixa já existe localmente, atualizando...');
-        this.dbManager.updateCashBoxFromServer(serverBox.id, serverBox);
+        this.dbManager.updateCashBoxFromServer(serverBox.id, mappedData);
       } else {
         console.log('📦 Criando caixa local a partir do servidor...');
-        this.dbManager.createCashBoxFromServer({
-          id: serverBox.id,
-          boxNumber: serverBox.boxNumber,
-          branchId: serverBox.branchId,
-          openedBy: serverBox.openedBy || serverBox.openedByUser?.id,
-          openingCash: serverBox.openingCash,
-          status: serverBox.status,
-        });
+        this.dbManager.createCashBoxFromServer(mappedData);
       }
     } catch (error) {
       console.error('❌ Erro ao sincronizar caixa do servidor:', error);

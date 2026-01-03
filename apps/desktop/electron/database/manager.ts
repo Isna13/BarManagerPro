@@ -4389,6 +4389,7 @@ export class DatabaseManager {
   /**
    * Cria um caixa localmente a partir dos dados do servidor
    * NÃO adiciona à fila de sync (já existe no servidor)
+   * 🔴 CORREÇÃO: Incluir TODOS os campos para evitar NaN/Invalid Date
    */
   createCashBoxFromServer(data: {
     id: string;
@@ -4397,6 +4398,16 @@ export class DatabaseManager {
     openedBy: string;
     openingCash: number;
     status: string;
+    openedAt?: string;
+    totalSales?: number;
+    totalCash?: number;
+    totalCard?: number;
+    totalMobileMoney?: number;
+    totalDebt?: number;
+    closingCash?: number;
+    closedAt?: string;
+    closedBy?: string;
+    notes?: string;
   }) {
     try {
       // Verificar se já existe
@@ -4406,16 +4417,33 @@ export class DatabaseManager {
         return this.getCashBoxById(data.id);
       }
       
+      // Garantir que opened_at tenha um valor válido
+      const openedAt = data.openedAt || new Date().toISOString();
+      
       this.db.prepare(`
-        INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, opening_cash, status, synced)
-        VALUES (?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO cash_boxes (
+          id, box_number, branch_id, opened_by, opening_cash, status, synced,
+          opened_at, total_sales, total_cash, total_card, total_mobile_money, total_debt,
+          closing_cash, closed_at, closed_by, notes
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         data.id,
         data.boxNumber,
         data.branchId,
         data.openedBy,
-        data.openingCash || 0,
-        data.status || 'open'
+        data.openingCash ?? 0,
+        data.status || 'open',
+        openedAt,
+        data.totalSales ?? 0,
+        data.totalCash ?? 0,
+        data.totalCard ?? 0,
+        data.totalMobileMoney ?? 0,
+        data.totalDebt ?? 0,
+        data.closingCash ?? null,
+        data.closedAt ?? null,
+        data.closedBy ?? null,
+        data.notes ?? null
       );
       
       console.log(`✅ CashBox criado localmente a partir do servidor: ${data.id}`);
@@ -4432,12 +4460,20 @@ export class DatabaseManager {
   
   /**
    * Atualiza um caixa local com dados do servidor
+   * 🔴 CORREÇÃO: Atualizar TODOS os campos para evitar NaN/Invalid Date
    */
   updateCashBoxFromServer(cashBoxId: string, serverData: any) {
     try {
       this.db.prepare(`
         UPDATE cash_boxes 
         SET status = COALESCE(?, status),
+            opening_cash = COALESCE(?, opening_cash),
+            opened_at = COALESCE(?, opened_at),
+            total_sales = COALESCE(?, total_sales),
+            total_cash = COALESCE(?, total_cash),
+            total_card = COALESCE(?, total_card),
+            total_mobile_money = COALESCE(?, total_mobile_money),
+            total_debt = COALESCE(?, total_debt),
             closing_cash = COALESCE(?, closing_cash),
             closed_at = COALESCE(?, closed_at),
             closed_by = COALESCE(?, closed_by),
@@ -4447,7 +4483,14 @@ export class DatabaseManager {
         WHERE id = ?
       `).run(
         serverData.status,
-        serverData.closingCash || serverData.closing_cash,
+        serverData.openingCash ?? serverData.opening_cash,
+        serverData.openedAt || serverData.opened_at,
+        serverData.totalSales ?? serverData.total_sales,
+        serverData.totalCash ?? serverData.total_cash,
+        serverData.totalCard ?? serverData.total_card,
+        serverData.totalMobileMoney ?? serverData.total_mobile_money,
+        serverData.totalDebt ?? serverData.total_debt,
+        serverData.closingCash ?? serverData.closing_cash,
         serverData.closedAt || serverData.closed_at,
         serverData.closedBy || serverData.closed_by,
         serverData.notes,
