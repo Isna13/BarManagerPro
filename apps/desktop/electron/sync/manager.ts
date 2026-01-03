@@ -3669,9 +3669,25 @@ export class SyncManager {
       
       case 'inventory':
       case 'inventory_item':
-        // Inventário - sincronizar usando valores absolutos via POST /inventory (upsert)
+        // 🔴 CORREÇÃO: Priorizar adjustment (delta) para evitar conflitos multi-PC
         if (operation === 'update' || operation === 'create') {
-          // Usar POST /inventory que faz upsert com valores absolutos
+          // Se tem adjustment, usar endpoint de delta (mais seguro para multi-PC)
+          if (data.adjustment !== undefined && data.adjustment !== null) {
+            try {
+              await this.apiClient.put('/inventory/adjust-by-product', {
+                productId: data.productId || data.product_id,
+                branchId: data.branchId || data.branch_id,
+                adjustment: data.adjustment,
+                reason: data.reason || 'Ajuste via sync inventory',
+              });
+              console.log('✅ Estoque sincronizado (delta):', data.productId, 'Adj:', data.adjustment);
+              return { success: true };
+            } catch (deltaError: any) {
+              console.warn('⚠️ Delta falhou, tentando upsert:', deltaError.message);
+            }
+          }
+          
+          // Fallback: usar POST /inventory com valor absoluto
           await this.apiClient.post('/inventory', {
             productId: data.productId || data.product_id,
             branchId: data.branchId || data.branch_id,

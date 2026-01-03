@@ -1875,7 +1875,12 @@ class DatabaseManager {
         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `).run(id, productId, branchId, quantity, closedBoxes, openBoxUnits);
         }
-        this.addToSyncQueue('update', 'inventory', productId, { quantity, reason, branchId }, 2);
+        this.addToSyncQueue('update', 'inventory', productId, {
+            quantity, // quantidade adicionada/ajustada
+            adjustment: quantity, // delta para sync correto
+            reason,
+            branchId
+        }, 2);
     }
     addInventory(productId, branchId, qtyUnits, batchNumber, expiryDate) {
         // Buscar produto para pegar units_per_box
@@ -1904,13 +1909,14 @@ class DatabaseManager {
               synced = 0
           WHERE id = ?
         `).run(newQtyUnits, newClosedBoxes, newOpenBoxUnits, expiryDate, existing.id);
-                // Sincronizar estoque com lote - usar valores absolutos
+                // Sincronizar estoque com lote - usar adjustment para multi-PC
                 this.addToSyncQueue('update', 'inventory', productId, {
                     productId,
                     branchId,
                     qtyUnits: newQtyUnits,
                     closedBoxes: newClosedBoxes,
                     openBoxUnits: newOpenBoxUnits,
+                    adjustment: qtyUnits, // delta positivo para entrada
                     reason: `Compra recebida - Lote ${batchNumber}`,
                 }, 2);
             }
@@ -1931,6 +1937,7 @@ class DatabaseManager {
                     branchId,
                     qtyUnits,
                     qtyBoxes: closedBoxes,
+                    adjustment: qtyUnits, // delta positivo para entrada inicial
                     reason: `Compra inicial - Lote ${batchNumber}`,
                 }, 2);
             }
@@ -2229,15 +2236,18 @@ class DatabaseManager {
             saleId,
             notes: boxesOpened > 0 ? `${boxesOpened} caixa(s) aberta(s) automaticamente` : undefined,
         });
-        // Adicionar à fila de sincronização para atualizar estoque no servidor
-        this.addToSyncQueue('update', 'inventory', inventory.id, {
-            productId,
-            branchId,
-            qtyUnits: inventoryAfter.qty_units,
-            adjustment: -unitsToDeduct,
-            reason: isMuntu ? 'Venda Muntu' : 'Venda',
-            saleId,
-        }, 2);
+        // 🔴 CORREÇÃO CRÍTICA: NÃO sincronizar como 'inventory' (valor absoluto)!
+        // O registerStockMovement() acima já adiciona à fila como 'stock_movement'
+        // que usa delta operation (adjustment) - isso é correto para multi-PC.
+        // Enviar também como 'inventory' causava DUPLICAÇÃO porque:
+        // 1. stock_movement subtrai -N do servidor
+        // 2. inventory sobrescreve com valor absoluto local (que pode estar desatualizado)
+        // 
+        // REMOVIDO:
+        // this.addToSyncQueue('update', 'inventory', inventory.id, {
+        //   productId, branchId, qtyUnits: inventoryAfter.qty_units,
+        //   adjustment: -unitsToDeduct, reason, saleId
+        // }, 2);
         return {
             success: true,
             deducted: unitsToDeduct,
@@ -2335,18 +2345,9 @@ class DatabaseManager {
             responsible,
             notes: notes || undefined,
         });
-        // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização
-        // Sem isso, perdas não sincronizam com o Railway
-        this.addToSyncQueue('update', 'inventory', inventory.id, {
-            productId,
-            branchId,
-            qtyUnits: qtyBefore - quantity,
-            adjustment: -quantity,
-            reason: `Perda: ${reason}`,
-            movementType: 'loss',
-            responsible,
-            notes,
-        }, 2);
+        // 🔴 CORREÇÃO: registerStockMovement() já sincroniza via stock_movement (delta)
+        // NÃO adicionar também como 'inventory' (valor absoluto) - causa duplicação
+        // REMOVIDO: addToSyncQueue('update', 'inventory', ...)
         return { success: true, quantityLost: quantity };
     }
     /**
@@ -2393,18 +2394,9 @@ class DatabaseManager {
             responsible,
             notes: notes || undefined,
         });
-        // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização
-        // Sem isso, quebras não sincronizam com o Railway
-        this.addToSyncQueue('update', 'inventory', inventory.id, {
-            productId,
-            branchId,
-            qtyUnits: qtyBefore - quantity,
-            adjustment: -quantity,
-            reason: `Quebra: ${reason}`,
-            movementType: 'breakage',
-            responsible,
-            notes,
-        }, 2);
+        // 🔴 CORREÇÃO: registerStockMovement() já sincroniza via stock_movement (delta)
+        // NÃO adicionar também como 'inventory' (valor absoluto) - causa duplicação
+        // REMOVIDO: addToSyncQueue('update', 'inventory', ...)
         return { success: true, quantityBroken: quantity };
     }
     /**
@@ -2447,18 +2439,9 @@ class DatabaseManager {
             responsible,
             notes: notes || undefined,
         });
-        // 🔴 CORREÇÃO CRÍTICA: Adicionar à fila de sincronização
-        // Sem isso, ajustes manuais não sincronizam com o Railway
-        this.addToSyncQueue('update', 'inventory', inventory.id, {
-            productId,
-            branchId,
-            qtyUnits: qtyBefore + quantity,
-            adjustment: quantity,
-            reason: `Ajuste manual: ${reason}`,
-            movementType: 'adjustment',
-            responsible,
-            notes,
-        }, 2);
+        // 🔴 CORREÇÃO: registerStockMovement() já sincroniza via stock_movement (delta)
+        // NÃO adicionar também como 'inventory' (valor absoluto) - causa duplicação
+        // REMOVIDO: addToSyncQueue('update', 'inventory', ...)
         return { success: true, adjusted: quantity };
     }
     /**
