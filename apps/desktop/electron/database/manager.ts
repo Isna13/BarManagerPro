@@ -1198,6 +1198,38 @@ export class DatabaseManager {
     } catch (error) {
       console.error('Erro na migration inventory_movements:', error);
     }
+
+    // Migration 21: Adicionar coluna needs_online_auth para usuários sincronizados do servidor
+    // CRÍTICO: Permite identificar usuários que precisam fazer login online primeiro
+    try {
+      const usersTableInfo: any[] = this.db.pragma('table_info(users)') as any[];
+      const hasNeedsOnlineAuth = usersTableInfo.some((col: any) => col.name === 'needs_online_auth');
+      
+      if (!hasNeedsOnlineAuth) {
+        console.log('Executando migration: adicionando coluna needs_online_auth em users...');
+        this.db.exec('ALTER TABLE users ADD COLUMN needs_online_auth BOOLEAN DEFAULT 0');
+        console.log('✅ Migration needs_online_auth em users concluída!');
+      }
+    } catch (error) {
+      console.error('Erro na migration needs_online_auth:', error);
+    }
+    
+    // Migration 22: Adicionar coluna synced para settings globais
+    // CORREÇÃO F5: Permite sincronizar configurações entre PCs
+    try {
+      const settingsTableInfo: any[] = this.db.pragma('table_info(settings)') as any[];
+      const hasSettingsSynced = settingsTableInfo.some((col: any) => col.name === 'synced');
+      
+      if (!hasSettingsSynced) {
+        console.log('Executando migration: adicionando coluna synced em settings...');
+        this.db.exec('ALTER TABLE settings ADD COLUMN synced BOOLEAN DEFAULT 0');
+        // Marcar settings existentes como não sincronizadas
+        this.db.exec('UPDATE settings SET synced = 0');
+        console.log('✅ Migration synced em settings concluída!');
+      }
+    } catch (error) {
+      console.error('Erro na migration synced em settings:', error);
+    }
   }
 
   // ============================================
@@ -2601,6 +2633,7 @@ export class DatabaseManager {
 
   /**
    * Registrar movimento de estoque (auditoria)
+   * 🔴 CORREÇÃO F4: Agora sincroniza movimento como delta operation
    */
   private registerStockMovement(data: {
     productId: string;
@@ -2629,8 +2662,8 @@ export class DatabaseManager {
         quantity_before, quantity_after, closed_boxes_before, closed_boxes_after,
         open_box_before, open_box_after, box_opened_automatically,
         reason, responsible, terminal, sale_id, purchase_id, notes,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        synced, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
     `).run(
       id, data.productId, data.branchId, data.movementType, data.quantity,
       data.quantityBefore, data.quantityAfter, data.closedBoxesBefore, data.closedBoxesAfter,
@@ -2638,6 +2671,36 @@ export class DatabaseManager {
       data.reason, data.responsible || 'system', data.terminal || 'desktop',
       data.saleId || null, data.purchaseId || null, data.notes || null
     );
+    
+    // 🔴 CORREÇÃO F4: Sincronizar movimento como delta operation
+    // O servidor aplicará o adjustment ao estoque ao invés de receber valor absoluto
+    this.addToSyncQueue('create', 'stock_movement', id, {
+      id,
+      productId: data.productId,
+      branchId: data.branchId,
+      movementType: data.movementType,
+      adjustment: data.quantity, // Delta: positivo = entrada, negativo = saída
+      reason: data.reason,
+      saleId: data.saleId,
+      purchaseId: data.purchaseId,
+      responsible: data.responsible || 'system',
+      terminal: data.terminal || 'desktop',
+    }, 1); // Prioridade 1 = Alta (crítico para consistência de estoque)
+  }
+  
+  /**
+   * Marca um movimento de estoque como sincronizado
+   */
+  markStockMovementSynced(movementId: string) {
+    try {
+      this.db.prepare(`
+        UPDATE stock_movements 
+        SET synced = 1
+        WHERE id = ?
+      `).run(movementId);
+    } catch (error) {
+      console.warn(`⚠️ Erro ao marcar movimento ${movementId} como sincronizado:`, error);
+    }
   }
 
   /**
@@ -3479,6 +3542,105 @@ export class DatabaseManager {
   }
 
   /**
+   * 🔴 CORREÇÃO CRÍTICA: Cria usuário a partir dos dados do servidor
+   * Usado para sincronizar usuários criados em outros PCs ou no backend
+   * Usuários criados por este método NÃO têm senha local - precisam fazer login online primeiro
+   */
+  createUserFromServer(data: {
+    id: string;
+    username: string;
+    email: string;
+    fullName: string;
+    role: string;
+    branchId?: string;
+    phone?: string;
+    allowedTabs?: string[] | string;
+  }) {
+    // Converter array de abas para JSON string se necessário
+    let allowedTabsJson: string | null = null;
+    if (data.allowedTabs) {
+      if (typeof data.allowedTabs === 'string') {
+        allowedTabsJson = data.allowedTabs;
+      } else {
+        allowedTabsJson = JSON.stringify(data.allowedTabs);
+      }
+    }
+    
+    // Placeholder de senha - usuário DEVE fazer login online primeiro
+    // Este hash não é válido para bcrypt e será rejeitado em login offline
+    const NEEDS_ONLINE_LOGIN_HASH = '$NEEDS_ONLINE_LOGIN$';
+    
+    try {
+      this.db.prepare(`
+        INSERT INTO users (
+          id, username, email, full_name, password_hash, role, branch_id, phone, 
+          allowed_tabs, synced, sync_status, is_active, needs_online_auth,
+          created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SYNCED_FROM_SERVER', 1, 1, datetime('now'), datetime('now'))
+      `).run(
+        data.id,
+        data.username,
+        data.email,
+        data.fullName,
+        NEEDS_ONLINE_LOGIN_HASH,
+        data.role,
+        data.branchId || null,
+        data.phone || null,
+        allowedTabsJson
+      );
+      
+      console.log(`✅ Usuário criado do servidor: ${data.email} (ID: ${data.id}) - Requer login online`);
+      return { ...data, needsOnlineAuth: true };
+    } catch (error: any) {
+      // Se usuário já existe, atualizar ao invés de falhar
+      if (error.message?.includes('UNIQUE constraint failed')) {
+        console.log(`⚠️ Usuário ${data.email} já existe, atualizando...`);
+        this.updateUserFromServer(data.id, {
+          username: data.username,
+          email: data.email,
+          full_name: data.fullName,
+          role: data.role,
+          branch_id: data.branchId,
+          phone: data.phone,
+          allowed_tabs: data.allowedTabs,
+          synced: 1,
+        });
+        return { ...data };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Atualiza senha local do usuário após login online bem-sucedido
+   * Isso permite que usuários sincronizados do servidor façam login offline
+   */
+  updateUserPasswordLocal(userId: string, passwordHash: string) {
+    try {
+      const result = this.db.prepare(`
+        UPDATE users 
+        SET password_hash = ?,
+            needs_online_auth = 0,
+            sync_status = 'PASSWORD_SET_LOCALLY',
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(passwordHash, userId);
+      
+      if (result.changes > 0) {
+        console.log(`✅ Senha local atualizada para usuário: ${userId}`);
+        return true;
+      } else {
+        console.warn(`⚠️ Usuário não encontrado para atualização de senha: ${userId}`);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar senha local:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Lista todos os usuários
    */
   getUsers(filters: {
@@ -4198,6 +4360,10 @@ export class DatabaseManager {
     return stats;
   }
 
+  // =============================================================================
+  // 🔴 CORREÇÃO: Métodos de CashBox para sincronização multi-PC
+  // =============================================================================
+
   openCashBox(data: any) {
     const id = this.generateUUID();
     this.db.prepare(`
@@ -4218,6 +4384,81 @@ export class DatabaseManager {
     };
     this.addToSyncQueue('create', 'cash_box', id, syncData, 2);
     return { id, ...data };
+  }
+
+  /**
+   * Cria um caixa localmente a partir dos dados do servidor
+   * NÃO adiciona à fila de sync (já existe no servidor)
+   */
+  createCashBoxFromServer(data: {
+    id: string;
+    boxNumber: string;
+    branchId: string;
+    openedBy: string;
+    openingCash: number;
+    status: string;
+  }) {
+    try {
+      // Verificar se já existe
+      const existing = this.db.prepare('SELECT id FROM cash_boxes WHERE id = ?').get(data.id);
+      if (existing) {
+        console.log(`📦 CashBox ${data.id} já existe localmente`);
+        return this.getCashBoxById(data.id);
+      }
+      
+      this.db.prepare(`
+        INSERT INTO cash_boxes (id, box_number, branch_id, opened_by, opening_cash, status, synced)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+      `).run(
+        data.id,
+        data.boxNumber,
+        data.branchId,
+        data.openedBy,
+        data.openingCash || 0,
+        data.status || 'open'
+      );
+      
+      console.log(`✅ CashBox criado localmente a partir do servidor: ${data.id}`);
+      return this.getCashBoxById(data.id);
+    } catch (error: any) {
+      if (error.message?.includes('UNIQUE constraint failed')) {
+        console.log(`⚠️ CashBox ${data.id} já existe, atualizando...`);
+        this.updateCashBoxFromServer(data.id, data);
+        return this.getCashBoxById(data.id);
+      }
+      throw error;
+    }
+  }
+  
+  /**
+   * Atualiza um caixa local com dados do servidor
+   */
+  updateCashBoxFromServer(cashBoxId: string, serverData: any) {
+    try {
+      this.db.prepare(`
+        UPDATE cash_boxes 
+        SET status = COALESCE(?, status),
+            closing_cash = COALESCE(?, closing_cash),
+            closed_at = COALESCE(?, closed_at),
+            closed_by = COALESCE(?, closed_by),
+            notes = COALESCE(?, notes),
+            synced = 1,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(
+        serverData.status,
+        serverData.closingCash || serverData.closing_cash,
+        serverData.closedAt || serverData.closed_at,
+        serverData.closedBy || serverData.closed_by,
+        serverData.notes,
+        cashBoxId
+      );
+      
+      console.log(`✅ CashBox ${cashBoxId} atualizado do servidor`);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar CashBox do servidor:', error);
+      throw error;
+    }
   }
 
   closeCashBox(cashBoxId: string, closingData: any) {
@@ -7340,15 +7581,83 @@ export class DatabaseManager {
 
   /**
    * Define um valor de configuração genérico
+   * 🔴 CORREÇÃO F5: Sincroniza configurações globais
    */
-  setSetting(key: string, value: string) {
+  setSetting(key: string, value: string, syncToServer: boolean = true) {
     try {
       this.db.prepare(`
-        INSERT OR REPLACE INTO settings (key, value, updated_at)
-        VALUES (?, ?, datetime('now'))
+        INSERT OR REPLACE INTO settings (key, value, synced, updated_at)
+        VALUES (?, ?, 0, datetime('now'))
       `).run(key, value);
+      
+      // Sincronizar para o servidor (exceto configurações locais)
+      const localOnlySettings = ['device_id', 'last_sync_date', 'sync_token'];
+      if (syncToServer && !localOnlySettings.includes(key)) {
+        this.addToSyncQueue('update', 'setting', key, { key, value }, 3);
+      }
     } catch (error) {
       console.error('Erro ao definir setting:', key, error);
+    }
+  }
+  
+  /**
+   * Define um valor de configuração a partir do servidor (sem sincronizar de volta)
+   */
+  setSettingFromServer(key: string, value: string) {
+    try {
+      this.db.prepare(`
+        INSERT OR REPLACE INTO settings (key, value, synced, updated_at)
+        VALUES (?, ?, 1, datetime('now'))
+      `).run(key, value);
+    } catch (error) {
+      console.error('Erro ao definir setting do servidor:', key, error);
+    }
+  }
+  
+  /**
+   * Obtém todas as configurações não sincronizadas
+   */
+  getUnsyncedSettings(): Array<{ key: string; value: string }> {
+    try {
+      const localOnlySettings = ['device_id', 'last_sync_date', 'sync_token'];
+      const placeholders = localOnlySettings.map(() => '?').join(',');
+      
+      return this.db.prepare(`
+        SELECT key, value FROM settings 
+        WHERE synced = 0 AND key NOT IN (${placeholders})
+      `).all(...localOnlySettings) as Array<{ key: string; value: string }>;
+    } catch (error) {
+      console.error('Erro ao obter settings não sincronizadas:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Marca uma configuração como sincronizada
+   */
+  markSettingSynced(key: string) {
+    try {
+      this.db.prepare('UPDATE settings SET synced = 1 WHERE key = ?').run(key);
+    } catch (error) {
+      console.error('Erro ao marcar setting como sincronizada:', key, error);
+    }
+  }
+  
+  /**
+   * Obtém todas as configurações (para sincronização)
+   */
+  getAllSettings(): Array<{ key: string; value: string }> {
+    try {
+      const localOnlySettings = ['device_id', 'last_sync_date', 'sync_token'];
+      const placeholders = localOnlySettings.map(() => '?').join(',');
+      
+      return this.db.prepare(`
+        SELECT key, value FROM settings 
+        WHERE key NOT IN (${placeholders})
+      `).all(...localOnlySettings) as Array<{ key: string; value: string }>;
+    } catch (error) {
+      console.error('Erro ao obter todas settings:', error);
+      return [];
     }
   }
 

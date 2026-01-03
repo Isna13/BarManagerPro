@@ -478,8 +478,17 @@ ipcMain.handle('inventory:validateConsistency', async (_, { productId, branchId 
   return dbManager.validateInventoryConsistency(productId, branchId);
 });
 
-// Cash Box
+// Cash Box - 🔴 CORREÇÃO: Verificação de servidor para multi-PC
 ipcMain.handle('cashbox:open', async (_, data) => {
+  // Usar o método do SyncManager que verifica o servidor primeiro
+  if (syncManager) {
+    const result = await syncManager.openCashBoxWithServerCheck(data);
+    if (!result.success) {
+      throw new Error(result.error || 'Não foi possível abrir o caixa');
+    }
+    return result.cashBox;
+  }
+  // Fallback para modo offline puro
   return dbManager.openCashBox(data);
 });
 
@@ -487,7 +496,11 @@ ipcMain.handle('cashbox:close', async (_, { cashBoxId, closingData }) => {
   return dbManager.closeCashBox(cashBoxId, closingData);
 });
 
-ipcMain.handle('cashbox:getCurrent', async () => {
+ipcMain.handle('cashbox:getCurrent', async (_, branchId) => {
+  // Usar o método do SyncManager que verifica o servidor primeiro
+  if (syncManager) {
+    return syncManager.getCurrentCashBoxWithServerCheck(branchId);
+  }
   return dbManager.getCurrentCashBox();
 });
 

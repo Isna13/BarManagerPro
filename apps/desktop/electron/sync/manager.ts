@@ -25,6 +25,10 @@ const RAILWAY_FREE_CONFIG = {
   // Intervalo de sync (60s para economizar recursos)
   SYNC_INTERVAL_MS: 60000,
   
+  // 🔴 CORREÇÃO F3: Intervalo agressivo para entidades críticas (10s)
+  // CashBox e Users precisam de sync mais frequente para multi-PC
+  CRITICAL_SYNC_INTERVAL_MS: 10000,
+  
   // Timeout para requisições normais (15s)
   REQUEST_TIMEOUT_MS: 15000,
   
@@ -64,6 +68,10 @@ export class SyncManager {
   private _pendingSyncRequested: boolean = false;
   // Debounce timer para vendas rápidas
   private _syncDebounceTimer: NodeJS.Timeout | null = null;
+  // 🔴 CORREÇÃO F3: Timer separado para entidades críticas
+  private criticalSyncInterval: NodeJS.Timeout | null = null;
+  // 🔴 CORREÇÃO F5: Contador para sync de settings (menos frequente)
+  private _settingsSyncCounter: number = 0;
 
   constructor(
     private dbManager: DatabaseManager,
@@ -547,6 +555,28 @@ export class SyncManager {
       
       console.log('✅ Login online bem-sucedido, token válido obtido');
       
+      // 🔴 CORREÇÃO: Atualizar senha local para usuários sincronizados do servidor
+      // Isso permite que o usuário faça login offline no futuro
+      try {
+        const bcrypt = require('bcryptjs');
+        const localUser = this.dbManager.getUserByEmail(credentials.email) as any;
+        
+        if (localUser && (localUser.needs_online_auth || localUser.password_hash === '$NEEDS_ONLINE_LOGIN$')) {
+          console.log('🔐 Atualizando senha local para usuário sincronizado:', credentials.email);
+          
+          // Gerar hash da senha para armazenamento local
+          const passwordHash = await bcrypt.hash(credentials.password, 10);
+          
+          // Atualizar senha e limpar flag
+          this.dbManager.updateUserPasswordLocal(localUser.id, passwordHash);
+          
+          console.log('✅ Senha local atualizada! Usuário pode fazer login offline agora.');
+        }
+      } catch (localUpdateError) {
+        console.warn('⚠️ Não foi possível atualizar senha local:', localUpdateError);
+        // Não falhar o login por causa disso
+      }
+      
       // Verificar se banco local está vazio e precisa de sync inicial
       const needsInitialSync = this.isLocalDatabaseEmpty();
       
@@ -589,6 +619,13 @@ export class SyncManager {
         if (!user.is_active) {
           console.error('❌ Usuário inativo:', credentials.email);
           throw new Error('Usuário inativo');
+        }
+        
+        // 🔴 CORREÇÃO: Verificar se usuário precisa fazer login online primeiro
+        // Usuários sincronizados do servidor NÃO têm senha local válida
+        if (user.needs_online_auth || user.password_hash === '$NEEDS_ONLINE_LOGIN$') {
+          console.error('❌ Usuário requer login online primeiro:', credentials.email);
+          throw new Error('Este usuário foi sincronizado de outro dispositivo. É necessário fazer login online primeiro para configurar a senha local.');
         }
         
         // Validar senha com bcrypt
@@ -648,6 +685,176 @@ export class SyncManager {
     }
   }
 
+  // =============================================================================
+  // 🔴 CORREÇÃO CRÍTICA: CashBox com Verificação de Servidor
+  // Garante que todos os PCs vejam o mesmo estado do caixa
+  // =============================================================================
+  
+  /**
+   * Verifica se existe um caixa aberto no servidor
+   * Usado antes de permitir abertura local
+   */
+  async checkServerCashBox(branchId: string): Promise<{
+    hasOpenBox: boolean;
+    serverBox: any | null;
+  }> {
+    if (!this._isOnline || !this.token || this.token === 'offline-token') {
+      console.log('⚠️ Offline - não é possível verificar caixa no servidor');
+      return { hasOpenBox: false, serverBox: null };
+    }
+    
+    try {
+      const response = await this.apiClient.get(`/cash-box/current/${branchId}`);
+      const serverBox = response.data;
+      
+      if (serverBox && serverBox.status === 'open') {
+        console.log('📦 Caixa aberto encontrado no servidor:', serverBox.id);
+        return { hasOpenBox: true, serverBox };
+      }
+      
+      return { hasOpenBox: false, serverBox: null };
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return { hasOpenBox: false, serverBox: null };
+      }
+      console.error('❌ Erro ao verificar caixa no servidor:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Abre caixa primeiro no servidor, depois localmente
+   * GARANTE: Apenas 1 caixa aberto por branch em todo o sistema
+   */
+  async openCashBoxWithServerCheck(data: {
+    boxNumber: string;
+    branchId: string;
+    openedBy: string;
+    openingCash: number;
+    notes?: string;
+  }): Promise<{ success: boolean; cashBox?: any; error?: string }> {
+    console.log('🔓 Abrindo caixa com verificação de servidor...');
+    
+    // 1. Se online, verificar/criar no servidor PRIMEIRO
+    if (this._isOnline && this.token && this.token !== 'offline-token') {
+      try {
+        // Verificar se já existe caixa aberto
+        const { hasOpenBox, serverBox } = await this.checkServerCashBox(data.branchId);
+        
+        if (hasOpenBox && serverBox) {
+          console.log('❌ Já existe um caixa aberto nesta filial:', serverBox.id);
+          
+          // Sincronizar o caixa do servidor para o local
+          this.syncServerCashBoxToLocal(serverBox);
+          
+          return {
+            success: false,
+            error: `Já existe um caixa aberto nesta filial (ID: ${serverBox.id}). Sincronizado para este PC.`,
+            cashBox: serverBox,
+          };
+        }
+        
+        // Criar caixa no servidor
+        console.log('📤 Criando caixa no servidor...');
+        const response = await this.apiClient.post('/cash-box/open', {
+          boxNumber: data.boxNumber,
+          branchId: data.branchId,
+          openingAmount: data.openingCash,
+          notes: data.notes,
+        });
+        
+        const serverCashBox = response.data;
+        console.log('✅ Caixa criado no servidor:', serverCashBox.id);
+        
+        // 2. Criar localmente com mesmo ID
+        const localCashBox = this.dbManager.createCashBoxFromServer({
+          id: serverCashBox.id,
+          boxNumber: serverCashBox.boxNumber || data.boxNumber,
+          branchId: serverCashBox.branchId || data.branchId,
+          openedBy: data.openedBy,
+          openingCash: serverCashBox.openingCash || data.openingCash,
+          status: 'open',
+        });
+        
+        return { success: true, cashBox: localCashBox };
+        
+      } catch (error: any) {
+        console.error('❌ Erro ao criar caixa no servidor:', error);
+        
+        // Se for erro de caixa já aberto, retornar erro
+        if (error.response?.status === 400) {
+          return {
+            success: false,
+            error: error.response?.data?.message || 'Já existe um caixa aberto nesta filial',
+          };
+        }
+        
+        // Para outros erros, tentar offline
+        console.log('⚠️ Servidor indisponível, abrindo caixa localmente...');
+      }
+    }
+    
+    // 3. Modo Offline: Criar localmente
+    console.log('📦 Abrindo caixa localmente (modo offline)...');
+    const localCashBox = this.dbManager.openCashBox(data);
+    
+    return { success: true, cashBox: localCashBox };
+  }
+  
+  /**
+   * Sincroniza caixa do servidor para o banco local
+   */
+  private syncServerCashBoxToLocal(serverBox: any) {
+    try {
+      // Verificar se já existe localmente
+      const existingLocal = this.dbManager.getCashBoxById(serverBox.id);
+      
+      if (existingLocal) {
+        console.log('📦 Caixa já existe localmente, atualizando...');
+        this.dbManager.updateCashBoxFromServer(serverBox.id, serverBox);
+      } else {
+        console.log('📦 Criando caixa local a partir do servidor...');
+        this.dbManager.createCashBoxFromServer({
+          id: serverBox.id,
+          boxNumber: serverBox.boxNumber,
+          branchId: serverBox.branchId,
+          openedBy: serverBox.openedBy || serverBox.openedByUser?.id,
+          openingCash: serverBox.openingCash,
+          status: serverBox.status,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erro ao sincronizar caixa do servidor:', error);
+    }
+  }
+  
+  /**
+   * Busca o caixa aberto atual, verificando servidor se online
+   */
+  async getCurrentCashBoxWithServerCheck(branchId?: string): Promise<any> {
+    // Sempre verificar servidor primeiro se online
+    if (this._isOnline && this.token && this.token !== 'offline-token') {
+      try {
+        const endpoint = branchId ? `/cash-box/current/${branchId}` : '/cash-box/current';
+        const response = await this.apiClient.get(endpoint);
+        const serverBox = response.data;
+        
+        if (serverBox && serverBox.status === 'open') {
+          // Sincronizar para local
+          this.syncServerCashBoxToLocal(serverBox);
+          return serverBox;
+        }
+      } catch (error: any) {
+        if (error.response?.status !== 404) {
+          console.warn('⚠️ Erro ao buscar caixa no servidor:', error.message);
+        }
+      }
+    }
+    
+    // Retornar caixa local
+    return this.dbManager.getCurrentCashBox();
+  }
+
   async start() {
     if (this.isRunning) return;
     
@@ -682,6 +889,145 @@ export class SyncManager {
     this.syncInterval = setInterval(() => {
       this.syncNow();
     }, RAILWAY_FREE_CONFIG.SYNC_INTERVAL_MS);
+    
+    // 🔴 CORREÇÃO F3: Polling agressivo para entidades críticas
+    // CashBox e Users sincronizam com mais frequência para multi-PC
+    const criticalIntervalSecs = RAILWAY_FREE_CONFIG.CRITICAL_SYNC_INTERVAL_MS / 1000;
+    console.log(`⚡ Sync crítico (CashBox, Users) a cada ${criticalIntervalSecs} segundos`);
+    
+    this.criticalSyncInterval = setInterval(() => {
+      this.syncCriticalEntities();
+    }, RAILWAY_FREE_CONFIG.CRITICAL_SYNC_INTERVAL_MS);
+  }
+  
+  /**
+   * 🔴 CORREÇÃO F3: Sync de entidades críticas com polling agressivo
+   * Apenas CashBox e Users - não faz push, apenas pull do servidor
+   */
+  private async syncCriticalEntities() {
+    if (!this._isOnline || !this.token || this.token === 'offline-token') {
+      return; // Só funciona online
+    }
+    
+    try {
+      // Sync CashBox - verificar se há caixa aberto no servidor
+      await this.pullCriticalCashBoxStatus();
+      
+      // Sync Users - verificar novos usuários do servidor
+      await this.pullCriticalUsers();
+      
+      // 🔴 CORREÇÃO F5: Sync configurações globais (menos frequente)
+      // Só sincroniza a cada 3 ciclos para economizar recursos
+      if (!this._settingsSyncCounter) {
+        this._settingsSyncCounter = 0;
+      }
+      this._settingsSyncCounter++;
+      if (this._settingsSyncCounter >= 3) {
+        await this.pullGlobalSettings();
+        this._settingsSyncCounter = 0;
+      }
+      
+    } catch (error: any) {
+      // Falhas silenciosas para não poluir o log
+      if (error.response?.status !== 401) {
+        console.debug('⚡ Sync crítico falhou:', error.message);
+      }
+    }
+  }
+  
+  /**
+   * Pull rápido de status do CashBox
+   */
+  private async pullCriticalCashBoxStatus() {
+    try {
+      const response = await this.apiClient.get('/cash-box/current');
+      const serverBox = response.data;
+      
+      if (serverBox && serverBox.status === 'open') {
+        // Verificar se temos esse caixa localmente
+        const localBox = this.dbManager.getCashBoxById(serverBox.id);
+        
+        if (!localBox) {
+          console.log('⚡ Novo caixa detectado no servidor, sincronizando...');
+          this.syncServerCashBoxToLocal(serverBox);
+          this.emit('sync:cashBoxUpdated', serverBox);
+        }
+      }
+    } catch (error: any) {
+      // 404 = sem caixa aberto, ignorar
+      if (error.response?.status !== 404) {
+        throw error;
+      }
+    }
+  }
+  
+  /**
+   * 🔴 CORREÇÃO F5: Pull de configurações globais do servidor
+   * Chamado periodicamente e no sync inicial
+   */
+  async pullGlobalSettings() {
+    if (!this._isOnline || !this.token || this.token === 'offline-token') {
+      return;
+    }
+    
+    try {
+      const response = await this.apiClient.get('/settings');
+      const serverSettings = response.data || [];
+      
+      let updatedCount = 0;
+      for (const setting of serverSettings) {
+        const localValue = this.dbManager.getSetting(setting.key);
+        
+        // Atualizar se valor for diferente
+        if (localValue !== setting.value) {
+          this.dbManager.setSettingFromServer(setting.key, setting.value);
+          updatedCount++;
+        }
+      }
+      
+      if (updatedCount > 0) {
+        console.log(`⚡ ${updatedCount} configurações atualizadas do servidor`);
+        this.emit('sync:settingsUpdated', { count: updatedCount });
+      }
+    } catch (error: any) {
+      console.warn('⚠️ Erro ao buscar configurações do servidor:', error.message);
+    }
+  }
+    /**
+   * Pull rápido de usuários
+   */
+  private async pullCriticalUsers() {
+    try {
+      const response = await this.apiClient.get('/users?limit=100');
+      const serverUsers = response.data || [];
+      
+      let newUsersCount = 0;
+      for (const serverUser of serverUsers) {
+        const localUser = this.dbManager.getUserByEmail(serverUser.email);
+        
+        if (!localUser) {
+          // Usuário novo no servidor, criar localmente
+          this.dbManager.createUserFromServer({
+            id: serverUser.id,
+            username: serverUser.username,
+            email: serverUser.email,
+            fullName: serverUser.fullName || serverUser.full_name,
+            role: serverUser.role,
+            branchId: serverUser.branchId || serverUser.branch_id,
+            phone: serverUser.phone,
+            allowedTabs: serverUser.allowedTabs || serverUser.allowed_tabs,
+          });
+          newUsersCount++;
+        }
+      }
+      
+      if (newUsersCount > 0) {
+        console.log(`⚡ ${newUsersCount} novos usuários sincronizados do servidor`);
+        this.emit('sync:usersUpdated', { count: newUsersCount });
+      }
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
@@ -713,6 +1059,11 @@ export class SyncManager {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+    // 🔴 CORREÇÃO F3: Parar também o timer de sync crítico
+    if (this.criticalSyncInterval) {
+      clearInterval(this.criticalSyncInterval);
+      this.criticalSyncInterval = null;
     }
     if (this._syncDebounceTimer) {
       clearTimeout(this._syncDebounceTimer);
@@ -1626,9 +1977,36 @@ export class SyncManager {
               });
               console.log(`✅ Usuário vinculado/atualizado: ${item.email} (server_id: ${item.id})`);
             } else {
-              // Usuário existe no servidor mas não localmente
-              // NOTA: Não criar localmente sem senha - apenas registrar
-              console.log(`ℹ️ Usuário ${item.email} existe no servidor mas não localmente (sem senha para criar)`);
+              // 🔴 CORREÇÃO CRÍTICA: Criar usuário do servidor localmente
+              // Usuário existe no servidor mas não localmente - CRIAR AGORA
+              // Usuário precisará fazer login online primeira vez para definir senha local
+              console.log(`📥 Criando usuário do servidor localmente: ${item.email}`);
+              
+              // Processar allowedTabs - pode vir como string JSON ou array
+              let allowedTabs = item.allowedTabs;
+              if (typeof allowedTabs === 'string') {
+                try {
+                  allowedTabs = JSON.parse(allowedTabs);
+                } catch (e) {
+                  // Já é string, manter
+                }
+              }
+              
+              try {
+                this.dbManager.createUserFromServer({
+                  id: item.id,
+                  username: item.username,
+                  email: item.email,
+                  fullName: item.fullName,
+                  role: item.role || item.roleName || 'cashier',
+                  branchId: item.branchId,
+                  phone: item.phone,
+                  allowedTabs: allowedTabs,
+                });
+                console.log(`✅ Usuário criado do servidor: ${item.email} (requer login online primeiro)`);
+              } catch (createError: any) {
+                console.error(`❌ Erro ao criar usuário ${item.email}:`, createError?.message);
+              }
             }
           } catch (e: any) {
             console.error(`Erro ao mesclar user ${item.email}:`, e?.message);
@@ -3253,6 +3631,60 @@ export class SyncManager {
           return { success: true };
         }
         return { skip: true, success: false, reason: 'Operação de inventário não suportada' };
+      
+      case 'stock_movement':
+        // 🔴 CORREÇÃO F4: Sincronizar movimentos de estoque como delta operations
+        // Isso garante que vendas simultâneas em múltiplos PCs não sobrescrevam o estoque
+        if (operation === 'create') {
+          try {
+            // Usar endpoint de ajuste por delta ao invés de valor absoluto
+            await this.apiClient.put('/inventory/adjust-by-product', {
+              productId: data.productId || data.product_id,
+              branchId: data.branchId || data.branch_id,
+              adjustment: data.adjustment || data.quantity,
+              reason: data.reason || `${data.movementType || 'Ajuste'} - Sync Desktop`,
+            });
+            
+            console.log(`✅ Movimento de estoque sincronizado: ${data.productId} (${data.adjustment > 0 ? '+' : ''}${data.adjustment})`);
+            
+            // Marcar movimento local como sincronizado
+            if (entity_id) {
+              this.dbManager.markStockMovementSynced(entity_id);
+            }
+            
+            return { success: true };
+          } catch (error: any) {
+            // Se produto/branch não encontrado, log e pular
+            if (error.response?.status === 404) {
+              console.warn(`⚠️ Produto ${data.productId} não encontrado no servidor para ajuste de estoque`);
+              return { skip: true, success: false, reason: 'Produto não encontrado no servidor' };
+            }
+            throw error;
+          }
+        }
+        return { skip: true, success: false, reason: 'Operação de movimento não suportada' };
+      
+      case 'setting':
+        // 🔴 CORREÇÃO F5: Sincronizar configurações globais
+        if (operation === 'update' || operation === 'create') {
+          try {
+            await this.apiClient.post('/settings', {
+              key: data.key,
+              value: data.value,
+            });
+            
+            console.log(`✅ Configuração sincronizada: ${data.key}`);
+            
+            // Marcar como sincronizada
+            this.dbManager.markSettingSynced(data.key);
+            
+            return { success: true };
+          } catch (error: any) {
+            console.warn(`⚠️ Erro ao sincronizar configuração ${data.key}:`, error.message);
+            return { skip: true, success: false, reason: 'Erro ao sincronizar configuração' };
+          }
+        }
+        return { skip: true, success: false, reason: 'Operação de setting não suportada' };
         
       case 'customer_loyalty':
         // 🔴 CORREÇÃO CRÍTICA: Sincronizar pontos de fidelidade via endpoint dedicado
