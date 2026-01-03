@@ -854,9 +854,37 @@ export class SyncManager {
         const serverBox = response.data;
         
         if (serverBox && serverBox.status === 'open') {
-          // Sincronizar para local
+          // Sincronizar para local (salva no SQLite com snake_case)
           this.syncServerCashBoxToLocal(serverBox);
-          return serverBox;
+          
+          // 🔴 CORREÇÃO: Retornar do banco local (snake_case) em vez do servidor (camelCase)
+          // O frontend espera snake_case: opening_cash, opened_at, etc.
+          const localBox = this.dbManager.getCashBoxById(serverBox.id);
+          if (localBox) {
+            return localBox;
+          }
+          
+          // Fallback: converter manualmente para snake_case
+          return {
+            id: serverBox.id,
+            box_number: serverBox.boxNumber || serverBox.box_number,
+            branch_id: serverBox.branchId || serverBox.branch_id,
+            opened_by: serverBox.openedBy || serverBox.opened_by,
+            closed_by: serverBox.closedBy || serverBox.closed_by,
+            status: serverBox.status || 'open',
+            opening_cash: serverBox.openingCash ?? serverBox.opening_cash ?? 0,
+            total_sales: serverBox.totalSales ?? serverBox.total_sales ?? 0,
+            total_cash: serverBox.totalCash ?? serverBox.total_cash ?? 0,
+            total_card: serverBox.totalCard ?? serverBox.total_card ?? 0,
+            total_mobile_money: serverBox.totalMobileMoney ?? serverBox.total_mobile_money ?? 0,
+            total_debt: serverBox.totalDebt ?? serverBox.total_debt ?? 0,
+            closing_cash: serverBox.closingCash ?? serverBox.closing_cash,
+            difference: serverBox.difference,
+            notes: serverBox.notes,
+            opened_at: serverBox.openedAt || serverBox.opened_at || new Date().toISOString(),
+            closed_at: serverBox.closedAt || serverBox.closed_at,
+            synced: 1,
+          };
         }
       } catch (error: any) {
         if (error.response?.status !== 404) {

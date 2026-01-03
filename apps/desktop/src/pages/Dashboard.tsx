@@ -166,7 +166,9 @@ export default function Dashboard() {
             <div>
               <p className="text-sm font-semibold text-green-800">Caixa Aberta</p>
               <p className="text-xs text-green-600">
-                {new Date(currentCashBox.opened_at).toLocaleString('pt-BR')}
+                {currentCashBox.opened_at && !isNaN(new Date(currentCashBox.opened_at).getTime()) 
+                  ? new Date(currentCashBox.opened_at).toLocaleString('pt-BR')
+                  : '--/--/---- --:--'}
               </p>
             </div>
           </div>
@@ -268,7 +270,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between p-3 bg-blue-50 rounded">
               <span className="text-sm text-gray-700">Caixa Atual</span>
               <span className="text-sm font-semibold text-blue-700">
-                Aberto há {Math.floor((Date.now() - new Date(currentCashBox.opened_at).getTime()) / 60000)} minutos
+                {currentCashBox.opened_at && !isNaN(new Date(currentCashBox.opened_at).getTime())
+                  ? `Aberto há ${Math.floor((Date.now() - new Date(currentCashBox.opened_at).getTime()) / 60000)} minutos`
+                  : 'Aberto'}
               </span>
             </div>
             

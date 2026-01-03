@@ -136,8 +136,13 @@ export declare class DatabaseManager {
     private deductInventoryAdvanced;
     /**
      * Registrar movimento de estoque (auditoria)
+     * 🔴 CORREÇÃO F4: Agora sincroniza movimento como delta operation
      */
     private registerStockMovement;
+    /**
+     * Marca um movimento de estoque como sincronizado
+     */
+    markStockMovementSynced(movementId: string): void;
     /**
      * Registrar perda de produto
      */
@@ -263,6 +268,45 @@ export declare class DatabaseManager {
         allowedTabs?: string[];
         id: string;
     };
+    /**
+     * 🔴 CORREÇÃO CRÍTICA: Cria usuário a partir dos dados do servidor
+     * Usado para sincronizar usuários criados em outros PCs ou no backend
+     * Usuários criados por este método NÃO têm senha local - precisam fazer login online primeiro
+     */
+    createUserFromServer(data: {
+        id: string;
+        username: string;
+        email: string;
+        fullName: string;
+        role: string;
+        branchId?: string;
+        phone?: string;
+        allowedTabs?: string[] | string;
+    }): {
+        needsOnlineAuth: boolean;
+        id: string;
+        username: string;
+        email: string;
+        fullName: string;
+        role: string;
+        branchId?: string;
+        phone?: string;
+        allowedTabs?: string[] | string;
+    } | {
+        id: string;
+        username: string;
+        email: string;
+        fullName: string;
+        role: string;
+        branchId?: string;
+        phone?: string;
+        allowedTabs?: string[] | string;
+    };
+    /**
+     * Atualiza senha local do usuário após login online bem-sucedido
+     * Isso permite que usuários sincronizados do servidor façam login offline
+     */
+    updateUserPasswordLocal(userId: string, passwordHash: string): boolean;
     /**
      * Lista todos os usuários
      */
@@ -436,6 +480,34 @@ export declare class DatabaseManager {
      */
     getCustomerDebtStats(customerId: string): any;
     openCashBox(data: any): any;
+    /**
+     * Cria um caixa localmente a partir dos dados do servidor
+     * NÃO adiciona à fila de sync (já existe no servidor)
+     * 🔴 CORREÇÃO: Incluir TODOS os campos para evitar NaN/Invalid Date
+     */
+    createCashBoxFromServer(data: {
+        id: string;
+        boxNumber: string;
+        branchId: string;
+        openedBy: string;
+        openingCash: number;
+        status: string;
+        openedAt?: string;
+        totalSales?: number;
+        totalCash?: number;
+        totalCard?: number;
+        totalMobileMoney?: number;
+        totalDebt?: number;
+        closingCash?: number;
+        closedAt?: string;
+        closedBy?: string;
+        notes?: string;
+    }): any;
+    /**
+     * Atualiza um caixa local com dados do servidor
+     * 🔴 CORREÇÃO: Atualizar TODOS os campos para evitar NaN/Invalid Date
+     */
+    updateCashBoxFromServer(cashBoxId: string, serverData: any): void;
     closeCashBox(cashBoxId: string, closingData: any): void;
     getCurrentCashBox(): any;
     getCashBoxHistory(filters?: any): any;
@@ -835,8 +907,31 @@ export declare class DatabaseManager {
     getSetting(key: string): string | null;
     /**
      * Define um valor de configuração genérico
+     * 🔴 CORREÇÃO F5: Sincroniza configurações globais
      */
-    setSetting(key: string, value: string): void;
+    setSetting(key: string, value: string, syncToServer?: boolean): void;
+    /**
+     * Define um valor de configuração a partir do servidor (sem sincronizar de volta)
+     */
+    setSettingFromServer(key: string, value: string): void;
+    /**
+     * Obtém todas as configurações não sincronizadas
+     */
+    getUnsyncedSettings(): Array<{
+        key: string;
+        value: string;
+    }>;
+    /**
+     * Marca uma configuração como sincronizada
+     */
+    markSettingSynced(key: string): void;
+    /**
+     * Obtém todas as configurações (para sincronização)
+     */
+    getAllSettings(): Array<{
+        key: string;
+        value: string;
+    }>;
     /**
      * Obtém ou gera um ID único para este dispositivo
      * O ID é persistido e reutilizado em todas as operações

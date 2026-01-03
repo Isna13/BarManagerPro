@@ -19,6 +19,8 @@ export declare class SyncManager {
     private _isSyncing;
     private _pendingSyncRequested;
     private _syncDebounceTimer;
+    private criticalSyncInterval;
+    private _settingsSyncCounter;
     constructor(dbManager: DatabaseManager, apiUrl: string);
     setMainWindow(window: BrowserWindow): void;
     /**
@@ -81,7 +83,58 @@ export declare class SyncManager {
         password: string;
     }): Promise<any>;
     logout(): Promise<void>;
+    /**
+     * Verifica se existe um caixa aberto no servidor
+     * Usado antes de permitir abertura local
+     */
+    checkServerCashBox(branchId: string): Promise<{
+        hasOpenBox: boolean;
+        serverBox: any | null;
+    }>;
+    /**
+     * Abre caixa primeiro no servidor, depois localmente
+     * GARANTE: Apenas 1 caixa aberto por branch em todo o sistema
+     */
+    openCashBoxWithServerCheck(data: {
+        boxNumber: string;
+        branchId: string;
+        openedBy: string;
+        openingCash: number;
+        notes?: string;
+    }): Promise<{
+        success: boolean;
+        cashBox?: any;
+        error?: string;
+    }>;
+    /**
+     * Sincroniza caixa do servidor para o banco local
+     * 🔴 CORREÇÃO: Mapear TODOS os campos do servidor para evitar NaN/Invalid Date
+     */
+    private syncServerCashBoxToLocal;
+    /**
+     * Busca o caixa aberto atual, verificando servidor se online
+     */
+    getCurrentCashBoxWithServerCheck(branchId?: string): Promise<any>;
     start(): Promise<void>;
+    /**
+     * 🔴 CORREÇÃO F3: Sync de entidades críticas com polling agressivo
+     * Apenas CashBox e Users - não faz push, apenas pull do servidor
+     */
+    private syncCriticalEntities;
+    /**
+     * Pull rápido de status do CashBox
+     * 🔴 CORREÇÃO: Sempre atualizar dados do caixa para corrigir NaN/Invalid Date
+     */
+    private pullCriticalCashBoxStatus;
+    /**
+     * 🔴 CORREÇÃO F5: Pull de configurações globais do servidor
+     * Chamado periodicamente e no sync inicial
+     */
+    pullGlobalSettings(): Promise<void>;
+    /**
+   * Pull rápido de usuários
+   */
+    private pullCriticalUsers;
     /**
      * 🔴 CORREÇÃO CRÍTICA: Sync imediato para vendas
      * Garante que vendas rápidas em sequência não sejam perdidas

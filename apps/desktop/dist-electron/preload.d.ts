@@ -180,6 +180,20 @@ declare const api: {
         set: (key: string, value: any) => Promise<any>;
         getAll: () => Promise<any>;
     };
+    autoBackup: {
+        create: () => Promise<any>;
+        list: () => Promise<any>;
+        restore: (backupPath: string) => Promise<any>;
+        stats: () => Promise<any>;
+    };
+    dlq: {
+        list: () => Promise<any>;
+        count: () => Promise<any>;
+        retry: (entityId: string) => Promise<any>;
+        remove: (entityId: string) => Promise<any>;
+        clear: () => Promise<any>;
+        checkAlert: () => Promise<any>;
+    };
     backup: {
         create: (options?: {
             backupDir?: string;

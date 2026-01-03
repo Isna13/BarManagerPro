@@ -43,6 +43,7 @@ const electron_store_1 = __importDefault(require("electron-store"));
 const axios_1 = __importDefault(require("axios"));
 const manager_1 = require("./database/manager");
 const manager_2 = require("./sync/manager");
+const manager_3 = require("./backup/manager");
 // Logs críticos obrigatórios
 console.log('🚀 ELECTRON MAIN STARTED');
 process.on('uncaughtException', (err) => console.error('❌ UNCAUGHT EXCEPTION:', err));
@@ -51,6 +52,7 @@ const store = new electron_store_1.default();
 let mainWindow = null;
 let dbManager;
 let syncManager;
+let backupManager;
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 1400,
@@ -96,6 +98,10 @@ electron_1.app.whenReady().then(async () => {
     try {
         await dbManager.initialize();
         console.log('✅ Banco de dados SQLite inicializado');
+        // Inicializar backup automático
+        backupManager = new manager_3.BackupManager(dbPath);
+        backupManager.startAutoBackup();
+        console.log('✅ Backup automático iniciado');
     }
     catch (error) {
         console.error('⚠️ Erro ao inicializar banco SQLite (funcionará apenas online):', error);
@@ -422,14 +428,27 @@ electron_1.ipcMain.handle('inventory:getMovements', async (_, filters) => {
 electron_1.ipcMain.handle('inventory:validateConsistency', async (_, { productId, branchId }) => {
     return dbManager.validateInventoryConsistency(productId, branchId);
 });
-// Cash Box
+// Cash Box - 🔴 CORREÇÃO: Verificação de servidor para multi-PC
 electron_1.ipcMain.handle('cashbox:open', async (_, data) => {
+    // Usar o método do SyncManager que verifica o servidor primeiro
+    if (syncManager) {
+        const result = await syncManager.openCashBoxWithServerCheck(data);
+        if (!result.success) {
+            throw new Error(result.error || 'Não foi possível abrir o caixa');
+        }
+        return result.cashBox;
+    }
+    // Fallback para modo offline puro
     return dbManager.openCashBox(data);
 });
 electron_1.ipcMain.handle('cashbox:close', async (_, { cashBoxId, closingData }) => {
     return dbManager.closeCashBox(cashBoxId, closingData);
 });
-electron_1.ipcMain.handle('cashbox:getCurrent', async () => {
+electron_1.ipcMain.handle('cashbox:getCurrent', async (_, branchId) => {
+    // Usar o método do SyncManager que verifica o servidor primeiro
+    if (syncManager) {
+        return syncManager.getCurrentCashBoxWithServerCheck(branchId);
+    }
     return dbManager.getCurrentCashBox();
 });
 electron_1.ipcMain.handle('cashbox:getHistory', async (_, filters) => {
@@ -844,7 +863,153 @@ electron_1.ipcMain.handle('settings:set', async (_, { key, value }) => {
 electron_1.ipcMain.handle('settings:getAll', async () => {
     return store.store;
 });
-// Backup
+// ═══════════════════════════════════════════════════════════════════════════
+// BACKUP AUTOMÁTICO - Gerenciamento de backups periódicos do SQLite
+// ═══════════════════════════════════════════════════════════════════════════
+// Criar backup manual
+electron_1.ipcMain.handle('autoBackup:create', async () => {
+    if (!backupManager) {
+        return { success: false, error: 'BackupManager não inicializado' };
+    }
+    const backupPath = backupManager.createBackup('manual');
+    return { success: !!backupPath, path: backupPath };
+});
+// Listar backups disponíveis
+electron_1.ipcMain.handle('autoBackup:list', async () => {
+    if (!backupManager) {
+        return [];
+    }
+    return backupManager.listBackups();
+});
+// Restaurar backup
+electron_1.ipcMain.handle('autoBackup:restore', async (_, backupPath) => {
+    if (!backupManager) {
+        return { success: false, error: 'BackupManager não inicializado' };
+    }
+    const success = backupManager.restoreBackup(backupPath);
+    return { success };
+});
+// Estatísticas de backup
+electron_1.ipcMain.handle('autoBackup:stats', async () => {
+    if (!backupManager) {
+        return { totalBackups: 0, totalSize: 0, lastBackup: null, backupDir: '' };
+    }
+    return backupManager.getStats();
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// DEAD LETTER QUEUE - Monitoramento de itens com falha de sincronização
+// ═══════════════════════════════════════════════════════════════════════════
+// Obter itens na Dead Letter Queue
+electron_1.ipcMain.handle('dlq:list', async () => {
+    if (!dbManager) {
+        return [];
+    }
+    try {
+        const dlqItems = dbManager.prepare(`
+      SELECT 
+        sq.*,
+        CASE 
+          WHEN sq.entity_type = 'sale' THEN (SELECT sale_number FROM sales WHERE id = sq.entity_id)
+          WHEN sq.entity_type = 'customer' THEN (SELECT name FROM customers WHERE id = sq.entity_id)
+          WHEN sq.entity_type = 'debt' THEN (SELECT debt_number FROM debts WHERE id = sq.entity_id)
+          ELSE sq.entity_id
+        END as entity_display
+      FROM sync_queue sq 
+      WHERE sq.retry_count >= 10 
+      ORDER BY sq.created_at DESC
+      LIMIT 100
+    `).all();
+        return dlqItems;
+    }
+    catch (error) {
+        console.error('Erro ao listar DLQ:', error);
+        return [];
+    }
+});
+// Obter contagem de itens na DLQ
+electron_1.ipcMain.handle('dlq:count', async () => {
+    if (!dbManager) {
+        return 0;
+    }
+    try {
+        const result = dbManager.prepare(`
+      SELECT COUNT(*) as count FROM sync_queue WHERE retry_count >= 10
+    `).get();
+        return result?.count || 0;
+    }
+    catch (error) {
+        console.error('Erro ao contar DLQ:', error);
+        return 0;
+    }
+});
+// Reprocessar item da DLQ (reset retry count)
+electron_1.ipcMain.handle('dlq:retry', async (_, entityId) => {
+    if (!dbManager) {
+        return { success: false, error: 'Database não inicializado' };
+    }
+    try {
+        dbManager.prepare(`
+      UPDATE sync_queue SET retry_count = 0, last_error = NULL 
+      WHERE entity_id = ?
+    `).run(entityId);
+        return { success: true };
+    }
+    catch (error) {
+        console.error('Erro ao reprocessar item DLQ:', error);
+        return { success: false, error: error.message };
+    }
+});
+// Remover item da DLQ permanentemente
+electron_1.ipcMain.handle('dlq:remove', async (_, entityId) => {
+    if (!dbManager) {
+        return { success: false, error: 'Database não inicializado' };
+    }
+    try {
+        dbManager.prepare(`DELETE FROM sync_queue WHERE entity_id = ?`).run(entityId);
+        return { success: true };
+    }
+    catch (error) {
+        console.error('Erro ao remover item DLQ:', error);
+        return { success: false, error: error.message };
+    }
+});
+// Limpar toda a DLQ
+electron_1.ipcMain.handle('dlq:clear', async () => {
+    if (!dbManager) {
+        return { success: false, error: 'Database não inicializado' };
+    }
+    try {
+        const result = dbManager.prepare(`DELETE FROM sync_queue WHERE retry_count >= 10`).run();
+        return { success: true, deletedCount: result.changes };
+    }
+    catch (error) {
+        console.error('Erro ao limpar DLQ:', error);
+        return { success: false, error: error.message };
+    }
+});
+// Verificar e alertar sobre DLQ (chamado periodicamente)
+electron_1.ipcMain.handle('dlq:checkAlert', async () => {
+    if (!dbManager)
+        return { shouldAlert: false, count: 0 };
+    try {
+        const result = dbManager.prepare(`
+      SELECT COUNT(*) as count FROM sync_queue WHERE retry_count >= 10
+    `).get();
+        const count = result?.count || 0;
+        const shouldAlert = count >= 10; // Alertar se tiver 10+ itens na DLQ
+        if (shouldAlert && electron_1.Notification.isSupported()) {
+            new electron_1.Notification({
+                title: '⚠️ Atenção: Itens não sincronizados',
+                body: `${count} itens falharam na sincronização. Verifique a Dead Letter Queue.`
+            }).show();
+        }
+        return { shouldAlert, count };
+    }
+    catch (error) {
+        return { shouldAlert: false, count: 0 };
+    }
+});
+// Backup (handlers existentes)
 electron_1.ipcMain.handle('backup:create', async (_, options) => {
     const backupPath = options?.backupDir || path.join(electron_1.app.getPath('documents'), 'BarManager-Backups');
     const backupType = options?.backupType || 'manual';

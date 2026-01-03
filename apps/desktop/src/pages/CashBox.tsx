@@ -214,7 +214,7 @@ const CashBox: React.FC = () => {
 
   const calculateExpectedCash = () => {
     const { totalCash } = calculateTotals();
-    const opening = currentCashBox ? currentCashBox.opening_cash / 100 : 0;
+    const opening = currentCashBox?.opening_cash ? currentCashBox.opening_cash / 100 : 0;
     // O esperado em caixa é o valor inicial + pagamentos em dinheiro
     return opening + totalCash;
   };
@@ -233,8 +233,11 @@ const CashBox: React.FC = () => {
     }
   }, [currentCashBox]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR', {
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return '--/--/---- --:--';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '--/--/---- --:--';
+    return date.toLocaleString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -317,7 +320,7 @@ const CashBox: React.FC = () => {
               <div className="bg-white rounded-lg p-4">
                 <p className="text-sm text-gray-600 mb-1">Valor Inicial</p>
                 <p className="text-xl font-bold text-gray-900">
-                  {(currentCashBox.opening_cash / 100).toFixed(2)} FCFA
+                  {((currentCashBox.opening_cash ?? 0) / 100).toFixed(2)} FCFA
                 </p>
               </div>
               <div className="bg-white rounded-lg p-4">

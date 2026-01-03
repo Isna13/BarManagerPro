@@ -227,7 +227,23 @@ const api = {
         set: (key, value) => electron_1.ipcRenderer.invoke('settings:set', { key, value }),
         getAll: () => electron_1.ipcRenderer.invoke('settings:getAll'),
     },
-    // Backup
+    // Backup Automático (novo sistema)
+    autoBackup: {
+        create: () => electron_1.ipcRenderer.invoke('autoBackup:create'),
+        list: () => electron_1.ipcRenderer.invoke('autoBackup:list'),
+        restore: (backupPath) => electron_1.ipcRenderer.invoke('autoBackup:restore', backupPath),
+        stats: () => electron_1.ipcRenderer.invoke('autoBackup:stats'),
+    },
+    // Dead Letter Queue - Monitoramento de falhas de sincronização
+    dlq: {
+        list: () => electron_1.ipcRenderer.invoke('dlq:list'),
+        count: () => electron_1.ipcRenderer.invoke('dlq:count'),
+        retry: (entityId) => electron_1.ipcRenderer.invoke('dlq:retry', entityId),
+        remove: (entityId) => electron_1.ipcRenderer.invoke('dlq:remove', entityId),
+        clear: () => electron_1.ipcRenderer.invoke('dlq:clear'),
+        checkAlert: () => electron_1.ipcRenderer.invoke('dlq:checkAlert'),
+    },
+    // Backup (sistema existente)
     backup: {
         create: (options) => electron_1.ipcRenderer.invoke('backup:create', options),
         restore: (filePath) => electron_1.ipcRenderer.invoke('backup:restore', filePath),
