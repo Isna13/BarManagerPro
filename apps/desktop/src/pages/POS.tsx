@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, User, Lock, Smartphone, FileText, AlertTriangle, DollarSign } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, User, Lock, Smartphone, FileText, AlertTriangle, DollarSign, Loader2 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import SearchableSelect from '../components/common/SearchableSelect';
 
@@ -40,6 +40,9 @@ export default function POS() {
   const [checkingCashBox, setCheckingCashBox] = useState(true);
   const [showValeConfirmModal, setShowValeConfirmModal] = useState(false);
   const [valeConfirmData, setValeConfirmData] = useState<any>(null);
+  // 🔒 Proteção contra duplo-clique - CRÍTICO para integridade financeira
+  const [isProcessingSale, setIsProcessingSale] = useState(false);
+  const processingRef = useRef(false); // Ref adicional para garantir proteção mesmo com state async
 
   useEffect(() => {
     loadProducts();
@@ -238,6 +241,12 @@ export default function POS() {
   };
 
   const handleCheckout = async () => {
+    // 🔒 PROTEÇÃO DUPLO-CLIQUE: Verificar ref E state
+    if (processingRef.current || isProcessingSale) {
+      console.warn('⚠️ Venda já em processamento - duplo clique ignorado');
+      return;
+    }
+    
     if (cart.length === 0) {
       toast.warning('Carrinho vazio!');
       return;
@@ -305,6 +314,14 @@ export default function POS() {
   };
 
   const processSale = async () => {
+    // 🔒 PROTEÇÃO DUPLO-CLIQUE: Bloquear imediatamente com ref (síncrono)
+    if (processingRef.current) {
+      console.warn('⚠️ processSale já em execução - chamada ignorada');
+      return;
+    }
+    processingRef.current = true;
+    setIsProcessingSale(true);
+    
     try {
       const total = calculateTotal();
       const savings = calculateSavings();
@@ -431,6 +448,10 @@ export default function POS() {
     } catch (error) {
       console.error('Erro ao processar venda:', error);
       toast.error('Erro ao processar venda: ' + (error as Error).message);
+    } finally {
+      // 🔒 SEMPRE desbloquear após processar (sucesso ou erro)
+      processingRef.current = false;
+      setIsProcessingSale(false);
     }
   };
 
@@ -747,14 +768,21 @@ export default function POS() {
         <div className="space-y-2">
           <button
             onClick={handleCheckout}
-            disabled={cart.length === 0}
-            className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+            disabled={cart.length === 0 || isProcessingSale}
+            className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Finalizar Venda
+            {isProcessingSale ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                Processando...
+              </>
+            ) : (
+              'Finalizar Venda'
+            )}
           </button>
           <button
             onClick={() => setCart([])}
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || isProcessingSale}
             className="w-full bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             Limpar Carrinho

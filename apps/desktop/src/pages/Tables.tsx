@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { 
   Table, Plus, Users, ShoppingCart, CreditCard, 
   X, Check, ArrowRightLeft, Split, Trash2, Clock,
-  DollarSign, User, Package, Receipt, Search, AlertTriangle, Grid
+  DollarSign, User, Package, Receipt, Search, AlertTriangle, Grid, Loader2
 } from 'lucide-react';
 
 const { electronAPI } = window as any;
@@ -168,6 +168,10 @@ export default function TablesPage() {
   
   // Controle de modal de confirmação
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  
+  // 🔒 Proteção contra duplo-clique em pagamentos - CRÍTICO para integridade financeira
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const paymentProcessingRef = useRef(false);
   const [confirmDialogConfig, setConfirmDialogConfig] = useState<{
     title: string;
     message: string;
@@ -614,6 +618,12 @@ export default function TablesPage() {
   };
 
   const handleProcessPayment = async () => {
+    // 🔒 PROTEÇÃO DUPLO-CLIQUE: Verificar ref E state
+    if (paymentProcessingRef.current || isProcessingPayment) {
+      console.warn('⚠️ Pagamento já em processamento - duplo clique ignorado');
+      return;
+    }
+    
     if (!selectedSession || !currentCashBox) {
       toast?.error('Caixa não está aberta!');
       return;
@@ -686,6 +696,10 @@ export default function TablesPage() {
         }
       }
     }
+    
+    // 🔒 Bloquear imediatamente APÓS validações passarem
+    paymentProcessingRef.current = true;
+    setIsProcessingPayment(true);
     
     try {
       const userId = localStorage.getItem('userId') || 'default-user';
@@ -831,6 +845,10 @@ export default function TablesPage() {
       loadTables();
     } catch (error: any) {
       toast?.error('Erro ao processar pagamento: ' + error.message);
+    } finally {
+      // 🔒 SEMPRE desbloquear após processar (sucesso ou erro)
+      paymentProcessingRef.current = false;
+      setIsProcessingPayment(false);
     }
   };
 
@@ -2265,15 +2283,23 @@ export default function TablesPage() {
                   setShowPaymentModal(false);
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={isProcessingPayment}
               >
                 Cancelar
               </button>
               <button
                 onClick={handleProcessPayment}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                disabled={paymentAmount <= 0}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={paymentAmount <= 0 || isProcessingPayment}
               >
-                Confirmar
+                {isProcessingPayment ? (
+                  <>
+                    <Loader2 className="animate-spin" size={18} />
+                    Processando...
+                  </>
+                ) : (
+                  'Confirmar'
+                )}
               </button>
             </div>
           </div>

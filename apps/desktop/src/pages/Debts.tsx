@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, FileText, DollarSign, AlertCircle, CheckCircle, XCircle, Calendar, User, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, FileText, DollarSign, AlertCircle, CheckCircle, XCircle, Calendar, User, Plus, Loader2 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../contexts/ToastContext';
 
@@ -86,6 +86,10 @@ export default function Debts() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
+  
+  // 🔒 Proteção contra duplo-clique em pagamentos - CRÍTICO para integridade financeira
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const paymentProcessingRef = useRef(false);
 
   useEffect(() => {
     loadDebts();
@@ -196,6 +200,12 @@ export default function Debts() {
   };
 
   const handlePayDebt = async () => {
+    // 🔒 PROTEÇÃO DUPLO-CLIQUE: Verificar ref E state
+    if (paymentProcessingRef.current || isProcessingPayment) {
+      console.warn('⚠️ Pagamento já em processamento - duplo clique ignorado');
+      return;
+    }
+    
     if (!selectedDebtForPayment || !paymentAmount) {
       toast.warning('⚠️ Preencha o valor do pagamento');
       return;
@@ -214,6 +224,10 @@ export default function Debts() {
       toast.error(`❌ Valor maior que o saldo da dívida (${formatCurrency(balanceCents)})`);
       return;
     }
+
+    // 🔒 Bloquear imediatamente APÓS validações passarem
+    paymentProcessingRef.current = true;
+    setIsProcessingPayment(true);
 
     try {
       // @ts-ignore
@@ -246,6 +260,10 @@ export default function Debts() {
     } catch (error) {
       console.error('Erro ao registrar pagamento:', error);
       toast.error('❌ Erro ao registrar pagamento: ' + (error as Error).message);
+    } finally {
+      // 🔒 SEMPRE desbloquear após processar (sucesso ou erro)
+      paymentProcessingRef.current = false;
+      setIsProcessingPayment(false);
     }
   };
 
@@ -723,14 +741,23 @@ export default function Debts() {
                     setPaymentNotes('');
                   }}
                   className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+                  disabled={isProcessingPayment}
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handlePayDebt}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  disabled={isProcessingPayment || !paymentAmount}
                 >
-                  Confirmar Pagamento
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      Processando...
+                    </>
+                  ) : (
+                    'Confirmar Pagamento'
+                  )}
                 </button>
               </div>
             </div>
