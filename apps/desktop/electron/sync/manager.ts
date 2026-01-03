@@ -951,6 +951,7 @@ export class SyncManager {
   
   /**
    * Pull rápido de status do CashBox
+   * 🔴 CORREÇÃO: Sempre atualizar dados do caixa para corrigir NaN/Invalid Date
    */
   private async pullCriticalCashBoxStatus() {
     try {
@@ -959,12 +960,23 @@ export class SyncManager {
       
       if (serverBox && serverBox.status === 'open') {
         // Verificar se temos esse caixa localmente
-        const localBox = this.dbManager.getCashBoxById(serverBox.id);
+        const localBox = this.dbManager.getCashBoxById(serverBox.id) as any;
         
         if (!localBox) {
           console.log('⚡ Novo caixa detectado no servidor, sincronizando...');
           this.syncServerCashBoxToLocal(serverBox);
           this.emit('sync:cashBoxUpdated', serverBox);
+        } else {
+          // 🔴 CORREÇÃO: Verificar se dados locais estão inválidos (NaN, null, undefined)
+          const hasInvalidData = !localBox.opened_at || 
+                                 localBox.opening_cash === null || 
+                                 localBox.opening_cash === undefined;
+          
+          if (hasInvalidData) {
+            console.log('⚡ Caixa local com dados inválidos, atualizando do servidor...');
+            this.syncServerCashBoxToLocal(serverBox);
+            this.emit('sync:cashBoxUpdated', serverBox);
+          }
         }
       }
     } catch (error: any) {
