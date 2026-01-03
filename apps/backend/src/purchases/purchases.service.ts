@@ -322,4 +322,81 @@ export class PurchasesService {
       },
     });
   }
+
+  /**
+   * Corrige os valores de compras que foram calculados incorretamente
+   * Bug anterior: multiplicava unitCost (custo/caixa) × totalUnits (unidades)
+   * Correção: subtotal = qtyBoxes × unitCost
+   */
+  async fixPurchaseItemsTotals() {
+    console.log('🔧 Iniciando correção de valores de purchase_items...');
+    
+    // Buscar todos os purchase_items com seus produtos
+    const purchaseItems = await this.prisma.purchaseItem.findMany({
+      include: {
+        product: true,
+        purchase: true,
+      },
+    });
+
+    let correctedCount = 0;
+    const corrections = [];
+
+    for (const item of purchaseItems) {
+      const unitsPerBox = item.product.unitsPerBox || 1;
+      const qtyUnits = item.qtyUnits || 0;
+      const qtyBoxes = Math.floor(qtyUnits / unitsPerBox);
+      const unitCost = item.unitCost || 0;
+      
+      // Cálculo correto: caixas × custo por caixa
+      const correctTotal = qtyBoxes * unitCost;
+      const currentTotal = item.total || 0;
+      
+      // Se o valor atual é mais de 10% maior que o correto, precisa correção
+      if (currentTotal > correctTotal * 1.1) {
+        const correction = {
+          id: item.id,
+          productName: item.product.name,
+          before: currentTotal,
+          after: correctTotal,
+          ratio: currentTotal / correctTotal,
+        };
+        corrections.push(correction);
+        
+        // Atualizar o item
+        await this.prisma.purchaseItem.update({
+          where: { id: item.id },
+          data: {
+            subtotal: correctTotal,
+            total: correctTotal,
+          },
+        });
+        
+        correctedCount++;
+        console.log(`  ✅ ${item.product.name}: ${currentTotal} → ${correctTotal} FCFA`);
+      }
+    }
+
+    // Recalcular totais das compras
+    const purchases = await this.prisma.purchase.findMany({
+      include: { items: true },
+    });
+
+    for (const purchase of purchases) {
+      const newTotal = purchase.items.reduce((sum, item) => sum + (item.total || 0), 0);
+      await this.prisma.purchase.update({
+        where: { id: purchase.id },
+        data: { total: newTotal },
+      });
+    }
+
+    console.log(`🔧 Correção concluída: ${correctedCount} itens corrigidos`);
+    
+    return {
+      message: `Correção concluída: ${correctedCount} itens corrigidos`,
+      correctedItems: correctedCount,
+      totalItems: purchaseItems.length,
+      corrections,
+    };
+  }
 }

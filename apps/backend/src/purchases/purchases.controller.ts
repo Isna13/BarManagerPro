@@ -34,6 +34,11 @@ export class PurchasesController {
     return this.purchasesService.findAll(branchId, status);
   }
 
+  @Post('fix-totals')
+  fixTotals() {
+    return this.purchasesService.fixPurchaseItemsTotals();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.purchasesService.findOne(id);
