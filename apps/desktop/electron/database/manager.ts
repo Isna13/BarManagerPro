@@ -2885,6 +2885,90 @@ export class DatabaseManager {
   }
 
   /**
+   * Ajuste de estoque por caixas - converte caixas em unidades
+   * Usa a mesma arquitetura robusta de delta operations
+   */
+  adjustBoxes(productId: string, branchId: string, boxes: number, reason: string, responsible: string, notes?: string) {
+    // Buscar dados do produto incluindo units_per_box
+    const product: any = this.db.prepare(`
+      SELECT id, name, units_per_box 
+      FROM products 
+      WHERE id = ?
+    `).get(productId);
+
+    if (!product) {
+      throw new Error('Produto não encontrado');
+    }
+
+    if (!product.units_per_box || product.units_per_box <= 0) {
+      throw new Error(`Produto "${product.name}" não tem unidades por caixa definidas. Configure primeiro no cadastro do produto.`);
+    }
+
+    const inventory: any = this.db.prepare(`
+      SELECT id, qty_units, closed_boxes, open_box_units 
+      FROM inventory_items 
+      WHERE product_id = ? AND branch_id = ? AND batch_number IS NULL
+    `).get(productId, branchId);
+
+    if (!inventory) {
+      throw new Error('Produto não encontrado no estoque');
+    }
+
+    // Converter caixas em unidades
+    const deltaUnits = boxes * product.units_per_box;
+
+    // Validar se estoque negativo resultante é permitido
+    const newQtyUnits = inventory.qty_units + deltaUnits;
+    if (newQtyUnits < 0) {
+      throw new Error(`Ajuste resultaria em estoque negativo (${newQtyUnits} unidades). Estoque atual: ${inventory.qty_units}`);
+    }
+
+    const qtyBefore = inventory.qty_units;
+    const closedBoxesBefore = inventory.closed_boxes;
+    const openBoxBefore = inventory.open_box_units;
+
+    // Para ajuste de caixas: atualiza closed_boxes diretamente
+    const newClosedBoxes = closedBoxesBefore + boxes;
+    
+    this.db.prepare(`
+      UPDATE inventory_items 
+      SET closed_boxes = ?,
+          qty_units = qty_units + ?,
+          updated_at = datetime('now'),
+          synced = 0
+      WHERE id = ?
+    `).run(newClosedBoxes >= 0 ? newClosedBoxes : 0, deltaUnits, inventory.id);
+
+    this.registerStockMovement({
+      productId,
+      branchId,
+      movementType: 'adjustment_boxes',
+      quantity: deltaUnits,
+      quantityBefore: qtyBefore,
+      quantityAfter: qtyBefore + deltaUnits,
+      closedBoxesBefore,
+      closedBoxesAfter: newClosedBoxes >= 0 ? newClosedBoxes : 0,
+      openBoxBefore,
+      openBoxAfter: openBoxBefore,
+      boxOpenedAutomatically: false,
+      reason: `${reason} (${boxes} caixas × ${product.units_per_box} un/cx = ${deltaUnits} un)`,
+      responsible,
+      notes: notes || undefined,
+    });
+
+    // 🔴 IMPORTANTE: registerStockMovement() já sincroniza via stock_movement (delta)
+    // NÃO adicionar também como 'inventory' (valor absoluto) - causa duplicação
+
+    return { 
+      success: true, 
+      boxes,
+      unitsPerBox: product.units_per_box,
+      deltaUnits,
+      newTotal: qtyBefore + deltaUnits 
+    };
+  }
+
+  /**
    * Calcular consumo médio e previsões
    */
   calculateConsumptionAndForecast(productId: string, branchId: string) {

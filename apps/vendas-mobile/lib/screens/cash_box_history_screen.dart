@@ -322,7 +322,7 @@ class _CashBoxHistoryScreenState extends State<CashBoxHistoryScreen> {
   void _navigateToDetails(Map<String, dynamic> item) {
     final id = item['id'] ?? '';
     final boxNumber = item['box_number'] ?? item['boxNumber'] ?? '';
-    
+
     Navigator.push(
       context,
       MaterialPageRoute(

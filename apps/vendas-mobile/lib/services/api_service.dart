@@ -276,11 +276,11 @@ class ApiService {
   Future<Map<String, dynamic>?> getCashBoxDetails(String cashBoxId) async {
     try {
       final response = await _dio.get('/cash-box/$cashBoxId/details');
-      
+
       if (response.data == null || response.data == '') {
         return null;
       }
-      
+
       return response.data;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;

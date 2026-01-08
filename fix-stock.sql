@@ -1,0 +1,16 @@
+﻿UPDATE inventory_items SET qty_units = 5 WHERE product_id = '84e259de-9fb4-4cd6-84c8-e9c497f853f9';
+UPDATE inventory_items SET qty_units = 9 WHERE product_id = (SELECT id FROM products WHERE name LIKE 'Cacho%');
+UPDATE inventory_items SET qty_units = 37 WHERE product_id = 'a7ee49ca-89cb-4f73-a84d-6b5339f95355';
+UPDATE inventory_items SET qty_units = 43 WHERE product_id = (SELECT id FROM products WHERE name = 'Casalinho');
+UPDATE inventory_items SET qty_units = 55 WHERE product_id = (SELECT id FROM products WHERE name = 'Coca cola');
+UPDATE inventory_items SET qty_units = 10 WHERE product_id = (SELECT id FROM products WHERE name = 'Faison');
+UPDATE inventory_items SET qty_units = 55 WHERE product_id = (SELECT id FROM products WHERE name = 'Maza');
+UPDATE inventory_items SET qty_units = 42 WHERE product_id = (SELECT id FROM products WHERE name LIKE 'Monte%');
+UPDATE inventory_items SET qty_units = 0 WHERE product_id = (SELECT id FROM products WHERE name = 'Mundos');
+UPDATE inventory_items SET qty_units = 11 WHERE product_id = 'a3f3ff2a-2abc-4727-8b1a-de28f403fe6b';
+UPDATE inventory_items SET qty_units = 42 WHERE product_id = (SELECT id FROM products WHERE name = 'Sprit');
+UPDATE inventory_items SET qty_units = 52 WHERE product_id = (SELECT id FROM products WHERE name = 'Sumol');
+UPDATE inventory_items SET qty_units = 51 WHERE product_id = (SELECT id FROM products WHERE name LIKE 'Super Bock Preta%');
+UPDATE inventory_items SET qty_units = 24 WHERE product_id = (SELECT id FROM products WHERE name = 'Terras');
+UPDATE inventory_items SET qty_units = 38 WHERE product_id = (SELECT id FROM products WHERE name = 'XL');
+SELECT 'Concluido';

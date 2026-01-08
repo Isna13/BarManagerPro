@@ -4,10 +4,10 @@ import '../services/api_service.dart';
 import '../utils/currency_helper.dart';
 
 /// 🎯 Tela de Detalhes do Caixa - PARIDADE COM ELECTRON
-/// 
+///
 /// Esta tela exibe EXATAMENTE os mesmos dados que o Electron mostra
 /// na aba "Histórico de Caixa → Detalhes do Caixa Fechado":
-/// 
+///
 /// ✅ Lista de produtos vendidos com quantidade
 /// ✅ Total em dinheiro por produto (receita)
 /// ✅ Valor de reposição (custo)
@@ -19,13 +19,13 @@ import '../utils/currency_helper.dart';
 ///    - Lucro líquido
 ///    - Margem (%)
 ///    - Vales (crédito)
-/// 
+///
 /// 📌 IMPORTANTE: Todos os dados vêm do servidor Railway
 /// 📌 O app NÃO recalcula valores - apenas exibe
 class CashBoxDetailsScreen extends StatefulWidget {
   final String cashBoxId;
   final String? boxNumber;
-  
+
   const CashBoxDetailsScreen({
     super.key,
     required this.cashBoxId,
@@ -39,26 +39,27 @@ class CashBoxDetailsScreen extends StatefulWidget {
 class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
   final _dateFormat = DateFormat('dd/MM/yyyy');
   final _timeFormat = DateFormat('HH:mm');
-  
+
   Map<String, dynamic>? _details;
   bool _isLoading = true;
   String? _error;
-  
+
   @override
   void initState() {
     super.initState();
     _loadDetails();
   }
-  
+
   Future<void> _loadDetails() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
-    
+
     try {
-      final details = await ApiService.instance.getCashBoxDetails(widget.cashBoxId);
-      
+      final details =
+          await ApiService.instance.getCashBoxDetails(widget.cashBoxId);
+
       setState(() {
         _details = details;
         _isLoading = false;
@@ -70,7 +71,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       });
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,12 +89,12 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       body: _buildBody(),
     );
   }
-  
+
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (_error != null) {
       return Center(
         child: Column(
@@ -124,7 +125,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
         ),
       );
     }
-    
+
     if (_details == null) {
       return Center(
         child: Column(
@@ -140,7 +141,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
         ),
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: _loadDetails,
       child: SingleChildScrollView(
@@ -152,15 +153,15 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             // Informações do caixa
             _buildCashBoxInfoCard(),
             const SizedBox(height: 16),
-            
+
             // Cards de resumo (métricas de lucro)
             _buildProfitMetricsCards(),
             const SizedBox(height: 16),
-            
+
             // Métodos de pagamento
             _buildPaymentMethodsCard(),
             const SizedBox(height: 16),
-            
+
             // Lista de produtos vendidos
             _buildSalesItemsList(),
           ],
@@ -168,68 +169,71 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   // Helper para obter valor numérico em reais (dividir por 100)
   double _getValue(dynamic value) {
     if (value == null) return 0;
     return (value is num ? value.toDouble() : 0) / 100;
   }
-  
+
   // Helper para obter valor inteiro
   int _getInt(dynamic value) {
     if (value == null) return 0;
     return value is int ? value : (value as num).toInt();
   }
-  
+
   // Helper para formatar duração
   String _getDuration() {
     final openedAtStr = _details!['openedAt'] ?? _details!['opened_at'];
     final closedAtStr = _details!['closedAt'] ?? _details!['closed_at'];
-    
+
     if (openedAtStr == null) return 'N/A';
-    
+
     final openedAt = DateTime.tryParse(openedAtStr.toString());
     if (openedAt == null) return 'N/A';
-    
+
     if (closedAtStr == null) return 'Aberto';
-    
+
     final closedAt = DateTime.tryParse(closedAtStr.toString());
     if (closedAt == null) return 'Aberto';
-    
+
     final diff = closedAt.difference(openedAt);
     if (diff.inHours > 0) {
       return '${diff.inHours}h ${diff.inMinutes % 60}min';
     }
     return '${diff.inMinutes}min';
   }
-  
+
   Widget _buildCashBoxInfoCard() {
     final boxNumber = _details!['boxNumber'] ?? _details!['box_number'] ?? '';
     final status = _details!['status'] ?? 'closed';
-    final openedBy = _details!['openedBy'] ?? _details!['opened_by'] ?? 'Desconhecido';
-    final openingCash = _getValue(_details!['openingCash'] ?? _details!['opening_cash']);
+    final openedBy =
+        _details!['openedBy'] ?? _details!['opened_by'] ?? 'Desconhecido';
+    final openingCash =
+        _getValue(_details!['openingCash'] ?? _details!['opening_cash']);
     final closingCash = _details!['closingCash'] ?? _details!['closing_cash'];
     final difference = _details!['difference'];
-    final salesCount = _getInt(_details!['salesCount'] ?? _details!['sales_count']);
+    final salesCount =
+        _getInt(_details!['salesCount'] ?? _details!['sales_count']);
     final notes = _details!['notes'];
-    
+
     String openedAt = '-';
     String closedAt = '-';
-    
+
     try {
       final openedAtStr = _details!['openedAt'] ?? _details!['opened_at'];
       if (openedAtStr != null) {
         final date = DateTime.parse(openedAtStr);
         openedAt = '${_dateFormat.format(date)} ${_timeFormat.format(date)}';
       }
-      
+
       final closedAtStr = _details!['closedAt'] ?? _details!['closed_at'];
       if (closedAtStr != null) {
         final date = DateTime.parse(closedAtStr);
         closedAt = '${_dateFormat.format(date)} ${_timeFormat.format(date)}';
       }
     } catch (_) {}
-    
+
     final differenceValue = difference != null ? _getValue(difference) : null;
     final differenceColor = differenceValue == null
         ? Colors.grey
@@ -238,7 +242,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             : differenceValue > 0
                 ? Colors.blue
                 : Colors.red;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -267,9 +271,10 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
                     children: [
                       Text(
                         'Caixa $boxNumber',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                       ),
                       Text(
                         'Operador: $openedBy',
@@ -279,7 +284,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: status == 'open' ? Colors.green : Colors.grey,
                     borderRadius: BorderRadius.circular(12),
@@ -299,11 +305,13 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             _buildInfoRow('Abertura', openedAt),
             if (status != 'open') _buildInfoRow('Fechamento', closedAt),
             _buildInfoRow('Duração', _getDuration()),
-            _buildInfoRow('Vendas', '$salesCount ${salesCount == 1 ? 'venda' : 'vendas'}'),
+            _buildInfoRow('Vendas',
+                '$salesCount ${salesCount == 1 ? 'venda' : 'vendas'}'),
             const Divider(height: 16),
             _buildInfoRow('Valor Inicial', CurrencyHelper.format(openingCash)),
             if (closingCash != null)
-              _buildInfoRow('Valor no Fechamento', CurrencyHelper.format(_getValue(closingCash))),
+              _buildInfoRow('Valor no Fechamento',
+                  CurrencyHelper.format(_getValue(closingCash))),
             if (differenceValue != null)
               _buildInfoRow(
                 'Diferença',
@@ -334,29 +342,31 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildProfitMetricsCards() {
-    final profitMetrics = _details!['profitMetrics'] as Map<String, dynamic>? ?? {};
-    
+    final profitMetrics =
+        _details!['profitMetrics'] as Map<String, dynamic>? ?? {};
+
     final totalRevenue = _getValue(profitMetrics['totalRevenue']);
     final totalCOGS = _getValue(profitMetrics['totalCOGS']);
     final grossProfit = _getValue(profitMetrics['grossProfit']);
     final profitMargin = (profitMetrics['profitMargin'] ?? 0).toDouble();
     final netProfit = _getValue(profitMetrics['netProfit']);
     final netMargin = (profitMetrics['netMargin'] ?? 0).toDouble();
-    final totalDebt = _getValue(_details!['totalDebt'] ?? _details!['total_debt']);
-    
+    final totalDebt =
+        _getValue(_details!['totalDebt'] ?? _details!['total_debt']);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Resumo Financeiro',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+                fontWeight: FontWeight.bold,
+              ),
         ),
         const SizedBox(height: 12),
-        
+
         // Primeira linha: Valor da Venda e Valor da Reposição
         Row(
           children: [
@@ -380,7 +390,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Segunda linha: Lucro Bruto e Lucro Líquido
         Row(
           children: [
@@ -406,7 +416,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Terceira linha: Vales
         _buildMetricCard(
           title: 'Vales (Crédito)',
@@ -419,7 +429,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ],
     );
   }
-  
+
   Widget _buildMetricCard({
     required String title,
     required String value,
@@ -478,14 +488,19 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildPaymentMethodsCard() {
-    final totalSales = _getValue(_details!['totalSales'] ?? _details!['total_sales']);
-    final totalCash = _getValue(_details!['totalCash'] ?? _details!['total_cash']);
-    final totalMobile = _getValue(_details!['totalMobileMoney'] ?? _details!['total_mobile_money']);
-    final totalCard = _getValue(_details!['totalCard'] ?? _details!['total_card']);
-    final totalDebt = _getValue(_details!['totalDebt'] ?? _details!['total_debt']);
-    
+    final totalSales =
+        _getValue(_details!['totalSales'] ?? _details!['total_sales']);
+    final totalCash =
+        _getValue(_details!['totalCash'] ?? _details!['total_cash']);
+    final totalMobile = _getValue(
+        _details!['totalMobileMoney'] ?? _details!['total_mobile_money']);
+    final totalCard =
+        _getValue(_details!['totalCard'] ?? _details!['total_card']);
+    final totalDebt =
+        _getValue(_details!['totalDebt'] ?? _details!['total_debt']);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -495,8 +510,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             Text(
               'Métodos de Pagamento',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             const SizedBox(height: 12),
             _buildPaymentRow(
@@ -531,7 +546,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildPaymentRow({
     required String label,
     required String value,
@@ -560,11 +575,12 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildSalesItemsList() {
-    final profitMetrics = _details!['profitMetrics'] as Map<String, dynamic>? ?? {};
+    final profitMetrics =
+        _details!['profitMetrics'] as Map<String, dynamic>? ?? {};
     final items = (profitMetrics['salesItems'] as List<dynamic>?) ?? [];
-    
+
     if (items.isEmpty) {
       return Card(
         child: Padding(
@@ -584,7 +600,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
         ),
       );
     }
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -594,8 +610,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             Text(
               'Produtos Vendidos',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             Text(
               '${items.length} ${items.length == 1 ? 'produto' : 'produtos'}',
@@ -604,25 +620,28 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Lista de produtos
-        ...items.map((item) => _buildProductCard(item as Map<String, dynamic>)).toList(),
-        
+        ...items
+            .map((item) => _buildProductCard(item as Map<String, dynamic>))
+            .toList(),
+
         // Totais da lista
         const SizedBox(height: 12),
         _buildTotalsCard(),
       ],
     );
   }
-  
+
   Widget _buildProductCard(Map<String, dynamic> item) {
-    final productName = item['productName'] ?? item['product_name'] ?? 'Produto';
+    final productName =
+        item['productName'] ?? item['product_name'] ?? 'Produto';
     final qtySold = _getInt(item['qtySold'] ?? item['qty_sold']);
     final revenue = _getValue(item['revenue']);
     final cost = _getValue(item['cost']);
     final profit = _getValue(item['profit']);
     final hasNoCost = cost == 0;
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       color: hasNoCost ? Colors.yellow.shade50 : null,
@@ -641,7 +660,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
                 ),
                 if (hasNoCost)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: Colors.yellow.shade100,
                       borderRadius: BorderRadius.circular(4),
@@ -691,7 +711,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildProductStat(String label, String value, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -714,19 +734,21 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ],
     );
   }
-  
+
   Widget _buildTotalsCard() {
-    final profitMetrics = _details!['profitMetrics'] as Map<String, dynamic>? ?? {};
+    final profitMetrics =
+        _details!['profitMetrics'] as Map<String, dynamic>? ?? {};
     final items = (profitMetrics['salesItems'] as List<dynamic>?) ?? [];
     final totalRevenue = _getValue(profitMetrics['totalRevenue']);
     final totalCOGS = _getValue(profitMetrics['totalCOGS']);
     final grossProfit = _getValue(profitMetrics['grossProfit']);
-    
+
     int totalQty = 0;
     for (final item in items) {
-      totalQty += _getInt((item as Map<String, dynamic>)['qtySold'] ?? item['qty_sold']);
+      totalQty += _getInt(
+          (item as Map<String, dynamic>)['qtySold'] ?? item['qty_sold']);
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -780,7 +802,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildTotalStat(String label, String value, Color color) {
     return Column(
       children: [
@@ -805,7 +827,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ],
     );
   }
-  
+
   Widget _buildInfoRow(String label, String value, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),

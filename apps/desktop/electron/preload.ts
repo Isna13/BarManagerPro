@@ -115,6 +115,8 @@ const api = {
       ipcRenderer.invoke('inventory:registerBreakage', { productId, branchId, quantity, reason, responsible, notes }),
     manualAdjustment: (productId: string, branchId: string, quantity: number, reason: string, responsible: string, notes?: string) =>
       ipcRenderer.invoke('inventory:manualAdjustment', { productId, branchId, quantity, reason, responsible, notes }),
+    adjustBoxes: (productId: string, branchId: string, boxes: number, reason: string, responsible: string, notes?: string) =>
+      ipcRenderer.invoke('inventory:adjustBoxes', { productId, branchId, boxes, reason, responsible, notes }),
     calculateConsumption: (productId: string, branchId: string) =>
       ipcRenderer.invoke('inventory:calculateConsumption', { productId, branchId }),
     getMovements: (filters: any) =>

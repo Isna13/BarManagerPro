@@ -1215,17 +1215,17 @@ class CashBoxDetails {
   final double? difference;
   final String? notes;
   final String? openedBy;
-  
+
   // Contagem de vendas
   final int salesCount;
-  
+
   // Totais por método de pagamento
   final double totalSales;
   final double totalCash;
   final double totalMobileMoney;
   final double totalCard;
   final double totalDebt;
-  
+
   // 🎯 Métricas de lucro (fonte da verdade do servidor)
   final ProfitMetrics profitMetrics;
 
@@ -1256,31 +1256,43 @@ class CashBoxDetails {
       boxNumber: json['boxNumber'] ?? json['box_number'] ?? '',
       branchId: json['branchId'] ?? json['branch_id'] ?? '',
       status: json['status'] ?? 'closed',
-      openedAt: DateTime.tryParse(json['openedAt'] ?? json['opened_at'] ?? '') ?? DateTime.now(),
-      closedAt: json['closedAt'] != null 
-          ? DateTime.tryParse(json['closedAt']) 
-          : json['closed_at'] != null 
-              ? DateTime.tryParse(json['closed_at']) 
+      openedAt:
+          DateTime.tryParse(json['openedAt'] ?? json['opened_at'] ?? '') ??
+              DateTime.now(),
+      closedAt: json['closedAt'] != null
+          ? DateTime.tryParse(json['closedAt'])
+          : json['closed_at'] != null
+              ? DateTime.tryParse(json['closed_at'])
               : null,
-      openingCash: (json['openingCash'] ?? json['opening_cash'] ?? 0).toDouble() / 100,
-      closingCash: json['closingCash'] != null 
-          ? (json['closingCash']).toDouble() / 100 
-          : json['closing_cash'] != null 
-              ? (json['closing_cash']).toDouble() / 100 
+      openingCash:
+          (json['openingCash'] ?? json['opening_cash'] ?? 0).toDouble() / 100,
+      closingCash: json['closingCash'] != null
+          ? (json['closingCash']).toDouble() / 100
+          : json['closing_cash'] != null
+              ? (json['closing_cash']).toDouble() / 100
               : null,
-      difference: json['difference'] != null ? (json['difference']).toDouble() / 100 : null,
+      difference: json['difference'] != null
+          ? (json['difference']).toDouble() / 100
+          : null,
       notes: json['notes'],
       openedBy: json['openedBy'] ?? json['opened_by'],
       salesCount: json['salesCount'] ?? json['sales_count'] ?? 0,
-      totalSales: (json['totalSales'] ?? json['total_sales'] ?? 0).toDouble() / 100,
-      totalCash: (json['totalCash'] ?? json['total_cash'] ?? 0).toDouble() / 100,
-      totalMobileMoney: (json['totalMobileMoney'] ?? json['total_mobile_money'] ?? 0).toDouble() / 100,
-      totalCard: (json['totalCard'] ?? json['total_card'] ?? 0).toDouble() / 100,
-      totalDebt: (json['totalDebt'] ?? json['total_debt'] ?? 0).toDouble() / 100,
+      totalSales:
+          (json['totalSales'] ?? json['total_sales'] ?? 0).toDouble() / 100,
+      totalCash:
+          (json['totalCash'] ?? json['total_cash'] ?? 0).toDouble() / 100,
+      totalMobileMoney:
+          (json['totalMobileMoney'] ?? json['total_mobile_money'] ?? 0)
+                  .toDouble() /
+              100,
+      totalCard:
+          (json['totalCard'] ?? json['total_card'] ?? 0).toDouble() / 100,
+      totalDebt:
+          (json['totalDebt'] ?? json['total_debt'] ?? 0).toDouble() / 100,
       profitMetrics: ProfitMetrics.fromJson(json['profitMetrics'] ?? {}),
     );
   }
-  
+
   /// Duração do caixa em formato legível
   String get duration {
     if (closedAt == null) return 'Aberto';

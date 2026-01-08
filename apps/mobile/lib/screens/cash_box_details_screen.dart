@@ -6,10 +6,10 @@ import '../services/api_service.dart';
 import '../widgets/common_widgets.dart';
 
 /// 🎯 Tela de Detalhes do Caixa - PARIDADE COM ELECTRON
-/// 
+///
 /// Esta tela exibe EXATAMENTE os mesmos dados que o Electron mostra
 /// na aba "Histórico de Caixa → Detalhes do Caixa Fechado":
-/// 
+///
 /// ✅ Lista de produtos vendidos com quantidade
 /// ✅ Total em dinheiro por produto (receita)
 /// ✅ Valor de reposição (custo)
@@ -21,13 +21,13 @@ import '../widgets/common_widgets.dart';
 ///    - Lucro líquido
 ///    - Margem (%)
 ///    - Vales (crédito)
-/// 
+///
 /// 📌 IMPORTANTE: Todos os dados vêm do servidor Railway
 /// 📌 O app NÃO recalcula valores - apenas exibe
 class CashBoxDetailsScreen extends StatefulWidget {
   final String cashBoxId;
   final String? boxNumber;
-  
+
   const CashBoxDetailsScreen({
     super.key,
     required this.cashBoxId,
@@ -46,28 +46,28 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
   );
   final dateFormat = DateFormat('dd/MM/yyyy');
   final timeFormat = DateFormat('HH:mm');
-  
+
   CashBoxDetails? _details;
   bool _isLoading = true;
   String? _error;
-  
+
   @override
   void initState() {
     super.initState();
     _loadDetails();
   }
-  
+
   Future<void> _loadDetails() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
-    
+
     try {
       final apiService = ApiService();
       await apiService.loadToken();
       final details = await apiService.getCashBoxDetails(widget.cashBoxId);
-      
+
       setState(() {
         _details = details;
         _isLoading = false;
@@ -79,7 +79,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       });
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,12 +97,12 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       body: _buildBody(),
     );
   }
-  
+
   Widget _buildBody() {
     if (_isLoading) {
       return const LoadingIndicator();
     }
-    
+
     if (_error != null) {
       return Center(
         child: Column(
@@ -130,14 +130,14 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
         ),
       );
     }
-    
+
     if (_details == null) {
       return const EmptyState(
         icon: Icons.receipt_long,
         title: 'Detalhes não encontrados',
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: _loadDetails,
       child: SingleChildScrollView(
@@ -149,15 +149,15 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             // Informações do caixa
             _buildCashBoxInfoCard(),
             const SizedBox(height: 16),
-            
+
             // Cards de resumo (métricas de lucro)
             _buildProfitMetricsCards(),
             const SizedBox(height: 16),
-            
+
             // Métodos de pagamento
             _buildPaymentMethodsCard(),
             const SizedBox(height: 16),
-            
+
             // Lista de produtos vendidos
             _buildSalesItemsList(),
           ],
@@ -165,10 +165,10 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildCashBoxInfoCard() {
     final details = _details!;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -187,7 +187,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
                   ),
                   child: Icon(
                     details.status == 'open' ? Icons.lock_open : Icons.lock,
-                    color: details.status == 'open' ? Colors.green : Colors.grey,
+                    color:
+                        details.status == 'open' ? Colors.green : Colors.grey,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -197,9 +198,10 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
                     children: [
                       Text(
                         'Caixa ${details.boxNumber}',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                       ),
                       if (details.openedBy != null)
                         Text(
@@ -218,15 +220,20 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
               ],
             ),
             const Divider(height: 24),
-            _buildInfoRow('Abertura', '${dateFormat.format(details.openedAt)} ${timeFormat.format(details.openedAt)}'),
+            _buildInfoRow('Abertura',
+                '${dateFormat.format(details.openedAt)} ${timeFormat.format(details.openedAt)}'),
             if (details.closedAt != null)
-              _buildInfoRow('Fechamento', '${dateFormat.format(details.closedAt!)} ${timeFormat.format(details.closedAt!)}'),
+              _buildInfoRow('Fechamento',
+                  '${dateFormat.format(details.closedAt!)} ${timeFormat.format(details.closedAt!)}'),
             _buildInfoRow('Duração', details.duration),
-            _buildInfoRow('Vendas', '${details.salesCount} ${details.salesCount == 1 ? 'venda' : 'vendas'}'),
+            _buildInfoRow('Vendas',
+                '${details.salesCount} ${details.salesCount == 1 ? 'venda' : 'vendas'}'),
             const Divider(height: 16),
-            _buildInfoRow('Valor Inicial', currencyFormat.format(details.openingCash)),
+            _buildInfoRow(
+                'Valor Inicial', currencyFormat.format(details.openingCash)),
             if (details.closingCash != null)
-              _buildInfoRow('Valor no Fechamento', currencyFormat.format(details.closingCash!)),
+              _buildInfoRow('Valor no Fechamento',
+                  currencyFormat.format(details.closingCash!)),
             if (details.difference != null)
               _buildInfoRow(
                 'Diferença',
@@ -244,21 +251,21 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildProfitMetricsCards() {
     final metrics = _details!.profitMetrics;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Resumo Financeiro',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+                fontWeight: FontWeight.bold,
+              ),
         ),
         const SizedBox(height: 12),
-        
+
         // Primeira linha: Valor da Venda e Valor da Reposição
         Row(
           children: [
@@ -282,7 +289,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Segunda linha: Lucro Bruto e Lucro Líquido
         Row(
           children: [
@@ -308,7 +315,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Terceira linha: Vales
         _buildMetricCard(
           title: 'Vales (Crédito)',
@@ -321,7 +328,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ],
     );
   }
-  
+
   Widget _buildMetricCard({
     required String title,
     required String value,
@@ -380,10 +387,10 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildPaymentMethodsCard() {
     final details = _details!;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -393,8 +400,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             Text(
               'Métodos de Pagamento',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             const SizedBox(height: 12),
             _buildPaymentRow(
@@ -429,7 +436,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildPaymentRow({
     required String label,
     required String value,
@@ -458,10 +465,10 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildSalesItemsList() {
     final items = _details!.profitMetrics.salesItems;
-    
+
     if (items.isEmpty) {
       return Card(
         child: Padding(
@@ -481,7 +488,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
         ),
       );
     }
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -491,8 +498,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
             Text(
               'Produtos Vendidos',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             Text(
               '${items.length} ${items.length == 1 ? 'produto' : 'produtos'}',
@@ -501,20 +508,20 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Lista de produtos
         ...items.map((item) => _buildProductCard(item)).toList(),
-        
+
         // Totais da lista
         const SizedBox(height: 12),
         _buildTotalsCard(),
       ],
     );
   }
-  
+
   Widget _buildProductCard(SalesItemDetail item) {
     final hasNoCost = item.cost == 0;
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       color: hasNoCost ? Colors.yellow.shade50 : null,
@@ -533,7 +540,8 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
                 ),
                 if (hasNoCost)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: Colors.yellow.shade100,
                       borderRadius: BorderRadius.circular(4),
@@ -583,7 +591,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildProductStat(String label, String value, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,11 +614,12 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ],
     );
   }
-  
+
   Widget _buildTotalsCard() {
     final metrics = _details!.profitMetrics;
-    final totalQty = metrics.salesItems.fold<int>(0, (sum, item) => sum + item.qtySold);
-    
+    final totalQty =
+        metrics.salesItems.fold<int>(0, (sum, item) => sum + item.qtySold);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -664,7 +673,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ),
     );
   }
-  
+
   Widget _buildTotalStat(String label, String value, Color color) {
     return Column(
       children: [
@@ -689,7 +698,7 @@ class _CashBoxDetailsScreenState extends State<CashBoxDetailsScreen> {
       ],
     );
   }
-  
+
   Widget _buildInfoRow(String label, String value, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),

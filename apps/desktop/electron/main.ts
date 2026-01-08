@@ -466,6 +466,10 @@ ipcMain.handle('inventory:manualAdjustment', async (_, { productId, branchId, qu
   return dbManager.manualAdjustment(productId, branchId, quantity, reason, responsible, notes);
 });
 
+ipcMain.handle('inventory:adjustBoxes', async (_, { productId, branchId, boxes, reason, responsible, notes }) => {
+  return dbManager.adjustBoxes(productId, branchId, boxes, reason, responsible, notes);
+});
+
 ipcMain.handle('inventory:calculateConsumption', async (_, { productId, branchId }) => {
   return dbManager.calculateConsumptionAndForecast(productId, branchId);
 });

@@ -71,6 +71,7 @@ const InventoryAdvanced: React.FC = () => {
 
   // Modais
   const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [showAdjustBoxesModal, setShowAdjustBoxesModal] = useState(false);
   const [showLossModal, setShowLossModal] = useState(false);
   const [showBreakageModal, setShowBreakageModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -85,6 +86,14 @@ const InventoryAdvanced: React.FC = () => {
   // Formulários
   const [adjustmentForm, setAdjustmentForm] = useState({
     quantity: '',
+    reason: '',
+    responsible: 'admin',
+    notes: '',
+  });
+
+  // Formulário de ajuste de caixas
+  const [boxAdjustmentForm, setBoxAdjustmentForm] = useState({
+    boxes: '',
     reason: '',
     responsible: 'admin',
     notes: '',
@@ -256,6 +265,17 @@ const InventoryAdvanced: React.FC = () => {
     setShowAdjustModal(true);
   };
 
+  const openAdjustBoxesModal = (item: InventoryItem) => {
+    // Verificar se o produto tem unidades_por_caixa definido
+    if (!item.units_per_box || item.units_per_box <= 0) {
+      toast.warning('Este produto não tem "unidades por caixa" configurado. Configure nas propriedades do produto antes de ajustar caixas.');
+      return;
+    }
+    setSelectedItem(item);
+    setBoxAdjustmentForm({ boxes: '', reason: '', responsible: 'admin', notes: '' });
+    setShowAdjustBoxesModal(true);
+  };
+
   const openLossModal = (item: InventoryItem) => {
     setSelectedItem(item);
     setAdjustmentForm({ quantity: '', reason: '', responsible: 'admin', notes: '' });
@@ -359,6 +379,70 @@ const InventoryAdvanced: React.FC = () => {
       loadInventory();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao registrar quebra');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * 🔴 AJUSTE DE CAIXAS - Handler robusto
+   * Converte caixas em unidades e registra como movimentação delta
+   * Segue os mesmos princípios de idempotência e auditoria
+   */
+  const handleBoxAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedItem) return;
+
+    const boxes = parseInt(boxAdjustmentForm.boxes);
+    if (isNaN(boxes) || boxes === 0) {
+      toast.warning('Quantidade de caixas inválida');
+      return;
+    }
+
+    // Validação crítica: unidades por caixa DEVE existir
+    if (!selectedItem.units_per_box || selectedItem.units_per_box <= 0) {
+      toast.error('Este produto não tem "unidades por caixa" configurado');
+      return;
+    }
+
+    if (!boxAdjustmentForm.reason) {
+      toast.warning('Motivo é obrigatório');
+      return;
+    }
+
+    // Calcular delta em unidades: boxes × unidades_por_caixa
+    const deltaUnits = boxes * selectedItem.units_per_box;
+
+    // Verificar se o ajuste negativo não excede o estoque disponível
+    if (boxes < 0) {
+      const unitsToRemove = Math.abs(deltaUnits);
+      if (unitsToRemove > selectedItem.qty_units) {
+        toast.error(`Não há estoque suficiente. Disponível: ${selectedItem.qty_units} unidades (${Math.floor(selectedItem.qty_units / selectedItem.units_per_box)} caixas)`);
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      // Usar o mesmo endpoint de ajuste manual, mas com a razão indicando que é ajuste de caixas
+      const reason = `[AJUSTE DE CAIXAS: ${boxes > 0 ? '+' : ''}${boxes} cx] ${boxAdjustmentForm.reason}`;
+      
+      // @ts-ignore
+      await window.electronAPI?.inventory?.adjustBoxes?.(
+        selectedItem.product_id,
+        'main-branch',
+        boxes,
+        selectedItem.units_per_box,
+        boxAdjustmentForm.reason,
+        boxAdjustmentForm.responsible,
+        boxAdjustmentForm.notes
+      );
+
+      toast.success(`Ajuste de ${boxes > 0 ? '+' : ''}${boxes} caixa(s) realizado! (${deltaUnits > 0 ? '+' : ''}${deltaUnits} unidades)`);
+      setShowAdjustBoxesModal(false);
+      loadInventory();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao realizar ajuste de caixas');
     } finally {
       setLoading(false);
     }
@@ -672,9 +756,16 @@ const InventoryAdvanced: React.FC = () => {
                             <button
                               onClick={() => openAdjustModal(item)}
                               className="p-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-                              title="Ajustar"
+                              title="Ajustar Unidades"
                             >
                               <Settings size={16} />
+                            </button>
+                            <button
+                              onClick={() => openAdjustBoxesModal(item)}
+                              className="p-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
+                              title="Ajustar Caixas"
+                            >
+                              <Box size={16} />
                             </button>
                             <button
                               onClick={() => openLossModal(item)}
@@ -1124,6 +1215,112 @@ const InventoryAdvanced: React.FC = () => {
                   disabled={loading}
                 >
                   {loading ? 'Salvando...' : 'Confirmar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Ajustar Caixas */}
+      {showAdjustBoxesModal && selectedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-t-lg">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Box size={24} />
+                Ajuste por Caixas
+              </h2>
+            </div>
+            <form onSubmit={handleBoxAdjustment} className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Produto</label>
+                <input
+                  type="text"
+                  value={selectedItem.product_name}
+                  disabled
+                  className="w-full px-3 py-2 border rounded-lg bg-gray-100"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Quantidade Atual</label>
+                <div className="text-2xl font-bold text-purple-600">{selectedItem.total_bottles} garrafas</div>
+                <div className="text-sm text-gray-600">
+                  {selectedItem.closed_boxes} caixas fechadas + {selectedItem.open_box_units} avulsas
+                </div>
+                <div className="mt-2 px-3 py-2 bg-purple-50 rounded-lg text-sm text-purple-700">
+                  <strong>Unidades por caixa:</strong> {selectedItem.units_per_box || 'Não definido'}
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Ajuste em Caixas (positivo ou negativo) *</label>
+                <input
+                  type="number"
+                  value={boxAdjustmentForm.boxes}
+                  onChange={(e) => setBoxAdjustmentForm({ ...boxAdjustmentForm, boxes: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="Ex: 2 ou -1"
+                  required
+                />
+                {boxAdjustmentForm.boxes && selectedItem.units_per_box && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    = <strong>{parseInt(boxAdjustmentForm.boxes) * selectedItem.units_per_box}</strong> unidades
+                  </div>
+                )}
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Motivo *</label>
+                <SearchableSelect
+                  options={[
+                    { value: '', label: 'Selecione' },
+                    { value: 'Entrada de caixas', label: 'Entrada de caixas' },
+                    { value: 'Saída de caixas', label: 'Saída de caixas' },
+                    { value: 'Contagem de inventário', label: 'Contagem de inventário' },
+                    { value: 'Correção de erro', label: 'Correção de erro' },
+                    { value: 'Transferência', label: 'Transferência' },
+                    { value: 'Outro', label: 'Outro' },
+                  ]}
+                  value={boxAdjustmentForm.reason}
+                  onChange={(value) => setBoxAdjustmentForm({ ...boxAdjustmentForm, reason: value })}
+                  placeholder="Selecione o motivo"
+                  searchPlaceholder="Buscar motivo..."
+                  emptyText="Nenhum motivo encontrado"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Responsável *</label>
+                <input
+                  type="text"
+                  value={boxAdjustmentForm.responsible}
+                  onChange={(e) => setBoxAdjustmentForm({ ...boxAdjustmentForm, responsible: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="Nome do responsável"
+                  required
+                />
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Observações</label>
+                <textarea
+                  value={boxAdjustmentForm.notes}
+                  onChange={(e) => setBoxAdjustmentForm({ ...boxAdjustmentForm, notes: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustBoxesModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  disabled={loading}
+                >
+                  {loading ? 'Salvando...' : 'Confirmar Ajuste'}
                 </button>
               </div>
             </form>
