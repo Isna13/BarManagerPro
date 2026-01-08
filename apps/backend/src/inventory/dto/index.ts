@@ -73,6 +73,18 @@ export class AdjustStockByProductDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string; // UUID único para evitar duplicação de movimentações
+
+  @IsOptional()
+  @IsString()
+  saleId?: string; // ID da venda associada (para auditoria)
+
+  @IsOptional()
+  @IsString()
+  purchaseId?: string; // ID da compra associada (para auditoria)
 }
 
 export class UpsertInventoryItemDto {

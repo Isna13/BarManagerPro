@@ -3669,9 +3669,19 @@ export class SyncManager {
       
       case 'inventory':
       case 'inventory_item':
-        // 🔴 CORREÇÃO: Priorizar adjustment (delta) para evitar conflitos multi-PC
+        // 🔴 CORREÇÃO CRÍTICA (08/01/2026): APENAS delta operations são permitidas!
+        // O fallback de upsert foi REMOVIDO porque causava corrupção de estoque.
+        // 
+        // PROBLEMA IDENTIFICADO:
+        // - PC1 vende 3 unidades → estoque local = 497
+        // - PC2 vende 5 unidades → estoque servidor = 495
+        // - PC1 faz sync com fallback: POST /inventory { qtyUnits: 497 }
+        // - RESULTADO: estoque volta para 497, perdendo a venda do PC2!
+        //
+        // SOLUÇÃO: Somente aceitar adjustments (deltas). Se não tiver adjustment,
+        // o item deve ser sincronizado via 'stock_movement' que já usa delta.
         if (operation === 'update' || operation === 'create') {
-          // Se tem adjustment, usar endpoint de delta (mais seguro para multi-PC)
+          // Se tem adjustment, usar endpoint de delta (ÚNICO CAMINHO PERMITIDO)
           if (data.adjustment !== undefined && data.adjustment !== null) {
             try {
               await this.apiClient.put('/inventory/adjust-by-product', {
@@ -3683,28 +3693,31 @@ export class SyncManager {
               console.log('✅ Estoque sincronizado (delta):', data.productId, 'Adj:', data.adjustment);
               return { success: true };
             } catch (deltaError: any) {
-              console.warn('⚠️ Delta falhou, tentando upsert:', deltaError.message);
+              // 🔴 NÃO fazer fallback para upsert! Isso causa corrupção.
+              // Se delta falhar, é melhor falhar e tentar novamente depois.
+              console.error('❌ Delta falhou:', deltaError.message);
+              throw deltaError; // Re-lançar para entrar na fila de retry
             }
           }
           
-          // Fallback: usar POST /inventory com valor absoluto
-          await this.apiClient.post('/inventory', {
-            productId: data.productId || data.product_id,
-            branchId: data.branchId || data.branch_id,
-            qtyUnits: data.qtyUnits ?? data.qty_units ?? 0,
-            closedBoxes: data.closedBoxes ?? data.closed_boxes ?? 0,
-            openBoxUnits: data.openBoxUnits ?? data.open_box_units ?? 0,
-            minStock: 10,
-            synced: true,
-          });
-          console.log('✅ Estoque sincronizado (upsert):', data.productId, 'Qty:', data.qtyUnits ?? data.qty_units ?? 0);
-          return { success: true };
+          // 🔴 REMOVIDO: Fallback de upsert com valor absoluto
+          // Era:
+          // await this.apiClient.post('/inventory', { qtyUnits: ... });
+          //
+          // Este fallback foi REMOVIDO porque causava sobrescrita de estoque
+          // quando múltiplos dispositivos estavam operando simultaneamente.
+          // 
+          // Se chegou aqui sem adjustment, o item deve ser ignorado.
+          // Movimentações de estoque devem usar 'stock_movement' entity.
+          console.warn('⚠️ Inventory sync sem adjustment ignorado (use stock_movement):', data.productId);
+          return { skip: true, success: false, reason: 'Inventory sync requer adjustment - use stock_movement' };
         }
         return { skip: true, success: false, reason: 'Operação de inventário não suportada' };
       
       case 'stock_movement':
-        // 🔴 CORREÇÃO F4: Sincronizar movimentos de estoque como delta operations
+        // 🔴 CORREÇÃO F4 + IDEMPOTÊNCIA: Sincronizar movimentos de estoque como delta operations
         // Isso garante que vendas simultâneas em múltiplos PCs não sobrescrevam o estoque
+        // O idempotencyKey previne que o mesmo movimento seja aplicado duas vezes
         if (operation === 'create') {
           try {
             // Usar endpoint de ajuste por delta ao invés de valor absoluto
@@ -3713,9 +3726,12 @@ export class SyncManager {
               branchId: data.branchId || data.branch_id,
               adjustment: data.adjustment || data.quantity,
               reason: data.reason || `${data.movementType || 'Ajuste'} - Sync Desktop`,
+              idempotencyKey: data.idempotencyKey || data.id || entity_id, // Garantir idempotência
+              saleId: data.saleId,
+              purchaseId: data.purchaseId,
             });
             
-            console.log(`✅ Movimento de estoque sincronizado: ${data.productId} (${data.adjustment > 0 ? '+' : ''}${data.adjustment})`);
+            console.log(`✅ Movimento de estoque sincronizado: ${data.productId} (${data.adjustment > 0 ? '+' : ''}${data.adjustment}) [key:${data.idempotencyKey || entity_id}]`);
             
             // Marcar movimento local como sincronizado
             if (entity_id) {

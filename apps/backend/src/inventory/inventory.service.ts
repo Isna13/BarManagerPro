@@ -222,7 +222,22 @@ export class InventoryService {
   }
 
   async adjustStockByProduct(adjustDto: AdjustStockByProductDto) {
-    const { productId, branchId, adjustment, reason } = adjustDto;
+    const { productId, branchId, adjustment, reason, idempotencyKey, saleId, purchaseId } = adjustDto;
+
+    // 🔴 IDEMPOTÊNCIA: Se idempotencyKey foi fornecida, verificar se já foi aplicada
+    if (idempotencyKey) {
+      const existing = await this.prisma.inventoryMovement.findFirst({
+        where: {
+          inventoryItem: { productId, branchId },
+          reason: { contains: idempotencyKey },
+        },
+      });
+      
+      if (existing) {
+        console.log(`⚠️ Movimento ${idempotencyKey} já foi aplicado, ignorando duplicata`);
+        return this.findByProduct(productId, branchId);
+      }
+    }
 
     // Buscar ou criar item de inventário
     let item = await this.prisma.inventoryItem.findFirst({
@@ -249,13 +264,25 @@ export class InventoryService {
       });
     }
 
+    // Construir reason com idempotencyKey para auditoria
+    let fullReason = reason || 'Ajuste sincronizado do Electron';
+    if (idempotencyKey) {
+      fullReason += ` [key:${idempotencyKey}]`;
+    }
+    if (saleId) {
+      fullReason += ` [sale:${saleId}]`;
+    }
+    if (purchaseId) {
+      fullReason += ` [purchase:${purchaseId}]`;
+    }
+
     // Registrar movimento
     await this.prisma.inventoryMovement.create({
       data: {
         inventoryItemId: item.id,
         type: adjustment >= 0 ? 'adjustment' : 'sale',
         qtyUnits: adjustment,
-        reason: reason || 'Ajuste sincronizado do Electron',
+        reason: fullReason,
       },
     });
 

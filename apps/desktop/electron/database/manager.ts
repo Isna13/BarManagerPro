@@ -2682,8 +2682,9 @@ export class DatabaseManager {
       data.saleId || null, data.purchaseId || null, data.notes || null
     );
     
-    // 🔴 CORREÇÃO F4: Sincronizar movimento como delta operation
+    // 🔴 CORREÇÃO F4 + IDEMPOTÊNCIA: Sincronizar movimento como delta operation
     // O servidor aplicará o adjustment ao estoque ao invés de receber valor absoluto
+    // O idempotencyKey garante que o movimento não será aplicado duas vezes
     this.addToSyncQueue('create', 'stock_movement', id, {
       id,
       productId: data.productId,
@@ -2695,6 +2696,7 @@ export class DatabaseManager {
       purchaseId: data.purchaseId,
       responsible: data.responsible || 'system',
       terminal: data.terminal || 'desktop',
+      idempotencyKey: id, // Usar o ID do movimento como chave de idempotência
     }, 1); // Prioridade 1 = Alta (crítico para consistência de estoque)
   }
   
