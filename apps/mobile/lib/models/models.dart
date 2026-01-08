@@ -1124,3 +1124,170 @@ class TopProduct {
     );
   }
 }
+
+// ============================================
+// 🎯 DETALHES DO CAIXA - PARIDADE COM ELECTRON
+// ============================================
+
+/// Item de venda agregado por produto (para detalhes do caixa)
+class SalesItemDetail {
+  final String productId;
+  final String productName;
+  final String? sku;
+  final int qtySold;
+  final double revenue;
+  final double cost;
+  final double profit;
+  final double margin;
+
+  SalesItemDetail({
+    required this.productId,
+    required this.productName,
+    this.sku,
+    required this.qtySold,
+    required this.revenue,
+    required this.cost,
+    required this.profit,
+    required this.margin,
+  });
+
+  factory SalesItemDetail.fromJson(Map<String, dynamic> json) {
+    return SalesItemDetail(
+      productId: json['productId'] ?? json['product_id'] ?? '',
+      productName: json['productName'] ?? json['product_name'] ?? '',
+      sku: json['sku'],
+      qtySold: json['qtySold'] ?? json['qty_sold'] ?? 0,
+      revenue: (json['revenue'] ?? 0).toDouble() / 100,
+      cost: (json['cost'] ?? 0).toDouble() / 100,
+      profit: (json['profit'] ?? 0).toDouble() / 100,
+      margin: (json['margin'] ?? 0).toDouble(),
+    );
+  }
+}
+
+/// Métricas de lucro do caixa (calculadas pelo servidor)
+class ProfitMetrics {
+  final double totalRevenue;
+  final double totalCOGS;
+  final double grossProfit;
+  final double profitMargin;
+  final double netProfit;
+  final double netMargin;
+  final List<SalesItemDetail> salesItems;
+
+  ProfitMetrics({
+    required this.totalRevenue,
+    required this.totalCOGS,
+    required this.grossProfit,
+    required this.profitMargin,
+    required this.netProfit,
+    required this.netMargin,
+    required this.salesItems,
+  });
+
+  factory ProfitMetrics.fromJson(Map<String, dynamic> json) {
+    return ProfitMetrics(
+      totalRevenue: (json['totalRevenue'] ?? 0).toDouble() / 100,
+      totalCOGS: (json['totalCOGS'] ?? 0).toDouble() / 100,
+      grossProfit: (json['grossProfit'] ?? 0).toDouble() / 100,
+      profitMargin: (json['profitMargin'] ?? 0).toDouble(),
+      netProfit: (json['netProfit'] ?? 0).toDouble() / 100,
+      netMargin: (json['netMargin'] ?? 0).toDouble(),
+      salesItems: (json['salesItems'] as List<dynamic>?)
+              ?.map((item) => SalesItemDetail.fromJson(item))
+              .toList() ??
+          [],
+    );
+  }
+}
+
+/// Detalhes completos do caixa (paridade com Electron)
+/// Retornado pelo endpoint GET /cash-box/:id/details
+class CashBoxDetails {
+  final String id;
+  final String boxNumber;
+  final String branchId;
+  final String status;
+  final DateTime openedAt;
+  final DateTime? closedAt;
+  final double openingCash;
+  final double? closingCash;
+  final double? difference;
+  final String? notes;
+  final String? openedBy;
+  
+  // Contagem de vendas
+  final int salesCount;
+  
+  // Totais por método de pagamento
+  final double totalSales;
+  final double totalCash;
+  final double totalMobileMoney;
+  final double totalCard;
+  final double totalDebt;
+  
+  // 🎯 Métricas de lucro (fonte da verdade do servidor)
+  final ProfitMetrics profitMetrics;
+
+  CashBoxDetails({
+    required this.id,
+    required this.boxNumber,
+    required this.branchId,
+    required this.status,
+    required this.openedAt,
+    this.closedAt,
+    required this.openingCash,
+    this.closingCash,
+    this.difference,
+    this.notes,
+    this.openedBy,
+    required this.salesCount,
+    required this.totalSales,
+    required this.totalCash,
+    required this.totalMobileMoney,
+    required this.totalCard,
+    required this.totalDebt,
+    required this.profitMetrics,
+  });
+
+  factory CashBoxDetails.fromJson(Map<String, dynamic> json) {
+    return CashBoxDetails(
+      id: json['id'] ?? '',
+      boxNumber: json['boxNumber'] ?? json['box_number'] ?? '',
+      branchId: json['branchId'] ?? json['branch_id'] ?? '',
+      status: json['status'] ?? 'closed',
+      openedAt: DateTime.tryParse(json['openedAt'] ?? json['opened_at'] ?? '') ?? DateTime.now(),
+      closedAt: json['closedAt'] != null 
+          ? DateTime.tryParse(json['closedAt']) 
+          : json['closed_at'] != null 
+              ? DateTime.tryParse(json['closed_at']) 
+              : null,
+      openingCash: (json['openingCash'] ?? json['opening_cash'] ?? 0).toDouble() / 100,
+      closingCash: json['closingCash'] != null 
+          ? (json['closingCash']).toDouble() / 100 
+          : json['closing_cash'] != null 
+              ? (json['closing_cash']).toDouble() / 100 
+              : null,
+      difference: json['difference'] != null ? (json['difference']).toDouble() / 100 : null,
+      notes: json['notes'],
+      openedBy: json['openedBy'] ?? json['opened_by'],
+      salesCount: json['salesCount'] ?? json['sales_count'] ?? 0,
+      totalSales: (json['totalSales'] ?? json['total_sales'] ?? 0).toDouble() / 100,
+      totalCash: (json['totalCash'] ?? json['total_cash'] ?? 0).toDouble() / 100,
+      totalMobileMoney: (json['totalMobileMoney'] ?? json['total_mobile_money'] ?? 0).toDouble() / 100,
+      totalCard: (json['totalCard'] ?? json['total_card'] ?? 0).toDouble() / 100,
+      totalDebt: (json['totalDebt'] ?? json['total_debt'] ?? 0).toDouble() / 100,
+      profitMetrics: ProfitMetrics.fromJson(json['profitMetrics'] ?? {}),
+    );
+  }
+  
+  /// Duração do caixa em formato legível
+  String get duration {
+    if (closedAt == null) return 'Aberto';
+    final diff = closedAt!.difference(openedAt);
+    if (diff.inHours > 0) {
+      return '${diff.inHours}h ${diff.inMinutes % 60}min';
+    }
+    return '${diff.inMinutes}min';
+  }
+}

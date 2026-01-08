@@ -790,6 +790,187 @@ export class CashBoxService {
     return enrichedCashBoxes;
   }
 
+  /**
+   * 🎯 ENDPOINT CRÍTICO: Detalhes completos do caixa (paridade com Electron)
+   * Retorna todos os dados necessários para auditoria financeira:
+   * - Lista de produtos vendidos com quantidade, valor, custo e lucro
+   * - Totais consolidados (receita, custo, lucro bruto, margem)
+   * - Dados do caixa (abertura, fechamento, diferença)
+   * - Vales (crédito concedido)
+   */
+  async getCashBoxDetails(cashBoxId: string) {
+    const cashBox = await this.prisma.cashBox.findUnique({
+      where: { id: cashBoxId },
+      include: {
+        openedByUser: true,
+        branch: true,
+      },
+    });
+
+    if (!cashBox) {
+      throw new NotFoundException('Caixa não encontrado');
+    }
+
+    // Definir período de análise
+    const startDate = cashBox.openedAt;
+    const endDate = cashBox.closedAt || new Date();
+
+    // 1. Buscar todas as vendas do período
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        branchId: cashBox.branchId,
+        openedAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true },
+            },
+          },
+        },
+        payments: true,
+      },
+    });
+
+    // 2. Agrupar itens por produto (exatamente como o Electron faz)
+    const productMap = new Map<string, {
+      productId: string;
+      productName: string;
+      sku: string;
+      qtySold: number;
+      revenue: number;
+      cost: number;
+      profit: number;
+    }>();
+
+    for (const sale of sales) {
+      for (const item of sale.items) {
+        const key = item.productId;
+        const existing = productMap.get(key) || {
+          productId: item.productId,
+          productName: item.product.name,
+          sku: item.product.sku || '',
+          qtySold: 0,
+          revenue: 0,
+          cost: 0,
+          profit: 0,
+        };
+
+        existing.qtySold += item.qtyUnits;
+        existing.revenue += item.total;
+        existing.cost += item.unitCost * item.qtyUnits;
+        existing.profit = existing.revenue - existing.cost;
+
+        productMap.set(key, existing);
+      }
+    }
+
+    // 3. Converter para array e calcular margens
+    const salesItems = Array.from(productMap.values())
+      .map(item => ({
+        ...item,
+        margin: item.revenue > 0 ? ((item.revenue - item.cost) / item.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue); // Ordenar por receita DESC
+
+    // 4. Calcular totais
+    const totalRevenue = salesItems.reduce((sum, item) => sum + item.revenue, 0);
+    const totalCOGS = salesItems.reduce((sum, item) => sum + item.cost, 0);
+    const grossProfit = totalRevenue - totalCOGS;
+    const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+    // 5. Calcular totais por método de pagamento
+    let cashPayments = 0;
+    let mobileMoneyPayments = 0;
+    let cardPayments = 0;
+    let debtPayments = 0;
+
+    for (const sale of sales) {
+      for (const payment of sale.payments) {
+        const method = (payment.method || '').toLowerCase();
+        if (method === 'cash') {
+          cashPayments += payment.amount;
+        } else if (['orange', 'orange_money', 'teletaku', 'mobile'].includes(method)) {
+          mobileMoneyPayments += payment.amount;
+        } else if (['card', 'mixed'].includes(method)) {
+          cardPayments += payment.amount;
+        } else if (['vale', 'debt'].includes(method)) {
+          debtPayments += payment.amount;
+        }
+      }
+    }
+
+    // 6. Buscar TablePayments do período (para vendas de mesa)
+    const tablePayments = await this.prisma.tablePayment.findMany({
+      where: {
+        processedAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+        session: { branchId: cashBox.branchId },
+        paymentId: null, // Apenas os que não têm Payment vinculado
+      },
+    });
+
+    for (const tp of tablePayments) {
+      const method = (tp.method || '').toLowerCase();
+      if (method === 'cash') {
+        cashPayments += tp.amount;
+      } else if (['orange', 'orange_money', 'teletaku', 'mobile'].includes(method)) {
+        mobileMoneyPayments += tp.amount;
+      } else if (['card', 'mixed'].includes(method)) {
+        cardPayments += tp.amount;
+      } else if (['vale', 'debt'].includes(method)) {
+        debtPayments += tp.amount;
+      }
+    }
+
+    // 7. Calcular lucro líquido (desconta vales pois são crédito)
+    const netProfit = grossProfit - debtPayments;
+    const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+    // 8. Retornar estrutura completa
+    return {
+      // Dados do caixa
+      id: cashBox.id,
+      boxNumber: cashBox.boxNumber,
+      branchId: cashBox.branchId,
+      status: cashBox.status,
+      openedAt: cashBox.openedAt,
+      closedAt: cashBox.closedAt,
+      openingCash: cashBox.openingCash,
+      closingCash: cashBox.closingCash,
+      difference: cashBox.difference,
+      notes: cashBox.notes,
+      openedBy: cashBox.openedByUser?.fullName || 'Desconhecido',
+      
+      // Contagem de vendas
+      salesCount: sales.length,
+      
+      // Totais por método de pagamento
+      totalSales: totalRevenue,
+      totalCash: cashPayments,
+      totalMobileMoney: mobileMoneyPayments,
+      totalCard: cardPayments,
+      totalDebt: debtPayments,
+      
+      // 🎯 Métricas de lucro (PARIDADE COM ELECTRON)
+      profitMetrics: {
+        totalRevenue,
+        totalCOGS,
+        grossProfit,
+        profitMargin: Math.round(profitMargin * 100) / 100,
+        netProfit,
+        netMargin: Math.round(netMargin * 100) / 100,
+        salesItems,
+      },
+    };
+  }
+
   async getMovements(cashBoxId?: string, limit = 50) {
     // Se não tiver cashBoxId, pegar do caixa mais recente
     let targetCashBox: { id: string; openedAt: Date; branchId: string } | null = null;

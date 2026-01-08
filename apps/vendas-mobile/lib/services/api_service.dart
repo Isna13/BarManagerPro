@@ -271,6 +271,23 @@ class ApiService {
     }
   }
 
+  /// 🎯 ENDPOINT CRÍTICO: Detalhes completos do caixa (paridade com Electron)
+  /// Retorna produtos vendidos, custos, lucros e métricas para auditoria financeira
+  Future<Map<String, dynamic>?> getCashBoxDetails(String cashBoxId) async {
+    try {
+      final response = await _dio.get('/cash-box/$cashBoxId/details');
+      
+      if (response.data == null || response.data == '') {
+        return null;
+      }
+      
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw _handleError(e);
+    }
+  }
+
   // ==================== MESAS ====================
   Future<List<dynamic>> getTables({String? branchId}) async {
     try {

@@ -89,6 +89,13 @@ export class CashBoxController {
     return this.cashBoxService.getHistoryAll(limit ? parseInt(limit) : 500);
   }
 
+  // 🎯 ENDPOINT CRÍTICO: Detalhes completos do caixa (paridade com Electron)
+  // Retorna produtos vendidos, custos, lucros e métricas para auditoria financeira
+  @Get(':id/details')
+  getCashBoxDetails(@Param('id') id: string) {
+    return this.cashBoxService.getCashBoxDetails(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.cashBoxService.findOne(id);

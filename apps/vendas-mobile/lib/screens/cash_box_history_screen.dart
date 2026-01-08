@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../utils/currency_helper.dart';
 import '../providers/cash_box_provider.dart';
+import 'cash_box_details_screen.dart';
 
 class CashBoxHistoryScreen extends StatefulWidget {
   const CashBoxHistoryScreen({super.key});
@@ -294,10 +295,41 @@ class _CashBoxHistoryScreenState extends State<CashBoxHistoryScreen> {
                     child: Text(notes.toString()),
                   ),
                 ],
+                // 🎯 Botão para ver detalhes completos (paridade com Electron)
+                const Divider(),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _navigateToDetails(item),
+                    icon: const Icon(Icons.analytics, size: 18),
+                    label: const Text('Ver Detalhes Completos'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _navigateToDetails(Map<String, dynamic> item) {
+    final id = item['id'] ?? '';
+    final boxNumber = item['box_number'] ?? item['boxNumber'] ?? '';
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CashBoxDetailsScreen(
+          cashBoxId: id,
+          boxNumber: boxNumber,
+        ),
       ),
     );
   }

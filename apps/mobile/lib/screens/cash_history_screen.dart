@@ -5,6 +5,7 @@ import '../config/app_theme.dart';
 import '../providers/data_provider.dart';
 import '../models/models.dart';
 import '../widgets/common_widgets.dart';
+import 'cash_box_details_screen.dart';
 
 class CashHistoryScreen extends StatefulWidget {
   const CashHistoryScreen({super.key});
@@ -226,15 +227,14 @@ class _CashHistoryScreenState extends State<CashHistoryScreen> {
   }
 
   void _showCashDetails(CashBox cash) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _CashDetailsSheet(
-        cash: cash,
-        currencyFormat: currencyFormat,
-        dateFormat: dateFormat,
-        timeFormat: timeFormat,
+    // 🎯 Navegar para tela de detalhes completos (paridade com Electron)
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CashBoxDetailsScreen(
+          cashBoxId: cash.id,
+          boxNumber: cash.id.substring(0, 8), // Usar primeiros 8 chars do ID
+        ),
       ),
     );
   }
